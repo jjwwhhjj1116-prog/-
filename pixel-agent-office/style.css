@@ -1,0 +1,451 @@
+/* Pixel Agent Office CSS - Retro 16-Bit Cyber Office Theme */
+
+:root {
+  --bg-dark: #0f172a;
+  --bg-panel: #1e293b;
+  --bg-card: #334155;
+  --border-color: #475569;
+  --text-main: #f8fafc;
+  --text-dim: #94a3b8;
+  --accent-green: #22c55e;
+  --accent-blue: #38bdf8;
+  --accent-purple: #a855f7;
+  --accent-yellow: #eab308;
+  --accent-red: #ef4444;
+  --pixel-border: 2px solid #000;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+  overflow-x: hidden;
+  height: 100vh;
+}
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* Header */
+.retro-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  background: #090d16;
+  border-bottom: 3px solid #1e293b;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+.logo-area {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pixel-icon {
+  font-size: 24px;
+}
+
+.pixel-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 14px;
+  color: #38bdf8;
+  text-shadow: 2px 2px #0284c7;
+  letter-spacing: 1px;
+}
+
+.badge-live {
+  background: #14532d;
+  color: #4ade80;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid #22c55e;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-retro {
+  background: #1e293b;
+  color: #f8fafc;
+  border: 2px solid #64748b;
+  font-family: 'Pretendard', sans-serif;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 6px 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.btn-retro:hover {
+  background: #334155;
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.btn-retro.active {
+  background: #0369a1;
+  border-color: #38bdf8;
+  color: #fff;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+}
+
+.time-display {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 12px;
+  color: #a3e635;
+  padding: 6px 10px;
+  background: #000;
+  border: 1px solid #365314;
+  border-radius: 4px;
+}
+
+/* Main Content */
+.main-content {
+  display: grid;
+  grid-template-columns: 820px 1fr;
+  gap: 16px;
+  padding: 16px;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Office Viewport */
+.office-viewport {
+  display: flex;
+  flex-direction: column;
+  background: #020617;
+  border: 3px solid #1e293b;
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8);
+}
+
+.viewport-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding: 0 4px;
+}
+
+.terminal-text {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  color: #38bdf8;
+}
+
+.hint-text {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.canvas-wrapper {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #000;
+  border: 2px solid #334155;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+#office-canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  cursor: pointer;
+}
+
+/* Control Panel */
+.control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.control-panel::-webkit-scrollbar {
+  width: 6px;
+}
+.control-panel::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+
+.panel-section {
+  background: var(--bg-panel);
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.panel-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 11px;
+  color: #cbd5e1;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Dispatch Buttons */
+.dispatch-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.dispatch-btn {
+  background: #334155;
+  border: 2px solid #475569;
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.dispatch-btn:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.2);
+}
+
+.btn-spec { border-color: #818cf8; color: #a5b4fc; }
+.btn-code { border-color: #34d399; color: #6ee7b7; }
+.btn-test { border-color: #38bdf8; color: #7dd3fc; }
+.btn-review { border-color: #fbbf24; color: #fde047; }
+.btn-security { border-color: #a78bfa; color: #c4b5fd; }
+.btn-deploy { border-color: #ec4899; color: #f472b6; }
+.btn-coffee { border-color: #fb923c; color: #fdba74; }
+.btn-reset { border-color: #94a3b8; color: #cbd5e1; }
+
+/* Squad Cards */
+.agent-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.agent-cards::-webkit-scrollbar {
+  width: 4px;
+}
+.agent-cards::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+.agent-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #0f172a;
+  border: 2px solid #334155;
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.agent-card:hover {
+  border-color: #38bdf8;
+  background: #1e293b;
+}
+
+.card-avatar {
+  font-size: 22px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1e293b;
+  border-radius: 4px;
+}
+
+.card-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-name {
+  font-weight: 700;
+  font-size: 13px;
+  color: #f1f5f9;
+}
+
+.status-badge {
+  font-size: 9px;
+  font-family: 'Press Start 2P', monospace;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.status-IDLE { background: #334155; color: #94a3b8; }
+.status-CODING { background: #065f46; color: #34d399; }
+.status-TESTING { background: #0369a1; color: #38bdf8; }
+.status-REVIEWING { background: #854d0e; color: #fbbf24; }
+.status-AUDITING { background: #581c87; color: #c084fc; }
+.status-DEPLOYING { background: #831843; color: #f472b6; }
+.status-COFFEE { background: #7c2d12; color: #fb923c; }
+
+.card-task {
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+/* Terminal Log */
+.retro-terminal {
+  background: #020617;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  padding: 10px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  color: #22c55e;
+  height: 120px;
+  overflow-y: auto;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.9);
+}
+
+.log-line {
+  margin-bottom: 4px;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.log-line.system {
+  color: #38bdf8;
+}
+
+.log-line.alert {
+  color: #f87171;
+}
+
+/* Modal */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-content {
+  background: #1e293b;
+  border: 3px solid #38bdf8;
+  border-radius: 8px;
+  width: 440px;
+  padding: 20px;
+  box-shadow: 0 0 25px rgba(56, 189, 248, 0.3);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #334155;
+  padding-bottom: 10px;
+  margin-bottom: 15px;
+}
+
+.modal-header h3 {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 12px;
+  color: #38bdf8;
+}
+
+.btn-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.btn-close:hover {
+  color: #f87171;
+}
+
+.modal-body {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.modal-avatar {
+  font-size: 48px;
+  background: #0f172a;
+  border: 2px solid #475569;
+  border-radius: 8px;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-info {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.modal-info strong {
+  color: #cbd5e1;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  border-top: 2px solid #334155;
+  padding-top: 12px;
+}

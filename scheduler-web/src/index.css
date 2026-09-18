@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #f4f7fb;
+    color: #1e293b;
+    font-family: 'Noto Sans KR', 'Pretendard', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer components {
+  /* Stitch Nexus Corporate Glass & Card Panel */
+  .corporate-card {
+    @apply bg-white border border-[#e2e8f0] rounded-xl shadow-card transition-all;
+  }
+
+  .corporate-card-hover {
+    @apply hover:border-[#00338d]/40 hover:shadow-md transition-all;
+  }
+
+  /* 정밀 캘린더 공휴일 빗금 해시 무늬 패턴 (스크린샷 1 반영) */
+  .pattern-holiday-kr {
+    background-color: #fff5f5;
+    background-image: repeating-linear-gradient(
+      45deg,
+      rgba(239, 68, 68, 0.12),
+      rgba(239, 68, 68, 0.12) 6px,
+      transparent 6px,
+      transparent 12px
+    );
+  }
+
+  .pattern-holiday-vn {
+    background-color: #f0fdfa;
+    background-image: repeating-linear-gradient(
+      -45deg,
+      rgba(13, 148, 136, 0.14),
+      rgba(13, 148, 136, 0.14) 6px,
+      transparent 6px,
+      transparent 12px
+    );
+  }
+
+  .pattern-holiday-uk {
+    background-color: #f8fafc;
+    background-image: repeating-linear-gradient(
+      90deg,
+      rgba(100, 116, 139, 0.1),
+      rgba(100, 116, 139, 0.1) 4px,
+      transparent 4px,
+      transparent 8px
+    );
+  }
+
+  /* 간트 타임라인 바 스타일 */
+  .gantt-bar-primary {
+    background: linear-gradient(90deg, #00338d 0%, #0284c7 100%);
+    box-shadow: 0 3px 10px rgba(0, 51, 141, 0.25);
+  }
+
+  .gantt-bar-accent {
+    background: linear-gradient(90deg, #ea580c 0%, #f97316 100%);
+    box-shadow: 0 3px 10px rgba(234, 88, 12, 0.25);
+  }
+
+  .gantt-bar-green {
+    background: linear-gradient(90deg, #16a34a 0%, #22c55e 100%);
+    box-shadow: 0 3px 10px rgba(22, 163, 74, 0.25);
+  }
+
+  /* 스티치 스타일 버튼 */
+  .btn-stitch-primary {
+    @apply bg-[#00338d] hover:bg-[#002366] text-white font-semibold px-4 py-2 rounded-lg transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2;
+  }
+
+  .btn-stitch-accent {
+    @apply bg-[#ef6c00] hover:bg-[#d85e00] text-white font-bold px-4 py-2 rounded-lg transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2;
+  }
+
+  .btn-stitch-secondary {
+    @apply bg-white hover:bg-slate-50 text-slate-700 font-medium px-3 py-1.5 rounded-lg border border-slate-300 transition-all shadow-sm active:scale-95 flex items-center justify-center gap-1.5;
+  }
+
+  /* 테이블 및 그리드 스크롤바 */
+  .custom-scrollbar::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+}

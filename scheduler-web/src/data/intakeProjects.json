@@ -1,0 +1,570 @@
+[
+  {
+    "id": "intake_1436",
+    "no": 1436,
+    "code": "TK-2026087",
+    "client": "삼성물산(주)",
+    "name": "[삼성물산(주)] P5 FAB2 신축공사 견적용역",
+    "rawTitle": "2026087.[삼성물산(주)]P5 FAB2 신축공사 견적용역(마감,구조)",
+    "author": "김태영",
+    "receivedDate": "2026-09-16",
+    "startDate": "2026-09-16",
+    "endDate": "2026-10-21",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1435",
+    "no": 1435,
+    "code": "TK-2026086",
+    "client": "(재)21세기경제연구소",
+    "name": "[(재)21세기경제연구소] 인천광역시 영종구 운서동 LH매입 오피스텔 신축공사 견적용역",
+    "rawTitle": "2026086.[(재)21세기경제연구소]인천광역시 영종구 운서동 LH매입 오피스텔 신축공사 견적용역(마감,구조)",
+    "author": "김태영",
+    "receivedDate": "2026-09-15",
+    "startDate": "2026-09-15",
+    "endDate": "2026-10-20",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1434",
+    "no": 1434,
+    "code": "TK-2026085",
+    "client": "현대건설(주)",
+    "name": "[현대건설(주)] 잠실종합운동장 주경기장 리모델링 견적용역",
+    "rawTitle": "2026085.[현대건설(주)]잠실종합운동장 주경기장 리모델링 견적용역(마감,구조)",
+    "author": "강동균",
+    "receivedDate": "2026-09-14",
+    "startDate": "2026-09-14",
+    "endDate": "2026-10-19",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1433",
+    "no": 1433,
+    "code": "TK-2026084",
+    "client": "(주)BS한양",
+    "name": "[(주)BS한양] 행정중심복합도시 5-1 생활권 L6BL 신축공사 견적용역",
+    "rawTitle": "2026084.[(주)BS한양]행정중심복합도시 5-1 생활권 L6BL 신축공사 견적용역(마감)",
+    "author": "김태영",
+    "receivedDate": "2026-09-14",
+    "startDate": "2026-09-14",
+    "endDate": "2026-10-19",
+    "scopeText": "마감",
+    "targetDepartments": [
+      "마감팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1432",
+    "no": 1432,
+    "code": "TK-2026083",
+    "client": "(주)한화",
+    "name": "[(주)한화] 포레나 더샵 인천시청역 신축공사 견적용역",
+    "rawTitle": "2026083.[(주)한화]포레나 더샵 인천시청역 신축공사 견적용역(마감)",
+    "author": "김태영",
+    "receivedDate": "2026-09-11",
+    "startDate": "2026-09-11",
+    "endDate": "2026-10-16",
+    "scopeText": "마감",
+    "targetDepartments": [
+      "마감팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1431",
+    "no": 1431,
+    "code": "TK-2026082",
+    "client": "현대건설(주)",
+    "name": "[현대건설(주)] MS PUS09 데이터센터 신축공사 견적용역",
+    "rawTitle": "2026082.[현대건설(주)]MS PUS09 데이터센터 신축공사 견적용역(마감,구조)",
+    "author": "김태영",
+    "receivedDate": "2026-09-10",
+    "startDate": "2026-09-10",
+    "endDate": "2026-10-15",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1430",
+    "no": 1430,
+    "code": "TK-2026081",
+    "client": "(주)대광건영",
+    "name": "[(주)대광건영] 인천송도국제도시 RC2블럭 공동주택 신축공사 견적용역",
+    "rawTitle": "2026081.[(주)대광건영]인천송도국제도시 RC2블럭 공동주택 신축공사 견적용역(마감,구조)",
+    "author": "김태영",
+    "receivedDate": "2026-09-09",
+    "startDate": "2026-09-09",
+    "endDate": "2026-10-14",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1429",
+    "no": 1429,
+    "code": "TK-2026080",
+    "client": "(주)엠엘텍",
+    "name": "[(주)엠엘텍] 엠엘텍 PJ-A·PJ-B 프로젝트 공사비 적정성 검증 및 송무지원 용역",
+    "rawTitle": "2026080.[(주)엠엘텍]엠엘텍 PJ-A·PJ-B 프로젝트 공사비 적정성 검증 및 송무지원 용역",
+    "author": "김태영",
+    "receivedDate": "2026-09-09",
+    "startDate": "2026-09-09",
+    "endDate": "2026-10-14",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1428",
+    "no": 1428,
+    "code": "TK-2026079",
+    "client": "삼성물산(주)",
+    "name": "[삼성물산(주)] 기흥 카이로스FAB 건축 적산 용역",
+    "rawTitle": "2026079.[삼성물산(주)]기흥 카이로스FAB 건축 적산 용역(마감,구조)",
+    "author": "김태영",
+    "receivedDate": "2026-08-31",
+    "startDate": "2026-08-31",
+    "endDate": "2026-10-05",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1427",
+    "no": 1427,
+    "code": "TK-2026078",
+    "client": "현대엔지니어링(주)",
+    "name": "[현대엔지니어링(주)] 울산 모비스 모듈 3-2공장 신축공사 견적용역",
+    "rawTitle": "2026078.[현대엔지니어링(주)]울산 모비스 모듈 3-2공장 신축공사 견적용역(마감,구조)",
+    "author": "김태영",
+    "receivedDate": "2026-08-25",
+    "startDate": "2026-08-25",
+    "endDate": "2026-09-29",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1426",
+    "no": 1426,
+    "code": "TK-2026077",
+    "client": "대산종합건설(주)",
+    "name": "[대산종합건설(주)] 25-A-00부대(1303) 물가변동 용역(이경훈)",
+    "rawTitle": "2026077.[대산종합건설(주)]25-A-00부대(1303) 물가변동 용역(이경훈)",
+    "author": "김태영",
+    "receivedDate": "2026-08-18",
+    "startDate": "2026-08-18",
+    "endDate": "2026-09-22",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1425",
+    "no": 1425,
+    "code": "TK-2026076",
+    "client": "(재)21세기경제연구소",
+    "name": "[(재)21세기경제연구소] 남동구 간석동 업무시설 신축공사 견적용역",
+    "rawTitle": "2026076.[(재)21세기경제연구소]남동구 간석동 업무시설 신축공사 견적용역(마감,구조,오승균)",
+    "author": "김태영",
+    "receivedDate": "2026-08-13",
+    "startDate": "2026-08-13",
+    "endDate": "2026-09-17",
+    "scopeText": "마감,구조,오승균",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀",
+      "토목&조경팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1424",
+    "no": 1424,
+    "code": "TK-2026075",
+    "client": "(주)아키코스트기술사사무소",
+    "name": "[(주)아키코스트기술사사무소] 인천 검단구 불로동 검단신도시 오피스텔 일위대가 작성 용역",
+    "rawTitle": "2026075.[(주)아키코스트기술사사무소]인천 검단구 불로동 검단신도시 오피스텔 일위대가 작성 용역(오승균)",
+    "author": "김태영",
+    "receivedDate": "2026-08-11",
+    "startDate": "2026-08-11",
+    "endDate": "2026-09-15",
+    "scopeText": "오승균",
+    "targetDepartments": [
+      "토목&조경팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1423",
+    "no": 1423,
+    "code": "TK-2026074",
+    "client": "(주)이산지반건설",
+    "name": "[(주)이산지반건설] 파일공사 내역작성 용역",
+    "rawTitle": "2026074.[(주)이산지반건설]파일공사 내역작성 용역(오승균)",
+    "author": "김태영",
+    "receivedDate": "2026-08-07",
+    "startDate": "2026-08-07",
+    "endDate": "2026-09-11",
+    "scopeText": "오승균",
+    "targetDepartments": [
+      "토목&조경팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1422",
+    "no": 1422,
+    "code": "TK-2026073",
+    "client": "(주)신영기초개발",
+    "name": "[(주)신영기초개발] 보링그라우팅파일공사 일위대가 업데이트 작성용역",
+    "rawTitle": "2026073.[(주)신영기초개발]보링그라우팅파일공사 일위대가 업데이트 작성용역(오승균)",
+    "author": "강동균",
+    "receivedDate": "2026-08-05",
+    "startDate": "2026-08-05",
+    "endDate": "2026-09-09",
+    "scopeText": "오승균",
+    "targetDepartments": [
+      "토목&조경팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1421",
+    "no": 1421,
+    "code": "TK-2026072",
+    "client": "SK에코플랜트(주)",
+    "name": "[SK에코플랜트(주)] 의왕시 부곡가구역 재개발 정비사업 견적용역",
+    "rawTitle": "2026072.[SK에코플랜트(주)]의왕시 부곡가구역 재개발 정비사업 견적용역(마감,구조)",
+    "author": "김태영",
+    "receivedDate": "2026-08-04",
+    "startDate": "2026-08-04",
+    "endDate": "2026-09-08",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1420",
+    "no": 1420,
+    "code": "TK-2026071",
+    "client": "안동시청",
+    "name": "[안동시청] 물품구매 계약의 물가변동 검토 용역(이경훈)",
+    "rawTitle": "2026071.[안동시청]물품구매 계약의 물가변동 검토 용역(이경훈)",
+    "author": "김태영",
+    "receivedDate": "2026-08-04",
+    "startDate": "2026-08-04",
+    "endDate": "2026-09-08",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1419",
+    "no": 1419,
+    "code": "TK-2026070",
+    "client": "금호건설(주)",
+    "name": "[금호건설(주)] 송도세브란스병원 신축공사 견적용역",
+    "rawTitle": "2026070.[금호건설(주)]송도세브란스병원 신축공사 견적용역(마감,구조,오승균)",
+    "author": "김태영",
+    "receivedDate": "2026-07-29",
+    "startDate": "2026-07-29",
+    "endDate": "2026-09-02",
+    "scopeText": "마감,구조,오승균",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀",
+      "토목&조경팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1418",
+    "no": 1418,
+    "code": "TK-2026069",
+    "client": "태야건설(주)",
+    "name": "[태야건설(주)] 경동대학교 메디컬캠퍼스 자양관 리모델링 견적용역",
+    "rawTitle": "2026069.[태야건설(주)]경동대학교 메디컬캠퍼스 자양관 리모델링 견적용역",
+    "author": "김태영",
+    "receivedDate": "2026-07-24",
+    "startDate": "2026-07-24",
+    "endDate": "2026-08-28",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1417",
+    "no": 1417,
+    "code": "TK-2026068",
+    "client": "아이파크현대산업개발(주)",
+    "name": "[아이파크현대산업개발(주)] 서울 국제교류복합지구 잠실 스포츠 MICE 복합공간 조성 민간투자사업 견적용역",
+    "rawTitle": "2026068.[아이파크현대산업개발(주)]서울 국제교류복합지구 잠실 스포츠 MICE 복합공간 조성 민간투자사업 견적용역(마감,구조)",
+    "author": "강동균",
+    "receivedDate": "2026-07-20",
+    "startDate": "2026-07-20",
+    "endDate": "2026-08-24",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1416",
+    "no": 1416,
+    "code": "TK-2026067",
+    "client": "개포6차 우성아파트 재건축 정비사업조합",
+    "name": "[개포6차 우성아파트 재건축 정비사업조합] 개포6차 우성아파트 재건축 정비사업 공사비 검증 용역",
+    "rawTitle": "2026067.[개포6차 우성아파트 재건축 정비사업조합]개포6차 우성아파트 재건축 정비사업 공사비 검증 용역",
+    "author": "김태영",
+    "receivedDate": "2026-07-20",
+    "startDate": "2026-07-20",
+    "endDate": "2026-08-24",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1415",
+    "no": 1415,
+    "code": "TK-2026066",
+    "client": "(주)창마루",
+    "name": "[(주)창마루] 화성시 장안면 수촌리 (주)창마루 공장 증축공사 견적용역",
+    "rawTitle": "2026066.[(주)창마루]화성시 장안면 수촌리 (주)창마루 공장 증축공사 견적용역(마감,구조,오승균)",
+    "author": "김태영",
+    "receivedDate": "2026-07-10",
+    "startDate": "2026-07-10",
+    "endDate": "2026-08-14",
+    "scopeText": "마감,구조,오승균",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀",
+      "토목&조경팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1414",
+    "no": 1414,
+    "code": "TK-2026065",
+    "client": "(재)21세기경제연구소",
+    "name": "[(재)21세기경제연구소] 반포주공1단지(1,2,4지구) 주택재건축 정비사업 부대복리시설 견적용역",
+    "rawTitle": "2026065.[(재)21세기경제연구소]반포주공1단지(1,2,4지구) 주택재건축 정비사업 부대복리시설 견적용역(마감,구조)",
+    "author": "김태영",
+    "receivedDate": "2026-07-09",
+    "startDate": "2026-07-09",
+    "endDate": "2026-08-13",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1413",
+    "no": 1413,
+    "code": "TK-2026064",
+    "client": "(주)케이알산업",
+    "name": "[(주)케이알산업] 천안 위험물저장소 신축공사 견적용역(마감,구조,오승균,조인,타임) [1건]",
+    "rawTitle": "2026064.[(주)케이알산업]천안 위험물저장소 신축공사 견적용역(마감,구조,오승균,조인,타임) [1건]",
+    "author": "강동균",
+    "receivedDate": "2026-07-09",
+    "startDate": "2026-07-09",
+    "endDate": "2026-08-13",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1412",
+    "no": 1412,
+    "code": "TK-2026063",
+    "client": "삼성물산(주)",
+    "name": "[삼성물산(주)] 미국 텍사스 반도체 공장 골조물량 견적용역",
+    "rawTitle": "2026063.[삼성물산(주)]미국 텍사스 반도체 공장 골조물량 견적용역(마감,구조)",
+    "author": "김태영",
+    "receivedDate": "2026-07-08",
+    "startDate": "2026-07-08",
+    "endDate": "2026-08-12",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1411",
+    "no": 1411,
+    "code": "TK-2026062",
+    "client": "나노종합건설",
+    "name": "[나노종합건설] 시립 반다비 체육센터 건립공사 물가변동 용역(이경훈)",
+    "rawTitle": "2026062.[나노종합건설]시립 반다비 체육센터 건립공사 물가변동 용역(이경훈)",
+    "author": "김태영",
+    "receivedDate": "2026-07-07",
+    "startDate": "2026-07-07",
+    "endDate": "2026-08-11",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1410",
+    "no": 1410,
+    "code": "TK-2026061",
+    "client": "미건에이엔디(주)",
+    "name": "[미건에이엔디(주)] 24-A-00부대 시설공사(1557) 물가변동 용역(이경훈)",
+    "rawTitle": "2026061.[미건에이엔디(주)]24-A-00부대 시설공사(1557) 물가변동 용역(이경훈)",
+    "author": "김태영",
+    "receivedDate": "2026-07-02",
+    "startDate": "2026-07-02",
+    "endDate": "2026-08-06",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1409",
+    "no": 1409,
+    "code": "TK-2026060",
+    "client": "현대건설(주)",
+    "name": "[현대건설(주)] 안산 원시 데이터센터 신축공사 견적용역",
+    "rawTitle": "2026060.[현대건설(주)]안산 원시 데이터센터 신축공사 견적용역(마감,구조)",
+    "author": "강동균",
+    "receivedDate": "2026-07-02",
+    "startDate": "2026-07-02",
+    "endDate": "2026-08-06",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1408",
+    "no": 1408,
+    "code": "TK-2026059",
+    "client": "신세계건설(주)",
+    "name": "[신세계건설(주)] 오시리아 리조트 하자적출 보고서 대응 컨설팅 용역",
+    "rawTitle": "2026059.[신세계건설(주)]오시리아 리조트 하자적출 보고서 대응 컨설팅 용역",
+    "author": "김태영",
+    "receivedDate": "2026-06-19",
+    "startDate": "2026-06-19",
+    "endDate": "2026-07-24",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  },
+  {
+    "id": "intake_1407",
+    "no": 1407,
+    "code": "TK-2026058",
+    "client": "평택화양센트럴조합",
+    "name": "[평택화양센트럴조합] 평택화양 센트럴 정비사업 공사비 검증용역",
+    "rawTitle": "2026058.[평택화양센트럴조합]평택화양 센트럴 정비사업 공사비 검증용역",
+    "author": "김태영",
+    "receivedDate": "2026-06-19",
+    "startDate": "2026-06-19",
+    "endDate": "2026-07-24",
+    "scopeText": "마감,구조",
+    "targetDepartments": [
+      "마감팀",
+      "구조팀"
+    ],
+    "status": "접수완료",
+    "isScheduled": false
+  }
+]

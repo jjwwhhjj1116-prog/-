@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pixel Agent Office - AI Dev-TF HQ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Pretendard:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- 헤더 -->
+    <header class="retro-header">
+      <div class="logo-area">
+        <span class="pixel-icon">🏢</span>
+        <h1 class="pixel-title">PIXEL AGENT OFFICE</h1>
+        <span class="badge-live">● LIVE HQ</span>
+      </div>
+      <div class="header-controls">
+        <button id="btn-sound" class="btn-retro">🔊 SFX ON</button>
+        <button id="btn-auto-sim" class="btn-retro active">🤖 AUTO SIM: ON</button>
+        <div class="time-display" id="clock-display">15:45:00</div>
+      </div>
+    </header>
+
+    <!-- 메인 레이아웃 -->
+    <main class="main-content">
+      <!-- 캔버스 오피스 시뮬레이터 -->
+      <section class="office-viewport">
+        <div class="viewport-header">
+          <span class="terminal-text">&gt; VIRTUAL AGENT WORKSPACE (800x480 PIXEL GRID)</span>
+          <span class="hint-text">캐릭터를 클릭하면 상태를 변경하거나 상세를 볼 수 있습니다</span>
+        </div>
+        <div class="canvas-wrapper">
+          <canvas id="office-canvas" width="800" height="480"></canvas>
+        </div>
+      </section>
+
+      <!-- 미션 컨트롤 패널 & 로그 -->
+      <aside class="control-panel">
+        <!-- 빠른 지시 버튼 -->
+        <div class="panel-section">
+          <h2 class="panel-title">⚡ MISSION DISPATCHER</h2>
+          <div class="dispatch-buttons">
+            <button class="dispatch-btn btn-spec" data-action="SPEC">📝 Spec 설계</button>
+            <button class="dispatch-btn btn-code" data-action="CODE">💻 TDD 코딩</button>
+            <button class="dispatch-btn btn-test" data-action="TEST">🧪 통합 테스트</button>
+            <button class="dispatch-btn btn-review" data-action="REVIEW">🔍 코드 리뷰</button>
+            <button class="dispatch-btn btn-security" data-action="AUDIT">🛡️ 보안 감사</button>
+            <button class="dispatch-btn btn-deploy" data-action="DEPLOY">🚀 배포 런칭</button>
+            <button class="dispatch-btn btn-coffee" data-action="COFFEE">☕ 커피 타임</button>
+            <button class="dispatch-btn btn-reset" data-action="RESET">🔄 전원 복귀</button>
+          </div>
+        </div>
+
+        <!-- 에이전트 스쿼드 리스트 -->
+        <div class="panel-section squad-section">
+          <h2 class="panel-title">👥 ACTIVE SQUAD (8 AGENTS)</h2>
+          <div class="agent-cards" id="agent-cards-container">
+            <!-- JS 동적 생성 -->
+          </div>
+        </div>
+
+        <!-- 실시간 터미널 콘솔 -->
+        <div class="panel-section log-section">
+          <h2 class="panel-title">📡 LIVE AGENT TELEMETRY</h2>
+          <div class="retro-terminal" id="terminal-logs">
+            <div class="log-line system">&gt; System initialized. All 64 global skills mapped.</div>
+            <div class="log-line system">&gt; Connecting to local agent runtime... Ready.</div>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- 에이전트 상세 팝업 모달 -->
+    <div id="agent-modal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="modal-agent-name">Agent Name</h3>
+          <button id="modal-close" class="btn-close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-avatar" id="modal-avatar">👾</div>
+          <div class="modal-info">
+            <p><strong>역할:</strong> <span id="modal-agent-role">Role</span></p>
+            <p><strong>현재 상태:</strong> <span id="modal-agent-status" class="status-tag">IDLE</span></p>
+            <p><strong>수행 중인 태스크:</strong> <span id="modal-agent-task">Task description</span></p>
+            <p><strong>장착된 글로벌 스킬:</strong> <span id="modal-agent-skills">Skills</span></p>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-retro" id="btn-force-work">강제 작업 시작</button>
+          <button class="btn-retro" id="btn-force-coffee">커피 마시러 보내기</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

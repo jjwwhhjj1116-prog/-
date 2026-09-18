@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "concost-tech-scheduler",
+  "compatibility_date": "2026-09-18",
+  "pages_build_output_dir": "scheduler-web/dist",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "concost-tech-scheduler-db",
+      "database_id": "28a9c32b-647d-47de-a916-d966327b35ca"
+    }
+  ]
+}
