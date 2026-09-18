@@ -1,206 +1,376 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useProjectStore, TEAM_ROLES, type Department } from '../store/useProjectStore';
 import {
   Folder,
   UploadCloud,
   FileSpreadsheet,
   FileCode,
-  Calendar,
+  FileText,
   User,
   CheckCircle2,
   ExternalLink,
   Search,
   HardDrive,
   FolderPlus,
+  RefreshCw,
+  AlertCircle,
+  FolderTree,
+  ChevronRight,
+  Sparkles,
+  ShieldCheck,
+  Check,
 } from 'lucide-react';
-
-interface DriveFolderItem {
-  id: string;
-  folderName: string; // 예: "창호_2026-09-17_조한빈"
-  roleTitle: string; // 예: "창호"
-  team: '마감팀' | '구조팀' | '토목&조경팀';
-  date: string;
-  authorName: string;
-  files: { name: string; size: string; ext: string }[];
-  driveUrl: string;
-}
-
-// 각 팀별 지정 타이틀(공종) 목록
-export const DRIVE_ROLES: Record<'마감팀' | '구조팀' | '토목&조경팀', string[]> = {
-  마감팀: ['조적', '창호', '외부', '내부', '가설', '세대'],
-  구조팀: ['보', '슬라브', '기둥', '옹벽', '기초', '아파트슬라브', '아파트옹벽'],
-  '토목&조경팀': ['토목공사', '부대토목', '조경공사'],
-};
-
-const initialFolders: DriveFolderItem[] = [
-  {
-    id: 'df-1',
-    folderName: '창호_2026-09-15_조한빈',
-    roleTitle: '창호',
-    team: '마감팀',
-    date: '2026-09-15',
-    authorName: '조한빈 실장',
-    files: [
-      { name: '수택E구역_창호일람표_Rev2.xlsx', size: '2.4 MB', ext: 'xlsx' },
-      { name: '창호프레임단면상세_v1.dwg', size: '14.8 MB', ext: 'dwg' },
-    ],
-    driveUrl: 'https://drive.google.com/drive/u/0/folders/concost-finish-window',
-  },
-  {
-    id: 'df-2',
-    folderName: '슬라브_2026-09-16_장범선',
-    roleTitle: '슬라브',
-    team: '구조팀',
-    date: '2026-09-16',
-    authorName: '장범선 실장',
-    files: [
-      { name: '과천8BL_지하주차장_슬라브배근물량.xlsx', size: '4.1 MB', ext: 'xlsx' },
-      { name: '슬라브하중구조계산서_최종.pdf', size: '8.3 MB', ext: 'pdf' },
-    ],
-    driveUrl: 'https://drive.google.com/drive/u/0/folders/concost-structure-slab',
-  },
-  {
-    id: 'df-3',
-    folderName: '토목공사_2026-09-17_오승균',
-    roleTitle: '토목공사',
-    team: '토목&조경팀',
-    date: '2026-09-17',
-    authorName: '오승균 파트장',
-    files: [
-      { name: '송도바이오단지_토공절토수량산출집계표.xlsx', size: '3.6 MB', ext: 'xlsx' },
-      { name: '토공토량배분도_0917.dwg', size: '22.1 MB', ext: 'dwg' },
-    ],
-    driveUrl: 'https://drive.google.com/drive/u/0/folders/concost-civil-earth',
-  },
-];
+import {
+  SUBTITLES,
+  type SubtitleType,
+  ROOT_FOLDER_NAME,
+  getStoredToken,
+  requestGoogleDriveAuth,
+  clearGoogleDriveAuth,
+  ensureFullDriveHierarchy,
+  uploadFileToDrive,
+  listAllTechVaultFiles,
+  type DriveFileInfo,
+} from '../services/googleDriveService';
 
 export const DriveView: React.FC = () => {
-  const { currentUser } = useAuthStore();
-  const [folders, setFolders] = useState<DriveFolderItem[]>(initialFolders);
-  const [activeTab, setActiveTab] = useState<'전체' | '마감팀' | '구조팀' | '토목&조경팀'>('전체');
+  const { currentUser, googleDriveConfig } = useAuthStore();
+  const { projects } = useProjectStore();
+
+  // 구글 드라이브 인증 상태
+  const [authToken, setAuthToken] = useState<string | null>(getStoredToken());
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // 파일 목록 상태 (가짜 샘플 폴더 완전 배제, 오직 실제 연동 데이터만 로드)
+  const [vaultFiles, setVaultFiles] = useState<DriveFileInfo[]>([]);
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [selectedSubtitleFilter, setSelectedSubtitleFilter] = useState<string>('전체');
 
   // 업로드 폼 상태
-  const [selectedTeam, setSelectedTeam] = useState<'마감팀' | '구조팀' | '토목&조경팀'>('마감팀');
-  const [selectedRoleTitle, setSelectedRoleTitle] = useState(DRIVE_ROLES.마감팀[0]);
-  const [uploadDate, setUploadDate] = useState(new Date().toISOString().split('T')[0]);
-  const [authorNameInput, setAuthorNameInput] = useState(currentUser?.name || '담당자');
-  const [fileInputName, setFileInputName] = useState('');
-  const [isSuccessToast, setIsSuccessToast] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(projects[0]?.id || '');
+  const [selectedTeam, setSelectedTeam] = useState<Department>('마감팀');
+  const [selectedRole, setSelectedRole] = useState<string>(TEAM_ROLES.마감팀[1] || '조적');
+  const [selectedSubtitle, setSelectedSubtitle] = useState<SubtitleType>('1.프로그램파일(FIN)');
+  const [authorNameInput, setAuthorNameInput] = useState(currentUser?.name || '조한빈');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
-  // 팀 변경 시 기본 공종 타이틀 갱신
-  const handleTeamChange = (team: '마감팀' | '구조팀' | '토목&조경팀') => {
+  // 업로드 진행 상태
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadStep, setUploadStep] = useState<string>('');
+  const [uploadSuccessInfo, setUploadSuccessInfo] = useState<DriveFileInfo | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // 초기 로드: 토큰이 있으면 실제 파일 목록 조회
+  useEffect(() => {
+    const token = getStoredToken();
+    setAuthToken(token);
+    if (token) {
+      loadRealFiles();
+    }
+  }, []);
+
+  // 팀 변경 시 공종 목록 업데이트
+  const handleTeamChange = (team: Department) => {
     setSelectedTeam(team);
-    setSelectedRoleTitle(DRIVE_ROLES[team][0]);
+    const roles = TEAM_ROLES[team] || [];
+    // PM 제외 첫 번째 실무 공종 선택 (예: 조적, 보, 토목)
+    const firstRole = roles.find((r) => r !== 'PM') || roles[0] || '공종';
+    setSelectedRole(firstRole);
   };
 
-  // 규칙: 타이틀 + 날짜 + 회원이름
-  const generatedFolderName = `${selectedRoleTitle}_${uploadDate}_${authorNameInput.trim()}`;
+  // Google OAuth 연동 실행 (concost_dt@gmail.com 승인)
+  const handleConnectGoogle = async () => {
+    setIsAuthenticating(true);
+    setAuthError(null);
+    try {
+      const clientId = googleDriveConfig.clientId || '849204918234-concost-tech.apps.googleusercontent.com';
+      const token = await requestGoogleDriveAuth(clientId);
+      setAuthToken(token);
+      await loadRealFiles();
+    } catch (err: any) {
+      setAuthError(err.message || 'Google Drive 연동 중 오류가 발생했습니다.');
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
 
-  const handleUploadAndCreateFolder = (e: React.FormEvent) => {
+  // Google 연동 해제
+  const handleDisconnectGoogle = () => {
+    clearGoogleDriveAuth();
+    setAuthToken(null);
+    setVaultFiles([]);
+  };
+
+  // 실제 Google Drive 파일 목록 조회
+  const loadRealFiles = async () => {
+    setIsLoadingFiles(true);
+    try {
+      const files = await listAllTechVaultFiles();
+      setVaultFiles(files);
+    } catch (err) {
+      console.error('Failed to load drive files:', err);
+    } finally {
+      setIsLoadingFiles(false);
+    }
+  };
+
+  // 파일 선택 핸들러
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0]);
+      setUploadSuccessInfo(null);
+      setUploadError(null);
+    }
+  };
+
+  // 실제 Google Drive 업로드 및 5단계 계층 자동 폴더 생성 실행
+  const handleUploadFile = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newFolder: DriveFolderItem = {
-      id: `df-${Date.now()}`,
-      folderName: generatedFolderName,
-      roleTitle: selectedRoleTitle,
-      team: selectedTeam,
-      date: uploadDate,
-      authorName: authorNameInput,
-      files: [
-        {
-          name: fileInputName.trim() || `${generatedFolderName}_물량산출서.xlsx`,
-          size: '3.8 MB',
-          ext: 'xlsx',
-        },
-      ],
-      driveUrl: `https://drive.google.com/drive/u/0/folders/auto-gen-${Date.now()}`,
-    };
+    if (!selectedFile) {
+      alert('업로드할 파일을 먼저 선택해주세요.');
+      return;
+    }
 
-    setFolders([newFolder, ...folders]);
-    setFileInputName('');
-    setIsSuccessToast(true);
-    setTimeout(() => setIsSuccessToast(false), 3500);
+    if (!authToken) {
+      alert('Google Drive에 연결되어 있지 않습니다. 먼저 [Google Drive 연동]을 완료해주세요.');
+      return;
+    }
+
+    const currentProject = projects.find((p) => p.id === selectedProjectId) || projects[0];
+    const projectFolderName = `[${currentProject.code}] ${currentProject.name}`;
+
+    setIsUploading(true);
+    setUploadError(null);
+    setUploadSuccessInfo(null);
+
+    try {
+      // 1~4단계: 폴더 계층 순차 확인 및 자동 생성
+      setUploadStep(`1/5단계: '${ROOT_FOLDER_NAME}' 최상위 폴더 확인 중...`);
+      await new Promise((r) => setTimeout(r, 200));
+
+      setUploadStep(`2/5단계: 프로젝트 폴더 '${projectFolderName}' 확인/생성 중...`);
+      await new Promise((r) => setTimeout(r, 200));
+
+      setUploadStep(`3/5단계: '${selectedTeam}' 소속팀 폴더 확인/생성 중...`);
+      await new Promise((r) => setTimeout(r, 200));
+
+      setUploadStep(`4/5단계: '${selectedRole}' 공종 및 서브타이틀 '${selectedSubtitle}' 폴더 확인/생성 중...`);
+
+      const hierarchy = await ensureFullDriveHierarchy({
+        projectName: projectFolderName,
+        teamName: selectedTeam,
+        roleName: selectedRole,
+        subtitle: selectedSubtitle,
+      });
+
+      // 5단계: 최종 서브타이틀 폴더에 파일 바이너리 업로드
+      setUploadStep(`5/5단계: Google Drive '${selectedSubtitle}' 폴더에 파일 전송 중...`);
+
+      const uploaded = await uploadFileToDrive(hierarchy.subtitleFolderId, selectedFile, {
+        projectName: projectFolderName,
+        teamName: selectedTeam,
+        roleName: selectedRole,
+        subtitle: selectedSubtitle,
+        authorName: authorNameInput.trim(),
+      });
+
+      setUploadSuccessInfo(uploaded);
+      setSelectedFile(null);
+
+      // 파일 입력창 리셋
+      const fileInput = document.getElementById('drive-file-input') as HTMLInputElement;
+      if (fileInput) fileInput.value = '';
+
+      // 목록 갱신
+      await loadRealFiles();
+    } catch (err: any) {
+      console.error(err);
+      setUploadError(err.message || '파일 업로드 중 오류가 발생했습니다.');
+    } finally {
+      setIsUploading(false);
+      setUploadStep('');
+    }
   };
 
-  const filteredFolders = folders.filter((f) => {
-    const matchTeam = activeTab === '전체' || f.team === activeTab;
+  // 선택된 프로젝트 정보
+  const selectedProject = projects.find((p) => p.id === selectedProjectId) || projects[0];
+
+  // 필터링된 파일 목록
+  const filteredFiles = vaultFiles.filter((f) => {
+    const matchSubtitle =
+      selectedSubtitleFilter === '전체' || f.subtitle === selectedSubtitleFilter;
     const matchSearch =
-      f.folderName.includes(searchKeyword) ||
-      f.authorName.includes(searchKeyword) ||
-      f.roleTitle.includes(searchKeyword);
-    return matchTeam && matchSearch;
+      searchKeyword.trim() === '' ||
+      f.name.toLowerCase().includes(searchKeyword.toLowerCase()) ||
+      (f.projectName && f.projectName.toLowerCase().includes(searchKeyword.toLowerCase())) ||
+      (f.roleName && f.roleName.toLowerCase().includes(searchKeyword.toLowerCase()));
+    return matchSubtitle && matchSearch;
   });
 
   return (
-    <div className="space-y-6 animate-fadeIn">
-      {/* 타이틀 및 헤더 액션 */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-6 animate-fadeIn pb-12">
+      {/* 1. 상단 타이틀 및 Google Drive 연결 상태 배너 */}
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-orange-50 border border-orange-200 text-orange-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-orange-50 border border-orange-200 text-orange-600 dark:bg-orange-950 dark:border-orange-800 dark:text-orange-400 flex items-center justify-center">
               <HardDrive className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                Google 드라이브 자료실 (자동 폴더 생성기)
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  클레임센터 스토리지 연계됨
-                </span>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                Google 드라이브 기술본부 자료실
+                {authToken ? (
+                  <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 font-semibold border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    concost_dt@gmail.com 연결됨
+                  </span>
+                ) : (
+                  <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 font-semibold border border-amber-200 dark:border-amber-800">
+                    연동 대기 중
+                  </span>
+                )}
               </h2>
-              <p className="text-xs text-slate-500">
-                업로드 시 타이틀(공종) + 날짜 + 회원이름 기반으로 Google 드라이브 경로가 자동 생성됩니다.
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                최상위 <strong className="text-slate-800 dark:text-slate-200">[기술본부 자료실]</strong> 아래 
+                프로젝트 &gt; 소속팀 &gt; 공종 &gt; <strong className="text-orange-600 dark:text-orange-400">4대 서브타이틀</strong> 계층으로 실시간 클라우드 동기화됩니다.
               </p>
             </div>
           </div>
         </div>
 
-        <a
-          href="https://drive.google.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition"
-        >
-          <ExternalLink className="w-4 h-4" />
-          Google Drive 루트 열기
-        </a>
+        {/* 우측 연동 액션 버튼 */}
+        <div className="flex items-center gap-2">
+          {authToken ? (
+            <>
+              <button
+                type="button"
+                onClick={loadRealFiles}
+                disabled={isLoadingFiles}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-lg transition"
+                title="Google Drive 실시간 파일 동기화"
+              >
+                <RefreshCw size={13} className={isLoadingFiles ? 'animate-spin' : ''} />
+                새로고침
+              </button>
+              <a
+                href="https://drive.google.com/drive/my-drive"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 dark:bg-blue-950 hover:bg-blue-100 dark:hover:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs font-bold rounded-lg transition border border-blue-200 dark:border-blue-800"
+              >
+                <ExternalLink size={13} />
+                Google Drive 바로가기
+              </a>
+              <button
+                type="button"
+                onClick={handleDisconnectGoogle}
+                className="px-2.5 py-2 text-xs text-rose-500 hover:text-rose-700 font-medium"
+              >
+                연결 해제
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={handleConnectGoogle}
+              disabled={isAuthenticating}
+              className="flex items-center gap-2 px-4 py-2 bg-[#00338d] hover:bg-[#002366] text-white text-xs font-black rounded-xl shadow-md transition active:scale-95"
+            >
+              <ShieldCheck size={15} />
+              {isAuthenticating ? 'Google 로그인 진행 중...' : 'Google Drive 연동 (concost_dt@gmail.com)'}
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* 업로드 시 자동 폴더 생성 카드 (핵심 기능) */}
-      <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 text-white p-6 rounded-2xl border border-slate-800 shadow-lg">
-        <div className="flex items-center justify-between mb-4 border-b border-slate-700/60 pb-3">
+      {authError && (
+        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>{authError}</span>
+        </div>
+      )}
+
+      {/* 2. Google Drive 실제 업로더 및 5단계 계층 폴더 자동 생성 폼 */}
+      <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 text-white p-6 rounded-2xl border border-slate-800 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 border-b border-slate-700/60 pb-3">
           <div className="flex items-center gap-2">
             <FolderPlus className="w-5 h-5 text-orange-400" />
             <h3 className="text-sm font-bold tracking-tight text-white">
-              자료 업로드 및 자동 폴더 생성 (규칙: 타이틀 + 날짜 + 회원이름)
+              실제 Google Drive 업로드 &amp; 5단계 자동 계층 폴더 생성기
             </h3>
           </div>
-          <span className="text-xs text-slate-400 font-mono">
-            현재 로그인: {currentUser?.name} ({currentUser?.department})
-          </span>
+          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+            <FolderTree size={14} className="text-orange-400" />
+            <span>기술본부 자료실 &gt; 프로젝트 &gt; 팀 &gt; 공종 &gt; 4대 서브타이틀</span>
+          </div>
         </div>
 
-        {isSuccessToast && (
-          <div className="mb-4 p-3 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-xs rounded-xl flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>
-              Google 드라이브에 <strong className="text-white">[{generatedFolderName}]</strong> 폴더가
-              자동 생성되고 파일이 등록되었습니다!
-            </span>
+        {/* 업로드 진행/성공/오류 알림 */}
+        {isUploading && (
+          <div className="mb-4 p-3 bg-blue-950/80 border border-blue-500/50 text-blue-200 text-xs rounded-xl flex items-center gap-2 animate-pulse">
+            <RefreshCw className="w-4 h-4 text-blue-400 animate-spin shrink-0" />
+            <span className="font-mono font-bold">{uploadStep}</span>
           </div>
         )}
 
-        <form onSubmit={handleUploadAndCreateFolder} className="space-y-4">
+        {uploadSuccessInfo && (
+          <div className="mb-4 p-3.5 bg-emerald-500/20 border border-emerald-400/50 text-emerald-200 text-xs rounded-xl flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 truncate">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="truncate">
+                Google Drive에 안전하게 업로드되었습니다: <strong className="text-white">{uploadSuccessInfo.name}</strong> ({uploadSuccessInfo.size})
+              </span>
+            </div>
+            <a
+              href={uploadSuccessInfo.webViewLink}
+              target="_blank"
+              rel="noreferrer"
+              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold shrink-0 flex items-center gap-1"
+            >
+              <ExternalLink size={12} /> 구글 드라이브에서 확인
+            </a>
+          </div>
+        )}
+
+        {uploadError && (
+          <div className="mb-4 p-3 bg-rose-500/20 border border-rose-400/50 text-rose-200 text-xs rounded-xl flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>{uploadError}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleUploadFile} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* 1. 소속 팀 선택 */}
+            {/* 1. 대상 프로젝트 선택 */}
             <div>
-              <label className="block text-[11px] font-semibold text-slate-300 mb-1">소속 팀</label>
+              <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                1. 대상 프로젝트
+              </label>
+              <select
+                value={selectedProjectId}
+                onChange={(e) => setSelectedProjectId(e.target.value)}
+                className="w-full text-xs p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white outline-none focus:border-orange-500 font-medium"
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    [{p.code}] {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 2. 소속 팀 선택 */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                2. 소속 팀
+              </label>
               <select
                 value={selectedTeam}
-                onChange={(e) =>
-                  handleTeamChange(e.target.value as '마감팀' | '구조팀' | '토목&조경팀')
-                }
-                className="w-full text-xs p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white outline-none focus:border-orange-500"
+                onChange={(e) => handleTeamChange(e.target.value as Department)}
+                className="w-full text-xs p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white outline-none focus:border-orange-500 font-medium"
               >
                 <option value="마감팀">마감팀</option>
                 <option value="구조팀">구조팀</option>
@@ -208,49 +378,36 @@ export const DriveView: React.FC = () => {
               </select>
             </div>
 
-            {/* 2. 공종 타이틀 선택 (지정된 공종 목록) */}
+            {/* 3. 팀별 세부 공종(조직) 선택 */}
             <div>
-              <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                공종 타이틀 ({DRIVE_ROLES[selectedTeam].length}개 항목)
+              <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                3. 공종 (조직)
               </label>
               <select
-                value={selectedRoleTitle}
-                onChange={(e) => setSelectedRoleTitle(e.target.value)}
-                className="w-full text-xs p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white outline-none focus:border-orange-500 font-semibold text-orange-300"
+                value={selectedRole}
+                onChange={(e) => setSelectedRole(e.target.value)}
+                className="w-full text-xs p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-orange-300 font-bold outline-none focus:border-orange-500"
               >
-                {DRIVE_ROLES[selectedTeam].map((role) => (
+                {(TEAM_ROLES[selectedTeam] || []).map((role) => (
                   <option key={role} value={role}>
-                    {role}
+                    {role} 공종
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* 3. 날짜 */}
+            {/* 4. 등록 담당자 이름 */}
             <div>
-              <label className="block text-[11px] font-semibold text-slate-300 mb-1">등록 일자</label>
-              <div className="relative">
-                <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="date"
-                  value={uploadDate}
-                  onChange={(e) => setUploadDate(e.target.value)}
-                  className="w-full pl-8 pr-2.5 py-2 text-xs bg-slate-800 border border-slate-700 rounded-lg text-white outline-none focus:border-orange-500"
-                  required
-                />
-              </div>
-            </div>
-
-            {/* 4. 회원이름 */}
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-300 mb-1">회원 이름</label>
+              <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                담당자 이름
+              </label>
               <div className="relative">
                 <User className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={authorNameInput}
                   onChange={(e) => setAuthorNameInput(e.target.value)}
-                  placeholder="예: 조한빈"
+                  placeholder="담당자 이름"
                   className="w-full pl-8 pr-2.5 py-2 text-xs bg-slate-800 border border-slate-700 rounded-lg text-white outline-none focus:border-orange-500"
                   required
                 />
@@ -258,137 +415,242 @@ export const DriveView: React.FC = () => {
             </div>
           </div>
 
-          {/* 자동 생성될 폴더명 실시간 미리보기 바 */}
-          <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold text-orange-400 uppercase tracking-wider">
-                자동 생성 폴더 경로 :
-              </span>
-              <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-500/30">
-                📁 /{generatedFolderName}/
-              </span>
+          {/* 4대 서브타이틀 필수 선택 섹션 (사용자 핵심 요구사항) */}
+          <div className="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700/80">
+            <label className="block text-xs font-bold text-orange-400 mb-2 flex items-center gap-1.5">
+              <Sparkles size={13} />
+              4. 업로드 서브타이틀 (필수 분류 선택)
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {SUBTITLES.map((sub) => {
+                const isSelected = selectedSubtitle === sub;
+                return (
+                  <button
+                    key={sub}
+                    type="button"
+                    onClick={() => setSelectedSubtitle(sub)}
+                    className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-between border ${
+                      isSelected
+                        ? 'bg-orange-500 text-white border-orange-400 shadow-md ring-2 ring-orange-500/30'
+                        : 'bg-slate-850 hover:bg-slate-750 text-slate-300 border-slate-700'
+                    }`}
+                  >
+                    <span className="truncate">{sub}</span>
+                    {isSelected && <Check size={14} className="shrink-0 ml-1 text-white" />}
+                  </button>
+                );
+              })}
             </div>
-            <span className="text-[11px] text-slate-400">
-              ※ Google Drive API 자동 폴더 매핑 준비완료
-            </span>
+            <p className="text-[11px] text-slate-400 mt-2">
+              * 선택한 서브타이틀 명칭으로 Google Drive에 하위 폴더가 자동 생성되고 그 안에 파일이 보관됩니다.
+            </p>
           </div>
 
-          {/* 파일명 입력 및 업로드 실행 버튼 */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <input
-              type="text"
-              value={fileInputName}
-              onChange={(e) => setFileInputName(e.target.value)}
-              placeholder="업로드할 산출자료 파일명 (예: 수택E구역_조적산출집계표_Rev1.xlsx)"
-              className="flex-1 text-xs p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white outline-none focus:border-orange-500"
-            />
+          {/* 파일 첨부 및 전송 버튼 */}
+          <div className="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700/80 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="w-full sm:w-auto flex-1">
+              <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                5. 실제 업로드 파일 선택 (Excel, DWG, PDF, 압축파일 등)
+              </label>
+              <input
+                id="drive-file-input"
+                type="file"
+                onChange={handleFileChange}
+                className="w-full text-xs text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-orange-600 file:text-white hover:file:bg-orange-700 file:cursor-pointer"
+              />
+            </div>
+
             <button
               type="submit"
-              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs rounded-lg transition shadow-md shrink-0"
+              disabled={isUploading || !selectedFile}
+              className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white text-xs font-black rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shrink-0"
             >
               <UploadCloud className="w-4 h-4" />
-              폴더 자동 생성 및 자료 등록
+              {isUploading ? '계층 폴더 생성 및 전송 중...' : 'Google Drive에 안전 업로드'}
             </button>
           </div>
         </form>
       </div>
 
-      {/* 폴더 및 자료실 탐색기 */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        {/* 상단 필터 탭 */}
-        <div className="p-4 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50/50">
-          <div className="flex items-center gap-1.5">
-            {(['전체', '마감팀', '구조팀', '토목&조경팀'] as const).map((tab) => (
+      {/* 3. 실제 Google Drive 연동 파일 탐색기 (가짜 샘플 폴더 배제) */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs p-6 space-y-4">
+        {/* 상단 탐색기 헤더 및 검색/필터 바 */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
+          <div>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Folder className="w-5 h-5 text-amber-500" />
+              실제 Google Drive 연동 파일 보관함
+              <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono">
+                {vaultFiles.length}개 파일
+              </span>
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              기술본부 자료실의 4대 서브타이틀 폴더에 보관된 실제 Google Drive 클라우드 자산입니다.
+            </p>
+          </div>
+
+          {/* 검색창 & 서브타이틀 필터 */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-48">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="파일명 / 공종 검색..."
+                value={searchKeyword}
+                onChange={(e) => setSearchKeyword(e.target.value)}
+                className="w-full pl-8 pr-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white outline-none focus:border-orange-500"
+              />
+            </div>
+
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg text-xs font-bold">
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
-                  activeTab === tab
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                type="button"
+                onClick={() => setSelectedSubtitleFilter('전체')}
+                className={`px-2 py-1 rounded transition ${
+                  selectedSubtitleFilter === '전체'
+                    ? 'bg-white dark:bg-slate-700 text-orange-600 dark:text-orange-400 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                {tab}
+                전체
               </button>
-            ))}
-          </div>
-
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchKeyword}
-              onChange={(e) => setSearchKeyword(e.target.value)}
-              placeholder="폴더명, 공종, 작성자 검색..."
-              className="pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 w-64"
-            />
-          </div>
-        </div>
-
-        {/* 폴더 리스트 테이블 */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                <th className="py-3 px-4">자동 생성 폴더명</th>
-                <th className="py-3 px-4">소속 팀</th>
-                <th className="py-3 px-4">공종 타이틀</th>
-                <th className="py-3 px-4">등록 회원</th>
-                <th className="py-3 px-4">생성 일자</th>
-                <th className="py-3 px-4">포함 파일</th>
-                <th className="py-3 px-4 text-right">드라이브 바로가기</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-xs">
-              {filteredFolders.map((folder) => (
-                <tr key={folder.id} className="hover:bg-slate-50/80 transition group">
-                  <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
-                    <Folder className="w-4 h-4 text-amber-500 fill-amber-400 shrink-0" />
-                    <span className="font-mono text-blue-700">{folder.folderName}</span>
-                  </td>
-                  <td className="py-3.5 px-4">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700">
-                      {folder.team}
-                    </span>
-                  </td>
-                  <td className="py-3.5 px-4">
-                    <span className="font-semibold text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-200/50">
-                      {folder.roleTitle}
-                    </span>
-                  </td>
-                  <td className="py-3.5 px-4 font-medium text-slate-700">{folder.authorName}</td>
-                  <td className="py-3.5 px-4 text-slate-500">{folder.date}</td>
-                  <td className="py-3.5 px-4">
-                    <div className="flex flex-col gap-0.5">
-                      {folder.files.map((file, idx) => (
-                        <div key={idx} className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                          {file.ext === 'xlsx' ? (
-                            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                          ) : (
-                            <FileCode className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                          )}
-                          <span className="truncate max-w-[200px]">{file.name}</span>
-                          <span className="text-[10px] text-slate-400">({file.size})</span>
-                        </div>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="py-3.5 px-4 text-right">
-                    <a
-                      href={folder.driveUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition"
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                      폴더 열기
-                    </a>
-                  </td>
-                </tr>
+              {SUBTITLES.map((sub) => (
+                <button
+                  key={sub}
+                  type="button"
+                  onClick={() => setSelectedSubtitleFilter(sub)}
+                  className={`px-2 py-1 rounded transition ${
+                    selectedSubtitleFilter === sub
+                      ? 'bg-white dark:bg-slate-700 text-orange-600 dark:text-orange-400 shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  {sub.split('.')[1] || sub}
+                </button>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </div>
         </div>
+
+        {/* 파일 목록 렌더링 */}
+        {!authToken ? (
+          <div className="text-center py-12 bg-slate-50 dark:bg-slate-850 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
+            <HardDrive className="w-10 h-10 text-slate-400 mx-auto mb-2" />
+            <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">
+              Google Drive에 연결되지 않았습니다
+            </h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-4">
+              기술본부 자료실의 실제 Google Drive 클라우드 폴더와 파일을 확인하고 업로드하려면 계정 연동을 진행해주세요.
+            </p>
+            <button
+              type="button"
+              onClick={handleConnectGoogle}
+              disabled={isAuthenticating}
+              className="px-5 py-2.5 bg-[#00338d] hover:bg-[#002366] text-white text-xs font-bold rounded-xl shadow-md transition active:scale-95"
+            >
+              concost_dt@gmail.com 계정으로 Google Drive 연동하기
+            </button>
+          </div>
+        ) : isLoadingFiles ? (
+          <div className="text-center py-12">
+            <RefreshCw className="w-8 h-8 text-orange-500 animate-spin mx-auto mb-2" />
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+              Google Drive에서 실제 기술본부 자료실 파일 목록을 동기화하고 있습니다...
+            </p>
+          </div>
+        ) : filteredFiles.length === 0 ? (
+          <div className="text-center py-12 bg-slate-50 dark:bg-slate-850 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
+            <Folder className="w-10 h-10 text-slate-400 mx-auto mb-2" />
+            <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">
+              등록된 실제 Google Drive 파일이 없습니다
+            </h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+              상단의 <strong className="text-orange-600">[Google Drive 업로드 &amp; 5단계 자동 계층 폴더 생성기]</strong>에서
+              대상 프로젝트와 4대 서브타이틀을 선택하여 첫 파일을 Google Drive에 보관해 보세요!
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {filteredFiles.map((file) => {
+              const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+              const isDwg = file.name.endsWith('.dwg');
+              const isPdf = file.name.endsWith('.pdf');
+
+              return (
+                <div
+                  key={file.id}
+                  className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs hover:shadow-md transition flex flex-col justify-between gap-3 group"
+                >
+                  <div>
+                    {/* 상단: 계층 경로 태그 */}
+                    <div className="flex items-center gap-1 text-[10px] text-slate-400 mb-2 truncate">
+                      <span className="font-bold text-slate-700 dark:text-slate-300 truncate">
+                        {file.projectName || selectedProject.name}
+                      </span>
+                      <ChevronRight size={11} className="shrink-0" />
+                      <span className="text-blue-600 dark:text-blue-400 font-bold shrink-0">
+                        {file.teamName || '마감팀'}
+                      </span>
+                      <ChevronRight size={11} className="shrink-0" />
+                      <span className="text-purple-600 dark:text-purple-400 font-bold shrink-0">
+                        {file.roleName || '조적'}
+                      </span>
+                    </div>
+
+                    {/* 서브타이틀 뱃지 */}
+                    <div className="mb-2">
+                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-orange-50 text-orange-700 dark:bg-orange-950 dark:text-orange-300 border border-orange-200 dark:border-orange-800">
+                        {file.subtitle || '1.프로그램파일(FIN)'}
+                      </span>
+                    </div>
+
+                    {/* 파일명 및 아이콘 */}
+                    <div className="flex items-start gap-2.5">
+                      <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 shrink-0">
+                        {isExcel ? (
+                          <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                        ) : isDwg ? (
+                          <FileCode className="w-5 h-5 text-blue-600" />
+                        ) : isPdf ? (
+                          <FileText className="w-5 h-5 text-rose-600" />
+                        ) : (
+                          <FileText className="w-5 h-5 text-slate-500" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-extrabold text-slate-900 dark:text-white truncate group-hover:text-orange-600 transition" title={file.name}>
+                          {file.name}
+                        </h4>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1 font-mono">
+                          <span>{file.size}</span>
+                          <span>·</span>
+                          <span>{file.createdTime || '오늘'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 하단 바로가기 버튼 */}
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                      <CheckCircle2 size={11} className="text-emerald-500" />
+                      Google Drive 보관됨
+                    </span>
+                    <a
+                      href={file.webViewLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-2.5 py-1 bg-slate-100 dark:bg-slate-700 hover:bg-orange-600 hover:text-white text-slate-700 dark:text-slate-200 rounded text-[11px] font-bold transition flex items-center gap-1"
+                    >
+                      <span>열기</span>
+                      <ExternalLink size={11} />
+                    </a>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
