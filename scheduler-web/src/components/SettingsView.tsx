@@ -13,6 +13,8 @@ import {
   RefreshCw,
   Trash2,
   Save,
+  Copy,
+  ExternalLink,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -247,6 +249,153 @@ export const SettingsView: React.FC = () => {
                 <p className="text-slate-400 text-[11px] leading-relaxed">
                   자료실 업로드 시 <code className="text-orange-300 bg-slate-900 px-1 py-0.5 rounded">공종_날짜_이름</code> 자동 폴더가 Google Drive에 실시간 생성됩니다.
                 </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Google Cloud Console 입력값 원클릭 복사 가이드 (사용자 요청 항목) */}
+          <div className="bg-blue-50/70 dark:bg-blue-950/40 p-5 rounded-2xl border border-blue-200 dark:border-blue-800 text-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="font-extrabold text-blue-900 dark:text-blue-200 flex items-center gap-2 text-sm">
+                <ShieldCheck className="w-4 h-4 text-blue-600" />
+                Google Cloud Console (console.cloud.google.com) 등록 필수값 가이드
+              </h4>
+              <a
+                href="https://console.cloud.google.com/apis/credentials"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-blue-600 dark:text-blue-400 font-bold hover:underline flex items-center gap-1"
+              >
+                Google Console 바로가기 <ExternalLink size={12} />
+              </a>
+            </div>
+            <p className="text-slate-600 dark:text-slate-300 text-[11px]">
+              Google Cloud Console의 [OAuth 동의 화면] 및 [사용자 인증 정보 &gt; OAuth 2.0 클라이언트 ID] 생성 시 아래 각 항목을 그대로 복사하여 붙여넣으시면 됩니다.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 font-mono text-[11px]">
+              {/* 1. 브랜딩: 앱 이름 */}
+              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-sans font-bold">1. 앱 이름 (App Name)</span>
+                  <span className="font-bold text-slate-800 dark:text-white">CONCOST TECH SCHEDULER</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText('CONCOST TECH SCHEDULER');
+                    setDriveToast('앱 이름이 복사되었습니다.');
+                    setTimeout(() => setDriveToast(null), 2500);
+                  }}
+                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded"
+                  title="복사"
+                >
+                  <Copy size={13} />
+                </button>
+              </div>
+
+              {/* 2. 브랜딩: 사용자 지원 / 개발자 이메일 */}
+              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-sans font-bold">2. 사용자 지원 및 개발자 이메일</span>
+                  <span className="font-bold text-slate-800 dark:text-white">jjwwhhjj1116@gmail.com</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText('jjwwhhjj1116@gmail.com');
+                    setDriveToast('이메일 주소가 복사되었습니다.');
+                    setTimeout(() => setDriveToast(null), 2500);
+                  }}
+                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded"
+                  title="복사"
+                >
+                  <Copy size={13} />
+                </button>
+              </div>
+
+              {/* 3. 승인된 도메인 */}
+              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-sans font-bold">3. 승인된 도메인 (Authorized Domain)</span>
+                  <span className="font-bold text-[#00338d] dark:text-blue-300">pages.dev</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText('pages.dev');
+                    setDriveToast('승인된 도메인이 복사되었습니다.');
+                    setTimeout(() => setDriveToast(null), 2500);
+                  }}
+                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded"
+                  title="복사"
+                >
+                  <Copy size={13} />
+                </button>
+              </div>
+
+              {/* 4. 앱 도메인 (홈페이지, 개인정보처리방침, 약관) */}
+              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-sans font-bold">4. 앱 홈페이지 / 개인정보처리방침 URL</span>
+                  <span className="font-bold text-slate-800 dark:text-white">https://concost-tech-scheduler.pages.dev</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText('https://concost-tech-scheduler.pages.dev');
+                    setDriveToast('앱 URL이 복사되었습니다.');
+                    setTimeout(() => setDriveToast(null), 2500);
+                  }}
+                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded"
+                  title="복사"
+                >
+                  <Copy size={13} />
+                </button>
+              </div>
+
+              {/* 5. 승인된 자바스크립트 원본 */}
+              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between md:col-span-2">
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-sans font-bold">5. 승인된 자바스크립트 원본 (Authorized JavaScript origins)</span>
+                  <span className="font-bold text-emerald-700 dark:text-emerald-300">https://concost-tech-scheduler.pages.dev</span>
+                  <span className="text-slate-400 mx-2">|</span>
+                  <span className="text-slate-600 dark:text-slate-400">http://localhost:5173</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText('https://concost-tech-scheduler.pages.dev');
+                    setDriveToast('승인된 자바스크립트 원본 URL이 복사되었습니다.');
+                    setTimeout(() => setDriveToast(null), 2500);
+                  }}
+                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded"
+                  title="복사"
+                >
+                  <Copy size={13} />
+                </button>
+              </div>
+
+              {/* 6. 승인된 리디렉션 URI */}
+              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between md:col-span-2">
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-sans font-bold">6. 승인된 리디렉션 URI (Authorized redirect URIs)</span>
+                  <span className="font-bold text-emerald-700 dark:text-emerald-300">https://concost-tech-scheduler.pages.dev</span>
+                  <span className="text-slate-400 mx-2">|</span>
+                  <span className="text-slate-600 dark:text-slate-400">http://localhost:5173</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText('https://concost-tech-scheduler.pages.dev');
+                    setDriveToast('승인된 리디렉션 URI가 복사되었습니다.');
+                    setTimeout(() => setDriveToast(null), 2500);
+                  }}
+                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded"
+                  title="복사"
+                >
+                  <Copy size={13} />
+                </button>
               </div>
             </div>
           </div>

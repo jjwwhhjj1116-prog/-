@@ -33,12 +33,14 @@ interface ProjectCalendarProps {
   onOpenPrintModal?: () => void;
   onExportExcel?: () => void;
   onImportExcel?: () => void;
+  lang?: 'ko' | 'vi';
 }
 
 export default function ProjectCalendar({
   onOpenPrintModal,
   onExportExcel,
   onImportExcel,
+  lang = 'ko',
 }: ProjectCalendarProps) {
   const {
     projects,
@@ -47,6 +49,28 @@ export default function ProjectCalendar({
     setSelectedProjectId,
     setProjects,
   } = useProjectStore();
+
+  // 다국어 라벨 사전
+  const t = {
+    titleDate: lang === 'vi' ? format(new Date('2026-09-17'), 'Tháng M năm yyyy') : format(new Date('2026-09-17'), 'yyyy년 M월', { locale: ko }),
+    activeCount: lang === 'vi' ? 'Dự án đang tiến hành' : '진행 프로젝트',
+    hiddenCount: (count: number) => lang === 'vi' ? `(Ẩn ${count} dự án không có lịch)` : `(일정 없는 ${count}개 프로젝트 숨김됨)`,
+    guideNotice: lang === 'vi' ? 'Lịch trình kỹ thuật CONCOST Trụ sở chính & VIETQS' : '한국 본사 · VIETQS 정밀 캘린더 (날짜 칸의 무늬와 마우스 오버로 어느 지사의 휴일인지 확인하세요.)',
+    btnMonthOnly: (m: string) => lang === 'vi' ? `Chỉ lịch tháng ${m}` : `${m}월 일정만 표시`,
+    btnAllProjects: lang === 'vi' ? 'Hiện toàn bộ dự án' : '전체 프로젝트 표시',
+    btnPrintA4: lang === 'vi' ? 'In toàn bộ tiến độ (A4)' : '전체 일정표 출력 (A4 가로)',
+    btnExportExcel: lang === 'vi' ? 'Xuất Excel (.xlsx)' : '엑셀 내보내기 (.xlsx)',
+    btnImportExcel: lang === 'vi' ? 'Nhập Excel (.xlsx)' : '엑셀 가져오기 (.xlsx)',
+    btn30Days: lang === 'vi' ? '30 ngày' : '30일',
+    btnMonthly: lang === 'vi' ? 'Xem theo tháng' : '월별 보기',
+    btnToday: lang === 'vi' ? 'Hôm nay' : '오늘',
+    legendKr: lang === 'vi' ? 'Nghỉ lễ Hàn Quốc' : '한국 공휴일',
+    legendVn: lang === 'vi' ? 'Nghỉ lễ Việt Nam' : '베트남 휴일',
+    legendUk: lang === 'vi' ? 'Nghỉ tài chính UK' : '영국 금융 휴일',
+    colProject: lang === 'vi' ? 'Thông tin dự án' : '프로젝트 정보',
+    colProgress: lang === 'vi' ? 'Tiến độ' : '공정률',
+    colPm: lang === 'vi' ? 'Chủ trì PM' : '담당 PM',
+  };
 
   // 2026년 9월 기본 기준일
   const [currentDate, setCurrentDate] = useState(new Date('2026-09-17'));
@@ -158,7 +182,7 @@ export default function ProjectCalendar({
   };
 
   return (
-    <div className="corporate-card overflow-hidden">
+    <div className="corporate-card overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
       {/* 숨김 엑셀 파일 입력 필드 (자체 fallback) */}
       <input
         ref={internalFileInputRef}
@@ -169,24 +193,24 @@ export default function ProjectCalendar({
       />
 
       {/* 1. 상단 컨트롤 헤더 (스크린샷 1 구현) */}
-      <div className="p-4 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
+      <div className="p-4 bg-white dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-xl font-extrabold text-slate-800">
-              {format(currentDate, 'yyyy년 M월', { locale: ko })}
+            <span className="text-xl font-extrabold text-slate-800 dark:text-white">
+              {lang === 'vi' ? format(currentDate, 'Tháng M năm yyyy') : format(currentDate, 'yyyy년 M월', { locale: ko })}
             </span>
-            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-              {format(currentDate, 'M월')} 진행 프로젝트: {filteredProjects.length}건
+            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-300 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+              {format(currentDate, 'M')}월 {t.activeCount}: {filteredProjects.length}건
             </span>
             {onlyCurrentMonth && (
-              <span className="text-xs text-slate-500 font-medium">
-                (일정 없는 {deptProjects.length - filteredProjects.length}개 프로젝트 숨김됨)
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                {t.hiddenCount(deptProjects.length - filteredProjects.length)}
               </span>
             )}
           </div>
-          <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
-            <Info size={13} className="text-[#00338d]" />
-            한국 본사 · VIETQS 정밀 캘린더 (날짜 칸의 무늬와 마우스 오버로 어느 지사의 휴일인지 확인하세요.)
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5">
+            <Info size={13} className="text-[#00338d] dark:text-blue-400" />
+            {t.guideNotice}
           </p>
         </div>
 
@@ -197,74 +221,74 @@ export default function ProjectCalendar({
             onClick={() => setOnlyCurrentMonth(!onlyCurrentMonth)}
             className={`text-xs px-3 py-1.5 rounded-lg border font-bold flex items-center gap-1.5 transition ${
               onlyCurrentMonth
-                ? 'bg-blue-50 text-[#00338d] border-blue-200 hover:bg-blue-100'
-                : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                ? 'bg-blue-50 dark:bg-blue-950/60 text-[#00338d] dark:text-blue-300 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200'
             }`}
             title="현재 조회 중인 월에 일정이 있는 프로젝트만 필터링합니다."
           >
-            <span className={`w-2 h-2 rounded-full ${onlyCurrentMonth ? 'bg-[#00338d]' : 'bg-slate-400'}`} />
-            {onlyCurrentMonth ? `${format(currentDate, 'M월')} 일정만 표시` : '전체 프로젝트 표시'}
+            <span className={`w-2 h-2 rounded-full ${onlyCurrentMonth ? 'bg-[#00338d] dark:bg-blue-400' : 'bg-slate-400'}`} />
+            {onlyCurrentMonth ? t.btnMonthOnly(format(currentDate, 'M')) : t.btnAllProjects}
           </button>
 
           <button
             onClick={handleSafePrint}
             className="btn-stitch-primary text-xs flex items-center gap-1.5 shadow-sm"
           >
-            <Printer size={14} /> 전체 일정표 출력 (A4 가로)
+            <Printer size={14} /> {t.btnPrintA4}
           </button>
 
           <button
             onClick={handleSafeExportExcel}
-            className="btn-stitch-secondary text-xs flex items-center gap-1.5 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300"
+            className="btn-stitch-secondary text-xs flex items-center gap-1.5 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 hover:text-emerald-700 dark:hover:text-emerald-300 hover:border-emerald-300 dark:border-slate-700"
           >
             <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            엑셀 내보내기 (.xlsx)
+            {t.btnExportExcel}
           </button>
 
           <button
             onClick={handleSafeImportClick}
-            className="btn-stitch-secondary text-xs flex items-center gap-1.5 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300"
+            className="btn-stitch-secondary text-xs flex items-center gap-1.5 hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-blue-700 dark:hover:text-blue-300 hover:border-blue-300 dark:border-slate-700"
           >
             <span className="w-2 h-2 rounded-full bg-blue-500" />
-            엑셀 가져오기 (.xlsx)
+            {t.btnImportExcel}
           </button>
 
-          <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs ml-2">
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs ml-2">
             <button
               onClick={() => setViewMode('30일')}
               className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
-                viewMode === '30일' ? 'bg-[#00338d] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                viewMode === '30일' ? 'bg-[#00338d] text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              30일
+              {t.btn30Days}
             </button>
             <button
               onClick={() => setViewMode('월별')}
               className={`px-3 py-1.5 rounded-md font-semibold transition-all ${
-                viewMode === '월별' ? 'bg-[#00338d] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                viewMode === '월별' ? 'bg-[#00338d] text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              월별 보기
+              {t.btnMonthly}
             </button>
           </div>
 
           <div className="flex items-center gap-1 ml-2">
             <button
               onClick={handlePrevMonth}
-              className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600"
+              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition"
               title="이전 달"
             >
               <ChevronLeft size={16} />
             </button>
             <button
               onClick={handleToday}
-              className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700"
+              className="px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition"
             >
-              오늘
+              {t.btnToday}
             </button>
             <button
               onClick={handleNextMonth}
-              className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600"
+              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition"
               title="다음 달"
             >
               <ChevronRight size={16} />
@@ -273,10 +297,12 @@ export default function ProjectCalendar({
         </div>
       </div>
 
-      {/* 2. 공휴일 범례 안내 바 */}
-      <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600">
-        <span className="font-semibold text-slate-700">물량산출 프로젝트 공정 타임라인</span>
-        <div className="flex items-center gap-4">
+      {/* 2. 범례 및 공종 표시 툴바 */}
+      <div className="px-4 py-2 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
+        <span className="font-bold text-slate-700 dark:text-slate-300">
+          물량산출 프로젝트 공정 타임라인
+        </span>
+        <div className="flex items-center gap-4 text-[11px]">
           <span className="flex items-center gap-1.5">
             <span className="w-3.5 h-3.5 rounded-sm border border-red-300 pattern-holiday-kr"></span>
             한국 공휴일

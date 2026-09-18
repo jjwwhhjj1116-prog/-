@@ -784,6 +784,7 @@ export default function App() {
                 onOpenPrintModal={() => setIsPrintModalOpen(true)}
                 onExportExcel={handleExportExcel}
                 onImportExcel={() => fileInputRef.current?.click()}
+                lang={lang}
               />
             </div>
           )}
