@@ -13,7 +13,7 @@ import {
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Printer, Info } from 'lucide-react';
-import { useProjectStore, type Project } from '../store/useProjectStore';
+import { useProjectStore, type Department } from '../store/useProjectStore';
 import { exportProjectsToExcel, importProjectsFromExcel } from '../services/excelService';
 
 // 한국 및 베트남 주요 공휴일 (2026년 기준 맵)
@@ -107,6 +107,65 @@ export default function ProjectCalendar({
     });
   }, [deptProjects, onlyCurrentMonth, monthStartStr, monthEndStr]);
 
+  // 3차: 사용자 요청 핵심 반영 - "프로젝트하나에서 2갈래로 나뉘어져서 구조 마감팀 일정이 같이 보이게 통합"
+  const groupedProjects = useMemo(() => {
+    const groupMap: Record<string, {
+      code: string;
+      name: string;
+      client: string;
+      departments: Department[];
+      lanes: {
+        projectId: string;
+        department: Department;
+        pmPerson?: (typeof personnel)[0];
+        startDate: string;
+        endDate: string;
+        progress: number;
+        status: string;
+      }[];
+    }> = {};
+
+    filteredProjects.forEach((p) => {
+      const code = p.code || p.id;
+      if (!groupMap[code]) {
+        groupMap[code] = {
+          code: p.code,
+          name: p.name,
+          client: (p as any).client || '',
+          departments: [],
+          lanes: [],
+        };
+      }
+
+      if (!groupMap[code].departments.includes(p.department)) {
+        groupMap[code].departments.push(p.department);
+      }
+
+      const pmPerson = personnel.find((pe) => pe.id === p.pmId);
+
+      groupMap[code].lanes.push({
+        projectId: p.id,
+        department: p.department,
+        pmPerson,
+        startDate: p.startDate,
+        endDate: p.endDate,
+        progress: p.progress,
+        status: p.status,
+      });
+    });
+
+    const deptOrder: Record<Department, number> = {
+      '마감팀': 1,
+      '구조팀': 2,
+      '토목&조경팀': 3,
+    };
+
+    return Object.values(groupMap).map((grp) => {
+      grp.lanes.sort((a, b) => (deptOrder[a.department] || 99) - (deptOrder[b.department] || 99));
+      return grp;
+    });
+  }, [filteredProjects, personnel]);
+
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
   const today = new Date('2026-09-17'); // 현재 작업 기준일
 
@@ -162,10 +221,10 @@ export default function ProjectCalendar({
     }
   };
 
-  // 간트 바 위치 계산
-  const getGanttBarStyle = (project: Project) => {
-    const start = new Date(project.startDate);
-    const end = new Date(project.endDate);
+  // 레인별 간트 바 위치 계산 (2갈래 타임라인 대응)
+  const getLaneBarStyle = (startDateStr: string, endDateStr: string) => {
+    const start = new Date(startDateStr);
+    const end = new Date(endDateStr);
 
     const effStart = start < monthStart ? monthStart : start;
     const effEnd = end > monthEnd ? monthEnd : end;
@@ -179,6 +238,11 @@ export default function ProjectCalendar({
       left: `${left + 2}px`,
       width: `${Math.max(width - 4, 30)}px`,
     };
+  };
+
+  // 프로젝트 명칭 정제 함수
+  const getCleanProjectName = (name: string) => {
+    return name.replace(/^\[.*?\]\s*/, '').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim() || name;
   };
 
   return (
@@ -200,11 +264,11 @@ export default function ProjectCalendar({
               {lang === 'vi' ? format(currentDate, 'Tháng M năm yyyy') : format(currentDate, 'yyyy년 M월', { locale: ko })}
             </span>
             <span className="text-xs font-bold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-300 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-              {format(currentDate, 'M')}월 {t.activeCount}: {filteredProjects.length}건
+              {format(currentDate, 'M')}월 {t.activeCount}: 통합 {groupedProjects.length}개 프로젝트
             </span>
             {onlyCurrentMonth && (
               <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                {t.hiddenCount(deptProjects.length - filteredProjects.length)}
+                (마감·구조 2갈래 통합 표현, 9월 외 {projects.length - filteredProjects.length}건 숨김)
               </span>
             )}
           </div>
@@ -386,66 +450,104 @@ export default function ProjectCalendar({
             </div>
           </div>
 
-          {/* 3-2. 프로젝트별 간트 행 목록 */}
-          <div className="divide-y divide-slate-100 bg-white">
-            {filteredProjects.map((project) => {
-              const pmPerson = personnel.find((p) => p.id === project.pmId);
-              const barStyle = getGanttBarStyle(project);
-
-              // 부서별 태그 색상
-              const deptBadgeClass =
-                project.department === '마감팀'
-                  ? 'bg-blue-50 text-blue-700 border-blue-200'
-                  : project.department === '구조팀'
-                  ? 'bg-purple-50 text-purple-700 border-purple-200'
-                  : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+          {/* 3-2. 통합 프로젝트별 간트 행 목록 (마감+구조 2갈래 통합 렌더링) */}
+          <div className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+            {groupedProjects.map((group) => {
+              const isMultiLane = group.lanes.length > 1;
+              const rowHeightClass = isMultiLane ? 'min-h-[76px]' : 'min-h-[50px]';
 
               return (
                 <div
-                  key={project.id}
-                  onClick={() => setSelectedProjectId(project.id)}
-                  className="flex items-center hover:bg-slate-50/80 transition-colors group cursor-pointer text-xs"
+                  key={group.code}
+                  className={`flex items-stretch hover:bg-slate-50/80 dark:hover:bg-slate-800/80 transition-colors group cursor-pointer text-xs ${rowHeightClass}`}
                 >
-                  {/* 프로젝트 정보 */}
-                  <div className="w-[200px] flex-shrink-0 px-3 py-3 border-r border-slate-200">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${deptBadgeClass}`}>
-                        {project.department}
+                  {/* 고정 열 1: 프로젝트 통합 정보 (코드 + 참여 부서 뱃지들 + 명칭) */}
+                  <div className="w-[230px] flex-shrink-0 p-3 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center">
+                    <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono font-bold bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                        {group.code}
                       </span>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {project.code}
-                      </span>
+                      {group.departments.map((dept) => {
+                        const badgeStyle =
+                          dept === '마감팀'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800'
+                            : dept === '구조팀'
+                            ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800';
+
+                        return (
+                          <span
+                            key={dept}
+                            className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${badgeStyle}`}
+                          >
+                            {dept}
+                          </span>
+                        );
+                      })}
                     </div>
-                    <div className="font-bold text-slate-800 group-hover:text-[#00338d] transition-colors line-clamp-1">
-                      {project.name}
+                    <div className="font-extrabold text-slate-800 dark:text-white group-hover:text-[#00338d] dark:group-hover:text-blue-400 transition-colors line-clamp-2 leading-tight">
+                      {group.name}
                     </div>
                   </div>
 
-                  {/* 공정률 */}
-                  <div className="w-[80px] flex-shrink-0 px-2 py-3 border-r border-slate-200 text-center">
-                    <span className="font-extrabold text-[#00338d] block text-xs">
-                      {project.progress}%
-                    </span>
-                    <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden mt-1">
-                      <div
-                        className="bg-[#00338d] h-full rounded-full"
-                        style={{ width: `${project.progress}%` }}
-                      ></div>
-                    </div>
+                  {/* 고정 열 2: 공정률 (2갈래 상하 분할) */}
+                  <div className="w-[85px] flex-shrink-0 p-2 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center text-center">
+                    {group.lanes.map((lane) => {
+                      const colorText =
+                        lane.department === '마감팀'
+                          ? 'text-blue-700 dark:text-blue-300'
+                          : lane.department === '구조팀'
+                          ? 'text-purple-700 dark:text-purple-300'
+                          : 'text-emerald-700 dark:text-emerald-300';
+                      const colorBg =
+                        lane.department === '마감팀'
+                          ? 'bg-blue-600'
+                          : lane.department === '구조팀'
+                          ? 'bg-purple-600'
+                          : 'bg-emerald-600';
+
+                      return (
+                        <div key={lane.projectId} className="my-0.5">
+                          <div className="flex items-center justify-between text-[10px] font-bold">
+                            <span className="text-slate-400">{lane.department.slice(0, 2)}</span>
+                            <span className={colorText}>{lane.progress}%</span>
+                          </div>
+                          <div className="w-full bg-slate-200 dark:bg-slate-700 h-1 rounded-full overflow-hidden mt-0.5">
+                            <div
+                              className={`h-full rounded-full ${colorBg}`}
+                              style={{ width: `${lane.progress}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
 
-                  {/* 담당 PM */}
-                  <div className="w-[80px] flex-shrink-0 px-2 py-3 border-r border-slate-200 text-center">
-                    <span className="font-bold text-slate-700">
-                      {pmPerson ? pmPerson.name.split(' ')[0] : '미지정'}
-                    </span>
-                    <span className="block text-[10px] text-slate-400">
-                      {pmPerson?.team || 'PM'}
-                    </span>
+                  {/* 고정 열 3: 담당 PM (마감/구조 상하 분할) */}
+                  <div className="w-[95px] flex-shrink-0 p-2 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center text-center">
+                    {group.lanes.map((lane) => {
+                      const badgeColor =
+                        lane.department === '마감팀'
+                          ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+                          : lane.department === '구조팀'
+                          ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300'
+                          : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300';
+
+                      return (
+                        <div key={lane.projectId} className="my-0.5 flex items-center justify-center gap-1">
+                          <span className={`text-[9px] font-bold px-1 rounded ${badgeColor}`}>
+                            {lane.department.slice(0, 2)}
+                          </span>
+                          <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                            {lane.pmPerson ? lane.pmPerson.name.split(' ')[0] : 'PM'}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
 
-                  {/* 일자별 간트 타임라인 영역 */}
-                  <div className="flex-1 relative h-14 flex items-center">
+                  {/* 일자별 간트 타임라인 영역 (2갈래 위/아래 레인 렌더링) */}
+                  <div className={`flex-1 relative ${isMultiLane ? 'h-[76px]' : 'h-[50px]'} flex items-center`}>
                     {/* 배경 그리드 컬럼 */}
                     <div className="absolute inset-0 flex pointer-events-none">
                       {daysInMonth.map((day) => {
@@ -455,32 +557,71 @@ export default function ProjectCalendar({
                         let bgPattern = '';
                         if (holiday?.country === 'KR') bgPattern = 'pattern-holiday-kr';
                         else if (holiday?.country === 'VN') bgPattern = 'pattern-holiday-vn';
-                        else if (weekend) bgPattern = 'bg-slate-50/60';
+                        else if (weekend) bgPattern = 'bg-slate-50/60 dark:bg-slate-800/40';
 
                         return (
                           <div
                             key={dateKey}
                             style={{ width: `${cellWidth}px` }}
-                            className={`flex-shrink-0 border-r border-slate-100 h-full ${bgPattern}`}
-                          ></div>
+                            className={`flex-shrink-0 border-r border-slate-100 dark:border-slate-800 h-full ${bgPattern}`}
+                          />
                         );
                       })}
                     </div>
 
-                    {/* 프로젝트 간트 바 */}
-                    {barStyle && (
+                    {/* 오늘 기준선 */}
+                    {daysInMonth.some((d) => isSameDay(d, today)) && (
                       <div
-                        style={barStyle}
-                        className="absolute h-8 rounded-lg gantt-bar-primary text-white flex items-center px-3 text-[11px] font-bold shadow-md hover:scale-[1.01] transition-transform z-10 overflow-hidden"
-                      >
-                        <span className="truncate drop-shadow-sm">
-                          {project.name}
-                        </span>
-                        <span className="ml-auto text-[10px] bg-white/20 px-1.5 py-0.5 rounded font-mono">
-                          {project.status}
-                        </span>
-                      </div>
+                        className="absolute top-0 bottom-0 z-10 border-l-2 border-red-500 pointer-events-none"
+                        style={{
+                          left: `${
+                            differenceInDays(today, monthStart) * cellWidth + cellWidth / 2
+                          }px`,
+                        }}
+                      />
                     )}
+
+                    {/* 부서별 간트 바 렌더링 (마감 상단 / 구조 하단 2갈래) */}
+                    {group.lanes.map((lane, laneIdx) => {
+                      const barStyle = getLaneBarStyle(lane.startDate, lane.endDate);
+                      if (!barStyle) return null;
+
+                      // 2갈래 레인 위치
+                      const topPos = isMultiLane ? (laneIdx === 0 ? 8 : 40) : 11;
+                      const laneGradient =
+                        lane.department === '마감팀'
+                          ? 'bg-gradient-to-r from-blue-600 via-blue-650 to-blue-700 border-blue-400'
+                          : lane.department === '구조팀'
+                          ? 'bg-gradient-to-r from-purple-600 via-indigo-650 to-purple-700 border-purple-400'
+                          : 'bg-gradient-to-r from-emerald-600 via-teal-650 to-emerald-700 border-emerald-400';
+
+                      return (
+                        <div
+                          key={lane.projectId}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedProjectId(lane.projectId);
+                          }}
+                          style={{
+                            ...barStyle,
+                            top: `${topPos}px`,
+                            height: '26px',
+                          }}
+                          title={`[${lane.department}] ${group.name}\n기간: ${lane.startDate} ~ ${lane.endDate}\n진척률: ${lane.progress}%\n담당: ${lane.pmPerson?.name || 'PM'}\n상태: ${lane.status}`}
+                          className={`absolute rounded-lg border text-white flex items-center px-2.5 text-[11px] font-bold shadow-md hover:scale-[1.01] hover:brightness-110 transition-all z-20 cursor-pointer overflow-hidden ${laneGradient}`}
+                        >
+                          <span className="text-[9px] font-black bg-white/25 px-1 py-0.2 rounded mr-1.5 shrink-0">
+                            {lane.department.slice(0, 2)}
+                          </span>
+                          <span className="truncate drop-shadow-xs font-semibold">
+                            {getCleanProjectName(group.name)}
+                          </span>
+                          <span className="ml-auto text-[9px] bg-black/25 px-1 py-0.2 rounded font-mono shrink-0 pl-1">
+                            {lane.pmPerson ? lane.pmPerson.name.split(' ')[0] : 'PM'} · {lane.progress}%
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -490,24 +631,24 @@ export default function ProjectCalendar({
       </div>
 
       {/* 4. 하단 상태 안내 범례 바 */}
-      <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between text-xs text-slate-500">
+      <div className="p-3 bg-slate-50 dark:bg-slate-850 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between text-xs text-slate-500 dark:text-slate-400">
         <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#00338d]"></span> 프로젝트 기간
+          <span className="flex items-center gap-1.5 font-semibold">
+            <span className="w-3 h-2.5 rounded bg-blue-600 border border-blue-400"></span> 마감팀 일정
           </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-sky-400"></span> 오늘
+          <span className="flex items-center gap-1.5 font-semibold">
+            <span className="w-3 h-2.5 rounded bg-purple-600 border border-purple-400"></span> 구조팀 일정
           </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-slate-300"></span> 주말
+          <span className="flex items-center gap-1.5 font-semibold">
+            <span className="w-3 h-2.5 rounded bg-emerald-600 border border-emerald-400"></span> 토목&조경팀 일정
           </span>
-          <span className="text-slate-400">|</span>
-          <span className="text-slate-600 font-medium">
-            💡 프로젝트를 클릭하면 공종별 상세 성과물 일정 팝업이 열립니다.
+          <span className="text-slate-300 dark:text-slate-700">|</span>
+          <span className="text-slate-600 dark:text-slate-300 font-medium">
+            💡 하나의 프로젝트 행 안에 마감팀(상단 파란색)과 구조팀(하단 보라색) 일정이 2갈래로 동시 표현됩니다.
           </span>
         </div>
         <div>
-          총 <strong className="text-slate-800">{filteredProjects.length}</strong>개 프로젝트 조회 중
+          통합 <strong className="text-slate-800 dark:text-white">{groupedProjects.length}</strong>개 프로젝트 조회 중
         </div>
       </div>
     </div>
