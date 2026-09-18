@@ -318,12 +318,13 @@ export const SettingsView: React.FC = () => {
               <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
                 <div>
                   <span className="text-[10px] text-slate-400 block font-sans font-bold">3. 승인된 도메인 (Authorized Domain)</span>
-                  <span className="font-bold text-[#00338d] dark:text-blue-300">pages.dev</span>
+                  <span className="font-bold text-[#00338d] dark:text-blue-300">concost-tech-scheduler.pages.dev</span>
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 block mt-0.5 font-medium">* 'pages.dev'가 아닌 전체 주소를 입력하거나 비워두셔도 됩니다.</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
-                    navigator.clipboard.writeText('pages.dev');
+                    navigator.clipboard.writeText('concost-tech-scheduler.pages.dev');
                     setDriveToast('승인된 도메인이 복사되었습니다.');
                     setTimeout(() => setDriveToast(null), 2500);
                   }}
