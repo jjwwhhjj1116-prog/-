@@ -78,9 +78,9 @@ const loadInitialUser = (usersList: ConcostUser[]): ConcostUser | null => {
   } catch (e) {
     console.error('Failed to load user from localStorage', e);
   }
-  // 기본 데모 사용자로 최영배 본부장 설정
-  const defaultUser = usersList.find((u) => u.name === '최영배');
-  return defaultUser || usersList[0] || null;
+  // 기본 관리자 사용자로 유종욱 실장 설정 (yjw@con-cost.com / 1147)
+  const defaultAdmin = usersList.find((u) => u.email === 'yjw@con-cost.com' || u.name === '유종욱');
+  return defaultAdmin || usersList[0] || null;
 };
 
 // 구글 드라이브 설정 로드 (클레임센터 스튜디오 연계 기본값)
@@ -96,11 +96,11 @@ const loadInitialGDriveConfig = (): GoogleDriveConfig => {
   return {
     clientId: '849204918234-concost-tech.apps.googleusercontent.com',
     clientSecret: 'GOCSPX-********************',
-    redirectUri: 'https://concost-tech-studio.workers.dev/auth/callback',
+    redirectUri: 'https://concost-tech-scheduler.pages.dev/oauth/callback',
     rootFolderId: '1AbC_TechHQ_CentralTakeoffVault_2026',
     connected: true,
     autoCreateFolder: true,
-    lastCheckedAt: '2026-09-17 16:30',
+    lastCheckedAt: '2026-09-18 09:30',
   };
 };
 
@@ -121,7 +121,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const matchId =
         u.idPrefix.toLowerCase() === cleanInput ||
         u.email.toLowerCase() === cleanInput ||
-        u.name === idOrEmail.trim();
+        u.name.toLowerCase() === cleanInput ||
+        `${u.idPrefix.toLowerCase()}@con-cost.com` === cleanInput;
       return matchId;
     });
 
@@ -130,19 +131,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return false;
     }
 
-    // 비밀번호 체크
-    if (user.password && user.password !== cleanPw) {
-      set({ loginError: '비밀번호가 올바르지 않습니다.' });
+    if (user.password !== cleanPw) {
+      set({ loginError: '비밀번호가 일치하지 않습니다.' });
       return false;
     }
 
-    // 로그인 성공
     localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-    set({
-      currentUser: user,
-      isAuthenticated: true,
-      loginError: null,
-    });
+    set({ currentUser: user, isAuthenticated: true, loginError: null });
     return true;
   },
 
@@ -150,11 +145,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const user = get().users.find((u) => u.id === userId);
     if (user) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-      set({
-        currentUser: user,
-        isAuthenticated: true,
-        loginError: null,
-      });
+      set({ currentUser: user, isAuthenticated: true, loginError: null });
     }
   },
 

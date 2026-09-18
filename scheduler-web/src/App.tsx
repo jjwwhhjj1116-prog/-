@@ -13,13 +13,13 @@ import {
   ChevronRight,
   Settings,
   Inbox,
-  Printer,
-  FileSpreadsheet,
-  Upload,
-  Globe,
   Moon,
   Sun,
-  CheckCircle2
+  CheckCircle2,
+  Activity,
+  AlertCircle,
+  ArrowUpRight,
+  Sparkles
 } from 'lucide-react';
 import ProjectCalendar from './components/ProjectCalendar';
 import ProjectModal from './components/ProjectModal';
@@ -38,7 +38,7 @@ import { exportProjectsToExcel, importProjectsFromExcel } from './services/excel
 // 좌측 카테고리 정의 (최상단에 '프로젝트 접수목록' 추가)
 export type NavCategory =
   | '프로젝트 접수목록'
-  | '프로젝트 일정표(전체)'
+  | '프로젝트 일정표'
   | '마감팀 일정표'
   | '구조팀 일정표'
   | '토목&조경팀 일정표'
@@ -61,8 +61,8 @@ export default function App() {
 
   const { currentUser, logout } = useAuthStore();
 
-  // 기본 활성 메뉴: 프로젝트 일정표(전체)
-  const [activeMenu, setActiveMenu] = useState<NavCategory>('프로젝트 일정표(전체)');
+  // 기본 활성 메뉴: 프로젝트 일정표
+  const [activeMenu, setActiveMenu] = useState<NavCategory>('프로젝트 일정표');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -148,7 +148,7 @@ export default function App() {
     appTitle: lang === 'vi' ? 'STUDIO KHỐI KỸ THUẬT' : '기술본부 스튜디오',
     appSub: 'CONCOST TECH HQ · QUANTITY TAKEOFF & SCHEDULER',
     intakeMenu: lang === 'vi' ? 'Tiếp nhận dự án (Mới)' : '프로젝트 접수목록',
-    allSchedule: lang === 'vi' ? 'Toàn bộ tiến độ' : '프로젝트 일정표(전체)',
+    allSchedule: lang === 'vi' ? 'Tiến độ Dự án' : '프로젝트 일정표',
     finishSchedule: lang === 'vi' ? 'Tiến độ Đội Hoàn thiện' : '마감팀 일정표',
     structSchedule: lang === 'vi' ? 'Tiến độ Đội Kết cấu' : '구조팀 일정표',
     civilSchedule: lang === 'vi' ? 'Tiến độ Hạ tầng & Cảnh quan' : '토목&조경팀 일정표',
@@ -185,7 +185,7 @@ export default function App() {
       {/* 상단 글로벌 헤더 */}
       <header className="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 flex items-center justify-between shadow-2xs z-30 shrink-0">
         {/* 좌측 로고 영역 */}
-        <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveMenu('프로젝트 일정표(전체)')}>
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveMenu('프로젝트 일정표')}>
           <div className="w-10 h-10 rounded-xl bg-[#00338d] flex items-center justify-center text-white shadow-md">
             <Building2 size={22} />
           </div>
@@ -204,60 +204,72 @@ export default function App() {
           </div>
         </div>
 
-        {/* 우측 글로벌 액션: 엑셀/인쇄/언어토글/다크모드/프로필 */}
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
-          {/* 1) 엑셀 내보내기 / 가져오기 */}
+        {/* 우측 글로벌 액션: 바로가기/언어 슬라이더 토글/다크모드/프로필 */}
+        <div className="flex items-center gap-3 text-xs font-semibold text-slate-600 dark:text-slate-300">
           <button
-            onClick={handleExportExcel}
-            className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-slate-700 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 hover:border-emerald-300 flex items-center gap-1 transition"
-            title="현재 프로젝트 일정을 엑셀 파일로 다운로드"
+            onClick={() => setActiveMenu('자료실(google드라이브)')}
+            className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/60 flex items-center gap-1.5 transition text-xs font-bold text-slate-700 dark:text-slate-200"
           >
-            <FileSpreadsheet size={14} className="text-emerald-600" />
-            <span className="hidden sm:inline">{t.exportExcel}</span>
+            <HardDrive size={14} className="text-orange-500" />
+            자료실 · 드라이브
           </button>
 
           <button
-            onClick={() => fileInputRef.current?.click()}
-            className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-slate-700 dark:text-slate-300 hover:text-blue-700 dark:hover:text-blue-400 hover:border-blue-300 flex items-center gap-1 transition"
-            title="수정된 엑셀 파일을 업로드하여 일정표 동기화"
+            onClick={() => setActiveMenu('연계시스템(검토)')}
+            className="px-3 py-1.5 rounded-xl border border-purple-200 dark:border-purple-800/60 bg-purple-50/50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/60 flex items-center gap-1.5 transition text-xs font-bold"
           >
-            <Upload size={14} className="text-blue-600" />
-            <span className="hidden sm:inline">{t.importExcel}</span>
+            <Sparkles size={14} /> QC 검토
           </button>
 
-          {/* 2) A4 가로 전용 일정표 인쇄 모달 열기 */}
           <button
-            onClick={() => setIsPrintModalOpen(true)}
-            className="px-3 py-1.5 rounded-lg bg-[#00338d] hover:bg-[#002266] text-white flex items-center gap-1.5 shadow-xs transition"
+            onClick={() => setActiveMenu('설정')}
+            className={`px-3 py-1.5 rounded-xl border transition flex items-center gap-1.5 text-xs font-bold ${
+              activeMenu === '설정'
+                ? 'bg-blue-50 dark:bg-blue-900/40 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
+                : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-600 dark:text-slate-300'
+            }`}
           >
-            <Printer size={14} />
-            <span>{t.printSchedule}</span>
+            <Settings size={14} /> 설정
           </button>
 
-          <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
+          <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-0.5" />
 
-          {/* 3) 베트남어 / 한국어 토글 버튼 */}
-          <button
-            onClick={() => setLang(lang === 'ko' ? 'vi' : 'ko')}
-            className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-1 text-xs font-bold text-slate-700 dark:text-slate-300 transition"
-            title="언어 전환 (한국어 / Tiếng Việt)"
-          >
-            <Globe size={14} className="text-blue-500" />
-            <span>{lang === 'ko' ? 'Tiếng Việt' : '한국어'}</span>
-          </button>
+          {/* 1) 스크린샷 1번 요청: 직관적인 좌측 [ 한국 | VIET ] 슬라이더 Pill Switch */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-700/90 p-1 rounded-full border border-slate-200 dark:border-slate-600 shadow-inner">
+            <button
+              onClick={() => setLang('ko')}
+              className={`px-3 py-1 rounded-full text-xs font-black transition-all duration-200 flex items-center gap-1.5 ${
+                lang === 'ko'
+                  ? 'bg-[#00338d] text-white shadow-xs scale-100'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <span className="text-sm">🇰🇷</span> 한국
+            </button>
+            <button
+              onClick={() => setLang('vi')}
+              className={`px-3 py-1 rounded-full text-xs font-black transition-all duration-200 flex items-center gap-1.5 ${
+                lang === 'vi'
+                  ? 'bg-[#00338d] text-white shadow-xs scale-100'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <span className="text-sm">🇻🇳</span> VIET
+            </button>
+          </div>
 
-          {/* 4) 다크모드 토글 스위치 */}
+          {/* 2) 다크모드 전원 스위치 */}
           <button
             onClick={() => setDarkMode(!darkMode)}
-            className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
+            className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition shadow-2xs"
             title={darkMode ? '라이트 모드로 전환' : '다크 모드로 전환'}
           >
-            {darkMode ? <Sun size={15} className="text-amber-400" /> : <Moon size={15} />}
+            {darkMode ? <Sun size={15} className="text-amber-400" /> : <Moon size={15} className="text-slate-700" />}
           </button>
 
-          <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
+          <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-0.5" />
 
-          {/* 5) 회원 로그인 프로필 칩 */}
+          {/* 3) 최고 관리자 프로필 칩 & 로그인 제어 */}
           {currentUser ? (
             <div className="flex items-center gap-2 pl-1 bg-slate-50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 py-1 px-2.5 rounded-xl">
               <div className="w-7 h-7 rounded-full bg-[#00338d] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
@@ -330,14 +342,14 @@ export default function App() {
                 </span>
               </button>
 
-              {/* 프로젝트 일정표(전체) */}
+              {/* 프로젝트 일정표 */}
               <button
                 onClick={() => {
-                  setActiveMenu('프로젝트 일정표(전체)');
+                  setActiveMenu('프로젝트 일정표');
                   setFilterDepartment('ALL');
                 }}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                  activeMenu === '프로젝트 일정표(전체)'
+                  activeMenu === '프로젝트 일정표'
                     ? 'bg-[#00338d] text-white shadow-sm'
                     : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50'
                 }`}
@@ -348,7 +360,7 @@ export default function App() {
                 </div>
                 <span
                   className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
-                    activeMenu === '프로젝트 일정표(전체)'
+                    activeMenu === '프로젝트 일정표'
                       ? 'bg-blue-800 text-blue-100'
                       : 'bg-slate-100 dark:bg-slate-700 text-slate-500'
                   }`}
@@ -538,14 +550,14 @@ export default function App() {
                   setActiveMenu(`${dept} 일정표` as NavCategory);
                 } else {
                   setFilterDepartment('ALL');
-                  setActiveMenu('프로젝트 일정표(전체)');
+                  setActiveMenu('프로젝트 일정표');
                 }
               }}
             />
           )}
 
-          {/* CASE 1: 프로젝트 일정표(전체) */}
-          {activeMenu === '프로젝트 일정표(전체)' && (
+          {/* CASE 1: 프로젝트 일정표 */}
+          {activeMenu === '프로젝트 일정표' && (
             <div className="space-y-6 animate-fadeIn">
               {/* 타이틀 및 헤더 액션 */}
               <div className="flex flex-wrap items-end justify-between gap-4">
@@ -619,54 +631,139 @@ export default function App() {
                 </button>
               </div>
 
-              {/* 4대 핵심 KPI 카드 */}
+              {/* 4대 핵심 KPI 프리미엄 카드 에셋 (딥 블랙, 에메랄드 그린, 로열 네이비, 앰버 골드) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="stat-card dark:bg-slate-800 dark:border-slate-700">
-                  <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
-                    전체 프로젝트
-                  </span>
-                  <div className="flex items-baseline justify-between mt-2">
-                    <span className="text-3xl font-black text-slate-900 dark:text-white">{totalCount}</span>
+                {/* 1) 전체 프로젝트 (오닉스 블랙 & 메탈릭 실버 에셋) */}
+                <div
+                  onClick={() => setFilterDepartment('ALL')}
+                  className="group relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-slate-900 via-slate-800 to-black text-white dark:from-zinc-950 dark:via-zinc-900 dark:to-black border border-slate-700/60 dark:border-zinc-800 shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
+                >
+                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+                  <div className="absolute -right-6 -bottom-6 w-28 h-28 rounded-full bg-blue-500/10 blur-2xl group-hover:bg-blue-500/20 transition-all duration-300" />
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
+                      <FolderKanban size={14} className="text-blue-400" />
+                      전체 프로젝트
+                    </span>
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-slate-800/80 text-slate-300 border border-slate-700">
+                      총 등록 현황
+                    </span>
+                  </div>
+
+                  <div className="flex items-baseline justify-between mt-3">
+                    <div className="text-4xl font-black tracking-tight text-white group-hover:text-blue-300 transition-colors">
+                      {totalCount}
+                      <span className="text-sm font-bold text-slate-400 ml-1">건</span>
+                    </div>
+                    <span className="text-xs font-bold text-slate-400 group-hover:text-slate-200 transition-colors flex items-center gap-0.5">
+                      전체 공종 통합 <ArrowUpRight size={13} />
+                    </span>
+                  </div>
+
+                  <div className="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+                    <span>마감 · 구조 · 토목 통합 집계</span>
+                    <span className="text-blue-400 font-bold">100% 가동중</span>
                   </div>
                 </div>
 
-                <div className="stat-card border-blue-200 dark:border-blue-900 bg-blue-50/20 dark:bg-blue-950/20">
+                {/* 2) 산출 진행중 (로열 네이비 & 네온 블루 에셋) */}
+                <div
+                  className="group relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-[#00338d] via-blue-900 to-indigo-950 text-white border border-blue-400/40 shadow-xl shadow-blue-950/40 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
+                >
+                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/40 to-transparent" />
+                  <div className="absolute -right-6 -bottom-6 w-28 h-28 rounded-full bg-cyan-400/10 blur-2xl group-hover:bg-cyan-400/20 transition-all duration-300" />
+
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-extrabold text-[#00338d] dark:text-blue-300 uppercase tracking-wider">
+                    <span className="text-[11px] font-black tracking-widest text-cyan-200 uppercase flex items-center gap-1.5">
+                      <Activity size={14} className="text-cyan-300 animate-pulse" />
                       산출 진행중
                     </span>
-                    <span className="text-[10px] font-extrabold text-[#00338d] bg-blue-100 dark:bg-blue-900/60 px-2 py-0.5 rounded">
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-800/80 text-cyan-300 border border-blue-400/50 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
                       진행률 통제
                     </span>
                   </div>
-                  <div className="flex items-baseline justify-between mt-2">
-                    <span className="text-3xl font-black text-[#00338d] dark:text-blue-400">{inProgressCount}</span>
-                    <span className="text-xs font-bold text-slate-500">납품 공정 준수</span>
+
+                  <div className="flex items-baseline justify-between mt-3">
+                    <div className="text-4xl font-black tracking-tight text-white group-hover:text-cyan-200 transition-colors">
+                      {inProgressCount}
+                      <span className="text-sm font-bold text-blue-200 ml-1">건</span>
+                    </div>
+                    <span className="text-xs font-bold text-cyan-200 flex items-center gap-0.5">
+                      납품 공정 준수
+                    </span>
+                  </div>
+
+                  <div className="mt-3 pt-3 border-t border-blue-800/60 flex items-center justify-between text-[11px] text-blue-200/80">
+                    <span>일정 지연 0건 통제</span>
+                    <span className="text-emerald-300 font-bold">공정률 가속</span>
                   </div>
                 </div>
 
-                <div className="stat-card border-amber-200 dark:border-amber-900 bg-amber-50/20 dark:bg-amber-950/20">
+                {/* 3) 도면변경 / 수정 REV (앰버 골드 & 다크 오렌지 에셋) */}
+                <div
+                  className="group relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-amber-950/90 via-slate-900 to-black text-white border border-amber-500/40 shadow-xl shadow-amber-950/30 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
+                >
+                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/40 to-transparent" />
+                  <div className="absolute -right-6 -bottom-6 w-28 h-28 rounded-full bg-amber-500/10 blur-2xl group-hover:bg-amber-500/20 transition-all duration-300" />
+
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-extrabold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
+                    <span className="text-[11px] font-black tracking-widest text-amber-300 uppercase flex items-center gap-1.5">
+                      <AlertCircle size={14} className="text-amber-400" />
                       도면변경 / 수정 (REV)
                     </span>
-                    <span className="text-[10px] font-extrabold text-amber-700 bg-amber-100 dark:bg-amber-900/60 px-2 py-0.5 rounded">
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-900/80 text-amber-300 border border-amber-500/50">
                       공종 집중 투입
                     </span>
                   </div>
-                  <div className="flex items-baseline justify-between mt-2">
-                    <span className="text-3xl font-black text-amber-600 dark:text-amber-400">{revCount}</span>
-                    <span className="text-xs font-bold text-amber-700 dark:text-amber-300">변경점 추적</span>
+
+                  <div className="flex items-baseline justify-between mt-3">
+                    <div className="text-4xl font-black tracking-tight text-amber-400 group-hover:text-amber-300 transition-colors">
+                      {revCount}
+                      <span className="text-sm font-bold text-amber-300/80 ml-1">건</span>
+                    </div>
+                    <span className="text-xs font-bold text-amber-300 flex items-center gap-0.5">
+                      변경점 정밀 추적
+                    </span>
+                  </div>
+
+                  <div className="mt-3 pt-3 border-t border-amber-950/80 flex items-center justify-between text-[11px] text-amber-300/80">
+                    <span>도면 리비전 발생 즉시 대응</span>
+                    <span className="text-amber-400 font-bold">집중 배정</span>
                   </div>
                 </div>
 
-                <div className="stat-card border-emerald-200 dark:border-emerald-900 bg-emerald-50/20 dark:bg-emerald-950/20">
-                  <span className="text-[11px] font-extrabold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
-                    착수예정 & 납품
-                  </span>
-                  <div className="flex items-baseline justify-between mt-2">
-                    <span className="text-3xl font-black text-emerald-600 dark:text-emerald-400">{scheduledCount}</span>
-                    <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">품질검수 완료</span>
+                {/* 4) 착수예정 & 납품 (에메랄드 그린 & 포레스트 블랙 에셋) */}
+                <div
+                  className="group relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-emerald-950/90 via-slate-900 to-zinc-950 text-white border border-emerald-500/40 shadow-xl shadow-emerald-950/30 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
+                >
+                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/40 to-transparent" />
+                  <div className="absolute -right-6 -bottom-6 w-28 h-28 rounded-full bg-emerald-500/10 blur-2xl group-hover:bg-emerald-500/20 transition-all duration-300" />
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-black tracking-widest text-emerald-300 uppercase flex items-center gap-1.5">
+                      <CheckCircle2 size={14} className="text-emerald-400" />
+                      착수예정 & 납품
+                    </span>
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-900/80 text-emerald-300 border border-emerald-500/50">
+                      품질검수 완료
+                    </span>
+                  </div>
+
+                  <div className="flex items-baseline justify-between mt-3">
+                    <div className="text-4xl font-black tracking-tight text-emerald-400 group-hover:text-emerald-300 transition-colors">
+                      {scheduledCount}
+                      <span className="text-sm font-bold text-emerald-300/80 ml-1">건</span>
+                    </div>
+                    <span className="text-xs font-bold text-emerald-300 flex items-center gap-0.5">
+                      성과물 인도 준비
+                    </span>
+                  </div>
+
+                  <div className="mt-3 pt-3 border-t border-emerald-950/80 flex items-center justify-between text-[11px] text-emerald-300/80">
+                    <span>검수 승인 및 차기 프로젝트 연계</span>
+                    <span className="text-emerald-400 font-bold">인도 완료</span>
                   </div>
                 </div>
               </div>

@@ -67,7 +67,7 @@ interface ScheduleRowUnit {
 export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ department }) => {
   const { projects, setSelectedProjectId } = useProjectStore();
   const { users } = useAuthStore();
-  const [viewMode, setViewMode] = useState<'PERSONAL' | 'TEAM'>('PERSONAL');
+  const [viewMode, setViewMode] = useState<'PERSONAL' | 'TEAM'>('TEAM');
   const [currentDate, setCurrentDate] = useState(new Date('2026-09-17'));
 
   // 지역 필터 (전체 / 한국 본사 / 베트남 팀)
@@ -328,29 +328,29 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
         </div>
 
         <div className="flex items-center gap-3">
-          {/* 팀별 캘린더 ↔ 개인별 캘린더 토글 */}
-          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
-            <button
-              onClick={() => setViewMode('PERSONAL')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${
-                viewMode === 'PERSONAL'
-                  ? 'bg-white text-[#00338d] shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <User className="w-4 h-4" />
-              개인/팀별 캘린더
-            </button>
+          {/* 팀 전체 프로젝트 간트 (좌측) ↔ 개인/팀별 캘린더 (우측) */}
+          <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-xl border border-slate-200 dark:border-slate-600">
             <button
               onClick={() => setViewMode('TEAM')}
               className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${
                 viewMode === 'TEAM'
-                  ? 'bg-white text-[#00338d] shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-600 text-[#00338d] dark:text-blue-300 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
               }`}
             >
               <Building2 className="w-4 h-4" />
-              팀 전체 프로젝트 간트
+              팀 프로젝트 일정표
+            </button>
+            <button
+              onClick={() => setViewMode('PERSONAL')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${
+                viewMode === 'PERSONAL'
+                  ? 'bg-white dark:bg-slate-600 text-[#00338d] dark:text-blue-300 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+              }`}
+            >
+              <User className="w-4 h-4" />
+              개인/팀별 캘린더
             </button>
           </div>
 

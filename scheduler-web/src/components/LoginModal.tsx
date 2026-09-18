@@ -57,7 +57,43 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto space-y-6">
+        {/* 모달 본문 */}
+        <div className="p-6 overflow-y-auto space-y-5">
+          {/* 관리자 빠른 로그인 배너 */}
+          <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+            <div>
+              <div className="text-xs font-bold text-[#00338d] flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-blue-600" />
+                시스템 최고 관리자 계정 (Admin)
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                유종욱 실장 (yjw@con-cost.com) · 박용진 수석 (yjpark@con-cost.com)
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  login('yjw@con-cost.com', '1147');
+                  onClose();
+                }}
+                className="px-2.5 py-1 text-xs font-bold bg-[#00338d] text-white rounded-lg hover:bg-[#002266] transition shadow-2xs"
+              >
+                유종욱(실장) 로그인
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  login('yjpark@con-cost.com', '1706');
+                  onClose();
+                }}
+                className="px-2.5 py-1 text-xs font-bold bg-slate-800 text-white rounded-lg hover:bg-black transition shadow-2xs"
+              >
+                박용진(수석) 로그인
+              </button>
+            </div>
+          </div>
+
           {/* 수동 ID / PW 입력 폼 */}
           <form onSubmit={handleSubmit} className="space-y-4 bg-slate-50 p-5 rounded-xl border border-slate-200">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
