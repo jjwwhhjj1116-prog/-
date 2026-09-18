@@ -893,6 +893,15 @@ export default function App() {
         departmentFilter={filterDepartment}
         lang={lang}
       />
+
+      {/* 숨김 엑셀 파일 업로드용 input (엑셀 가져오기 트리거) */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx, .xls, .csv"
+        onChange={handleImportExcel}
+        className="hidden"
+      />
     </div>
   );
 }

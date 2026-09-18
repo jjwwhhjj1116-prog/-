@@ -44,6 +44,7 @@ interface AssignedTask {
   projectId: string;
   projectName: string;
   projectShortName: string;
+  projectDisplayName: string;
   roleName: string;
   startDate: string;
   endDate: string;
@@ -145,13 +146,21 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
     return projects.filter((p) => p.department === department);
   }, [projects, department]);
 
-  // 프로젝트 이름 약칭 추출 함수
+  // 프로젝트 이름 약칭 추출 함수 (발주처 태그용)
   const getProjectShortName = (name: string) => {
     const match = name.match(/\[(.*?)\]/);
     if (match && match[1]) {
       return match[1].replace(/재개발|오피스텔|단지|복합시설/g, '').trim();
     }
     return name.slice(0, 7);
+  };
+
+  // 실제 프로젝트 핵심 명칭 추출 함수 (사용자 요청: 프로젝트 이름을 정확하게 표기)
+  // 예: "[삼성물산(주)] P5 FAB2 신축공사 견적용역" -> "P5 FAB2 신축공사"
+  const getProjectDisplayName = (name: string) => {
+    let cleaned = name.replace(/^\[.*?\]\s*/, '').trim();
+    cleaned = cleaned.replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim();
+    return cleaned || name;
   };
 
   // 행 유닛별 배정 작업 수집 및 겹치는 구간 스마트 스택(Greedy Interval Coloring)
@@ -164,6 +173,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
 
     deptProjects.forEach((p) => {
       const shortName = getProjectShortName(p.name);
+      const displayName = getProjectDisplayName(p.name);
 
       if (p.subTasks) {
         Object.values(p.subTasks).forEach((st) => {
@@ -176,6 +186,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
               projectId: p.id,
               projectName: p.name,
               projectShortName: shortName,
+              projectDisplayName: displayName,
               roleName: st.roleName,
               startDate: st.startDate,
               endDate: st.endDate,
@@ -209,6 +220,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                   projectId: p.id,
                   projectName: p.name,
                   projectShortName: shortName,
+                  projectDisplayName: displayName,
                   roleName: st.roleName,
                   startDate: st.startDate,
                   endDate: st.endDate,
@@ -655,11 +667,11 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                                 task.status
                               )}`}
                             >
-                              <span className="truncate text-[11px] tracking-tight leading-tight drop-shadow-xs flex items-center gap-1">
-                                <span className="font-extrabold text-white/95">
-                                  [{task.projectShortName}]
+                              <span className="truncate text-[11px] tracking-tight leading-tight drop-shadow-xs flex items-center gap-1.5 w-full">
+                                <span className="font-extrabold text-white truncate">
+                                  {task.projectDisplayName}
                                 </span>
-                                <span className="font-black bg-white/20 px-1 rounded text-white text-[10px]">
+                                <span className="font-black bg-white/25 px-1.5 py-0.5 rounded text-white text-[10px] shrink-0">
                                   {task.roleName}
                                 </span>
                               </span>

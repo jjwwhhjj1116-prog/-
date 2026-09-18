@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import {
   format,
   startOfMonth,
@@ -14,6 +14,7 @@ import {
 import { ko } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Printer, Info } from 'lucide-react';
 import { useProjectStore, type Project } from '../store/useProjectStore';
+import { exportProjectsToExcel, importProjectsFromExcel } from '../services/excelService';
 
 // 한국 및 베트남 주요 공휴일 (2026년 기준 맵)
 const HOLIDAYS_2026: Record<string, { country: 'KR' | 'VN' | 'UK'; name: string }> = {
@@ -43,20 +44,45 @@ export default function ProjectCalendar({
     projects,
     personnel,
     filterDepartment,
-    setSelectedProjectId
+    setSelectedProjectId,
+    setProjects,
   } = useProjectStore();
 
   // 2026년 9월 기본 기준일
   const [currentDate, setCurrentDate] = useState(new Date('2026-09-17'));
   const [viewMode, setViewMode] = useState<'30일' | '월별'>('월별');
+  // 사용자의 요구사항: "일정표에서 9월에 일정이 없는 프로젝트는 표현안해야지" -> 기본값 true
+  const [onlyCurrentMonth, setOnlyCurrentMonth] = useState(true);
 
-  // 부서(팀) 필터링
-  const filteredProjects = filterDepartment === 'ALL'
-    ? projects
-    : projects.filter(p => p.department === filterDepartment);
+  // 파일 입력 ref (자체 지원)
+  const internalFileInputRef = useRef<HTMLInputElement>(null);
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
+  const monthStartStr = format(monthStart, 'yyyy-MM-dd');
+  const monthEndStr = format(monthEnd, 'yyyy-MM-dd');
+
+  // 1차: 부서(팀) 필터링
+  const deptProjects = filterDepartment === 'ALL'
+    ? projects
+    : projects.filter(p => p.department === filterDepartment);
+
+  // 2차: 현재 조회 월(예: 9월)에 일정이 있는 프로젝트만 필터링 (사용자 요청 핵심 반영)
+  const filteredProjects = useMemo(() => {
+    if (!onlyCurrentMonth) return deptProjects;
+
+    return deptProjects.filter((project) => {
+      // 1) 메인 일정과 당월 겹침 여부
+      const hasMainOverlap = !(project.endDate < monthStartStr || project.startDate > monthEndStr);
+      // 2) 세부 공종 일정과 당월 겹침 여부
+      const hasSubOverlap = Object.values(project.subTasks || {}).some((st) => {
+        if (!st.startDate || !st.endDate) return false;
+        return !(st.endDate < monthStartStr || st.startDate > monthEndStr);
+      });
+      return hasMainOverlap || hasSubOverlap;
+    });
+  }, [deptProjects, onlyCurrentMonth, monthStartStr, monthEndStr]);
+
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
   const today = new Date('2026-09-17'); // 현재 작업 기준일
 
@@ -65,6 +91,52 @@ export default function ProjectCalendar({
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
   const handleToday = () => setCurrentDate(new Date('2026-09-17'));
+
+  // 엑셀 내보내기 안전 실행
+  const handleSafeExportExcel = () => {
+    if (onExportExcel) {
+      onExportExcel();
+    } else {
+      exportProjectsToExcel(projects, personnel);
+    }
+  };
+
+  // 엑셀 가져오기 클릭 트리거
+  const handleSafeImportClick = () => {
+    if (onImportExcel) {
+      onImportExcel();
+    } else {
+      internalFileInputRef.current?.click();
+    }
+  };
+
+  // 내부 엑셀 파일 파싱 핸들러
+  const handleInternalFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const imported = await importProjectsFromExcel(file, personnel);
+      if (imported.length > 0) {
+        setProjects(imported);
+        alert(`성공: 엑셀에서 ${imported.length}개 프로젝트 일정을 동기화하였습니다.`);
+      } else {
+        alert('엑셀 파일에서 유효한 프로젝트 데이터를 찾지 못했습니다.');
+      }
+    } catch (err: any) {
+      alert('엑셀 파싱 오류: ' + (err?.message || err));
+    } finally {
+      if (internalFileInputRef.current) internalFileInputRef.current.value = '';
+    }
+  };
+
+  // 인쇄 안전 실행
+  const handleSafePrint = () => {
+    if (onOpenPrintModal) {
+      onOpenPrintModal();
+    } else {
+      window.print();
+    }
+  };
 
   // 간트 바 위치 계산
   const getGanttBarStyle = (project: Project) => {
@@ -87,6 +159,15 @@ export default function ProjectCalendar({
 
   return (
     <div className="corporate-card overflow-hidden">
+      {/* 숨김 엑셀 파일 입력 필드 (자체 fallback) */}
+      <input
+        ref={internalFileInputRef}
+        type="file"
+        accept=".xlsx, .xls, .csv"
+        onChange={handleInternalFileChange}
+        className="hidden"
+      />
+
       {/* 1. 상단 컨트롤 헤더 (스크린샷 1 구현) */}
       <div className="p-4 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -94,7 +175,14 @@ export default function ProjectCalendar({
             <span className="text-xl font-extrabold text-slate-800">
               {format(currentDate, 'yyyy년 M월', { locale: ko })}
             </span>
-            <span className="text-xs text-slate-500 font-medium">저장된 기준 일정만 표시</span>
+            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+              {format(currentDate, 'M월')} 진행 프로젝트: {filteredProjects.length}건
+            </span>
+            {onlyCurrentMonth && (
+              <span className="text-xs text-slate-500 font-medium">
+                (일정 없는 {deptProjects.length - filteredProjects.length}개 프로젝트 숨김됨)
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
             <Info size={13} className="text-[#00338d]" />
@@ -104,15 +192,29 @@ export default function ProjectCalendar({
 
         {/* 상단 액션 버튼 그룹 */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* 당월 일정만 보기 토글 버튼 */}
           <button
-            onClick={() => onOpenPrintModal?.()}
+            onClick={() => setOnlyCurrentMonth(!onlyCurrentMonth)}
+            className={`text-xs px-3 py-1.5 rounded-lg border font-bold flex items-center gap-1.5 transition ${
+              onlyCurrentMonth
+                ? 'bg-blue-50 text-[#00338d] border-blue-200 hover:bg-blue-100'
+                : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+            }`}
+            title="현재 조회 중인 월에 일정이 있는 프로젝트만 필터링합니다."
+          >
+            <span className={`w-2 h-2 rounded-full ${onlyCurrentMonth ? 'bg-[#00338d]' : 'bg-slate-400'}`} />
+            {onlyCurrentMonth ? `${format(currentDate, 'M월')} 일정만 표시` : '전체 프로젝트 표시'}
+          </button>
+
+          <button
+            onClick={handleSafePrint}
             className="btn-stitch-primary text-xs flex items-center gap-1.5 shadow-sm"
           >
             <Printer size={14} /> 전체 일정표 출력 (A4 가로)
           </button>
 
           <button
-            onClick={() => onExportExcel?.()}
+            onClick={handleSafeExportExcel}
             className="btn-stitch-secondary text-xs flex items-center gap-1.5 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300"
           >
             <span className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -120,7 +222,7 @@ export default function ProjectCalendar({
           </button>
 
           <button
-            onClick={() => onImportExcel?.()}
+            onClick={handleSafeImportClick}
             className="btn-stitch-secondary text-xs flex items-center gap-1.5 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300"
           >
             <span className="w-2 h-2 rounded-full bg-blue-500" />
