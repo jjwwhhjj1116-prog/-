@@ -298,12 +298,12 @@ export const SettingsView: React.FC = () => {
               <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
                 <div>
                   <span className="text-[10px] text-slate-400 block font-sans font-bold">2. 사용자 지원 및 개발자 이메일</span>
-                  <span className="font-bold text-slate-800 dark:text-white">jjwwhhjj1116@gmail.com</span>
+                  <span className="font-bold text-slate-800 dark:text-white">concost_dt@gmail.com</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
-                    navigator.clipboard.writeText('jjwwhhjj1116@gmail.com');
+                    navigator.clipboard.writeText('concost_dt@gmail.com');
                     setDriveToast('이메일 주소가 복사되었습니다.');
                     setTimeout(() => setDriveToast(null), 2500);
                   }}
