@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Settings,
   HardDrive,
@@ -33,7 +33,22 @@ export const SettingsView: React.FC = () => {
     adminDeleteUser,
   } = useAuthStore();
 
-  const [activeTab, setActiveTab] = useState<SettingsTab>('GDRIVE');
+  // 관리자 권한 여부 판별 (유종욱, 박용진 또는 ADMIN 역할)
+  const isAdmin =
+    currentUser?.role === 'ADMIN' ||
+    currentUser?.idPrefix === 'yjw' ||
+    currentUser?.idPrefix === 'pyj' ||
+    currentUser?.name === '유종욱' ||
+    currentUser?.name === '박용진';
+
+  const [activeTab, setActiveTab] = useState<SettingsTab>(isAdmin ? 'GDRIVE' : 'MY_PROFILE');
+
+  // 비관리자 접근 시 개인 설정 탭으로 안전 리다이렉트
+  useEffect(() => {
+    if (!isAdmin && activeTab !== 'MY_PROFILE') {
+      setActiveTab('MY_PROFILE');
+    }
+  }, [isAdmin, activeTab]);
 
   // 1. Google Drive 설정 폼 상태
   const [clientIdInput, setClientIdInput] = useState(googleDriveConfig.clientId);
@@ -138,56 +153,65 @@ export const SettingsView: React.FC = () => {
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* 타이틀 및 헤더 */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-xs">
               <Settings className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
                 기술본부 시스템 환경설정
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-200">
-                  CONCOST SETTINGS
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 font-semibold border border-blue-200 dark:border-blue-800">
+                  {isAdmin ? 'ADMIN CONSOLE' : 'MY SETTINGS'}
                 </span>
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Google Workspace 클라우드 연동, 기술본부 회원 관리 및 개인 계정 보안 설정을 통합 관리합니다.
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {isAdmin
+                  ? 'Google Workspace 클라우드 연동, 기술본부 회원 관리 및 보안 설정을 통합 관리합니다.'
+                  : '개인 계정 정보 및 비밀번호 보안 설정을 관리합니다.'}
               </p>
             </div>
           </div>
         </div>
 
-        {/* 탭 네비게이션 버튼 */}
-        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+        {/* 탭 네비게이션 버튼 (관리자만 GDRIVE, MEMBERS 노출) */}
+        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+          {isAdmin && (
+            <>
+              <button
+                type="button"
+                onClick={() => setActiveTab('GDRIVE')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${
+                  activeTab === 'GDRIVE'
+                    ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <HardDrive className="w-4 h-4 text-orange-500" />
+                Google Drive 연동 설정
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('MEMBERS')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${
+                  activeTab === 'MEMBERS'
+                    ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Users className="w-4 h-4 text-blue-600" />
+                관리자 회원 관리 ({users.length}명)
+              </button>
+            </>
+          )}
           <button
-            onClick={() => setActiveTab('GDRIVE')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${
-              activeTab === 'GDRIVE'
-                ? 'bg-white text-blue-700 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <HardDrive className="w-4 h-4 text-orange-500" />
-            Google Drive 연동 설정
-          </button>
-          <button
-            onClick={() => setActiveTab('MEMBERS')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${
-              activeTab === 'MEMBERS'
-                ? 'bg-white text-blue-700 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Users className="w-4 h-4 text-blue-600" />
-            관리자 회원 관리 ({users.length}명)
-          </button>
-          <button
+            type="button"
             onClick={() => setActiveTab('MY_PROFILE')}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${
               activeTab === 'MY_PROFILE'
-                ? 'bg-white text-blue-700 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <KeyRound className="w-4 h-4 text-purple-600" />
@@ -336,23 +360,109 @@ export const SettingsView: React.FC = () => {
               </div>
 
               {/* 4. 앱 도메인 (홈페이지, 개인정보처리방침, 약관) */}
-              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-sans font-bold">4. 앱 홈페이지 / 개인정보처리방침 URL</span>
-                  <span className="font-bold text-slate-800 dark:text-white">https://concost-tech-scheduler.pages.dev</span>
+              <div className="bg-white dark:bg-slate-800 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2.5">
+                <span className="text-[10px] text-slate-400 block font-sans font-bold uppercase tracking-wider">
+                  4. 앱 도메인 (Google OAuth 앱 게시 심사 필수 링크)
+                </span>
+                
+                {/* 4-1. 애플리케이션 홈페이지 */}
+                <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                  <div className="truncate mr-2">
+                    <span className="text-[10px] text-slate-500 font-bold block">애플리케이션 홈페이지</span>
+                    <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200 truncate block">
+                      https://concost-tech-scheduler.pages.dev
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <a
+                      href="https://concost-tech-scheduler.pages.dev"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-1.5 hover:bg-white dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-slate-700"
+                      title="페이지 열기"
+                    >
+                      <ExternalLink size={12} />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText('https://concost-tech-scheduler.pages.dev');
+                        setDriveToast('애플리케이션 홈페이지 링크가 복사되었습니다.');
+                        setTimeout(() => setDriveToast(null), 2500);
+                      }}
+                      className="p-1.5 hover:bg-white dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-slate-700"
+                      title="복사"
+                    >
+                      <Copy size={12} />
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText('https://concost-tech-scheduler.pages.dev');
-                    setDriveToast('앱 URL이 복사되었습니다.');
-                    setTimeout(() => setDriveToast(null), 2500);
-                  }}
-                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded"
-                  title="복사"
-                >
-                  <Copy size={13} />
-                </button>
+
+                {/* 4-2. 애플리케이션 개인정보처리방침 */}
+                <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                  <div className="truncate mr-2">
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block">애플리케이션 개인정보처리방침 링크</span>
+                    <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200 truncate block">
+                      https://concost-tech-scheduler.pages.dev/privacy.html
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <a
+                      href="https://concost-tech-scheduler.pages.dev/privacy.html"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-1.5 hover:bg-white dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-slate-700"
+                      title="약관 확인"
+                    >
+                      <ExternalLink size={12} />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText('https://concost-tech-scheduler.pages.dev/privacy.html');
+                        setDriveToast('개인정보처리방침 링크가 복사되었습니다.');
+                        setTimeout(() => setDriveToast(null), 2500);
+                      }}
+                      className="p-1.5 hover:bg-white dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-slate-700"
+                      title="복사"
+                    >
+                      <Copy size={12} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4-3. 애플리케이션 서비스 약관 링크 */}
+                <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                  <div className="truncate mr-2">
+                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold block">애플리케이션 서비스 약관 링크</span>
+                    <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200 truncate block">
+                      https://concost-tech-scheduler.pages.dev/terms.html
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <a
+                      href="https://concost-tech-scheduler.pages.dev/terms.html"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-1.5 hover:bg-white dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-slate-700"
+                      title="약관 확인"
+                    >
+                      <ExternalLink size={12} />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText('https://concost-tech-scheduler.pages.dev/terms.html');
+                        setDriveToast('서비스 약관 링크가 복사되었습니다.');
+                        setTimeout(() => setDriveToast(null), 2500);
+                      }}
+                      className="p-1.5 hover:bg-white dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-slate-700"
+                      title="복사"
+                    >
+                      <Copy size={12} />
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* 5. 승인된 자바스크립트 원본 */}

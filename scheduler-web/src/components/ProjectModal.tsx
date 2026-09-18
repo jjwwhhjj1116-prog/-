@@ -7,9 +7,9 @@ import {
   CheckCircle2,
   Users,
   Calendar,
-  AlertTriangle,
   UserCheck,
-  Sparkles
+  Sparkles,
+  Search
 } from 'lucide-react';
 import {
   useProjectStore,
@@ -37,13 +37,14 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
 
   // 로컬 편집 상태
   const [localSubTasks, setLocalSubTasks] = useState<Record<string, SubTaskSchedule>>({});
-  const [savedSuccessKey, setSavedSuccessKey] = useState<string | null>(null);
 
   // 현재 좌측에서 포커스/선택된 공종 (우측 팀원 클릭 시 이 공종에 즉시 배정됨)
   const [selectedRole, setSelectedRole] = useState<string>('');
 
   // 우측 패널 필터: ALL, AVAILABLE, KOREA, VIETNAM
   const [rightFilter, setRightFilter] = useState<'ALL' | 'AVAILABLE' | 'KOREA' | 'VIETNAM'>('ALL');
+  // 우측 팀원 검색어
+  const [searchQuery, setSearchQuery] = useState('');
 
   // 배정 피드백 토스트
   const [assignToast, setAssignToast] = useState<{ role: string; name: string } | null>(null);
@@ -107,16 +108,6 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
     handleFieldChange(targetRole, 'personId', unitId);
     setAssignToast({ role: targetRole, name: unitName });
     setTimeout(() => setAssignToast(null), 3000);
-  };
-
-  // 단일 공종 카드 저장
-  const handleSaveCard = (roleName: string) => {
-    const item = localSubTasks[roleName];
-    if (item) {
-      updateSubTask(project.id, roleName, item);
-      setSavedSuccessKey(roleName);
-      setTimeout(() => setSavedSuccessKey(null), 2000);
-    }
   };
 
   // 전체 공종 일괄 저장
@@ -237,9 +228,15 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
 
   // 필터링된 가용성 목록
   const filteredAvailability = availabilityList.filter((item) => {
-    if (rightFilter === 'AVAILABLE') return item.overlaps.length === 0;
-    if (rightFilter === 'KOREA') return !item.isVietnam;
-    if (rightFilter === 'VIETNAM') return item.isVietnam;
+    if (rightFilter === 'AVAILABLE' && item.overlaps.length > 0) return false;
+    if (rightFilter === 'KOREA' && item.isVietnam) return false;
+    if (rightFilter === 'VIETNAM' && !item.isVietnam) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      const matchName = item.name.toLowerCase().includes(q);
+      const matchSub = item.subTitle.toLowerCase().includes(q);
+      if (!matchName && !matchSub) return false;
+    }
     return true;
   });
 
@@ -320,19 +317,19 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
           <div className="lg:col-span-7 p-5 overflow-y-auto border-r border-slate-200 dark:border-slate-800 custom-scrollbar space-y-4">
             
             {/* 포커스 안내 바 */}
-            <div className="flex items-center justify-between bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+            <div className="flex items-center justify-between bg-white dark:bg-slate-800 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-[#00338d] dark:bg-blue-400 animate-ping" />
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#00338d] dark:bg-blue-400 animate-ping shrink-0" />
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
                   현재 선택된 공종: <strong className="text-[#00338d] dark:text-blue-400 font-extrabold text-sm">[{selectedRole || '선택 없음'}]</strong>
                 </span>
               </div>
-              <span className="text-[11px] text-slate-400">
-                우측 팀원 클릭 시 이 공종에 즉시 배정됩니다
+              <span className="text-[11px] text-slate-400 dark:text-slate-400 font-medium">
+                👉 우측 팀원 [배정] 클릭 시 즉시 지정
               </span>
             </div>
 
-            {/* 공종 카드 그리드 */}
+            {/* 공종 카드 그리드 (뭉개짐 없이 정돈된 모던 카드) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               {rolesForTeam.map((roleName, idx) => {
                 const subTask = localSubTasks[roleName] || {
@@ -346,7 +343,6 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                 };
 
                 const isSelected = selectedRole === roleName;
-                const isSaved = savedSuccessKey === roleName;
 
                 // 담당자 이름 표시
                 const assignedPerson = availabilityList.find(
@@ -357,124 +353,48 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                   <div
                     key={roleName}
                     onClick={() => setSelectedRole(roleName)}
-                    className={`rounded-xl border p-4 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                    className={`rounded-xl border p-3.5 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
                       isSelected
-                        ? 'bg-blue-50/40 dark:bg-blue-950/30 border-[#00338d] dark:border-blue-500 shadow-md ring-2 ring-[#00338d]/20'
-                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-2xs hover:border-slate-300 dark:hover:border-slate-600'
+                        ? 'bg-blue-50/50 dark:bg-blue-950/40 border-[#00338d] dark:border-blue-500 shadow-md ring-2 ring-[#00338d]/20'
+                        : 'bg-white dark:bg-slate-850 border-slate-200 dark:border-slate-750 shadow-2xs hover:border-slate-300 dark:hover:border-slate-600'
                     }`}
                   >
-                    {/* 카드 상단 */}
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2.5">
+                    {/* 카드 상단: 공종 뱃지 + 명칭 + 기준버전 + 상태 셀렉트 */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
                         <div
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs shadow-2xs ${getBadgeColor(
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center font-black text-xs shrink-0 shadow-2xs ${getBadgeColor(
                             idx
                           )}`}
                         >
                           {idx + 1}
                         </div>
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <h4 className="font-extrabold text-slate-900 dark:text-white text-sm">{roleName}</h4>
-                            {isSelected && (
-                              <span className="text-[10px] bg-[#00338d] text-white px-1.5 py-0.2 rounded font-bold">
-                                포커스
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            기준 일정 · {subTask.version || 'v1'}
+                        <div className="flex items-center gap-1.5 truncate">
+                          <h4 className="font-extrabold text-slate-900 dark:text-white text-sm truncate">{roleName}</h4>
+                          {isSelected && (
+                            <span className="text-[10px] bg-[#00338d] text-white px-1.5 py-0.5 rounded font-bold shrink-0">
+                              포커스
+                            </span>
+                          )}
+                          <span className="text-[10px] text-slate-400 font-mono shrink-0 whitespace-nowrap">
+                            · {subTask.version || 'v1'}
                           </span>
                         </div>
                       </div>
 
-                      {/* 담당자 드롭다운 */}
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <select
-                          value={subTask.personId}
-                          onChange={(e) => handleFieldChange(roleName, 'personId', e.target.value)}
-                          className="text-xs font-bold px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:border-[#00338d] focus:outline-none"
-                        >
-                          <option value="">담당자 미지정</option>
-                          <optgroup label="🇰🇷 한국 본사 인원">
-                            {deptKoreaUsers.map((u) => (
-                              <option key={u.id} value={u.id}>
-                                {u.name} ({u.position})
-                              </option>
-                            ))}
-                          </optgroup>
-                          <optgroup label="🇻🇳 베트남 팀 유닛">
-                            {deptVietTeams.map((vt) => (
-                              <option key={vt.id} value={vt.id}>
-                                {vt.displayName} (팀장: {vt.leaderName})
-                              </option>
-                            ))}
-                          </optgroup>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* 담당자 상태 표시 칩 */}
-                    {assignedPerson ? (
-                      <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700/60 text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <UserCheck size={13} className="text-emerald-600 dark:text-emerald-400" />
-                          <span className="font-extrabold text-slate-800 dark:text-slate-200">
-                            {assignedPerson.name}
-                          </span>
-                          <span className="text-[10px] text-slate-400">({assignedPerson.badge})</span>
-                        </div>
-                        {assignedPerson.overlaps.length > 0 ? (
-                          <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold flex items-center gap-0.5">
-                            <AlertTriangle size={11} /> 중복 {assignedPerson.overlaps.length}건
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
-                            🟢 여유
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="text-[11px] text-slate-400 italic px-2">
-                        담당자가 지정되지 않았습니다 (우측에서 선택 가능)
-                      </div>
-                    )}
-
-                    {/* 일정 및 상태 입력 행 */}
-                    <div className="grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500 mb-0.5">시작일</label>
-                        <input
-                          type="date"
-                          value={subTask.startDate}
-                          onChange={(e) => handleFieldChange(roleName, 'startDate', e.target.value)}
-                          className="w-full text-[11px] px-1.5 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500 mb-0.5">종료일</label>
-                        <input
-                          type="date"
-                          value={subTask.endDate}
-                          onChange={(e) => handleFieldChange(roleName, 'endDate', e.target.value)}
-                          className="w-full text-[11px] px-1.5 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500 mb-0.5">상태</label>
+                      {/* 상태 선택 셀렉트 */}
+                      <div onClick={(e) => e.stopPropagation()} className="shrink-0">
                         <select
                           value={subTask.status}
                           onChange={(e) => handleFieldChange(roleName, 'status', e.target.value as SubTaskStatus)}
-                          className={`w-full text-[11px] font-bold px-1.5 py-1 rounded-md border focus:outline-none ${
+                          className={`text-[11px] font-extrabold px-2 py-1 rounded-md border focus:outline-none transition ${
                             subTask.status === '완료'
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300'
                               : subTask.status === '진행중'
                               ? 'bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950 dark:text-blue-300'
                               : subTask.status === '지연'
                               ? 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950 dark:text-rose-300'
-                              : 'bg-slate-50 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-300'
+                              : 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-300'
                           }`}
                         >
                           <option value="예정">예정</option>
@@ -485,38 +405,97 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                       </div>
                     </div>
 
-                    {/* 메모 입력창 */}
+                    {/* 담당자 배정 카드 영역 */}
+                    <div
+                      className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-1.5"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <UserCheck size={14} className={assignedPerson ? "text-emerald-600 dark:text-emerald-400 shrink-0" : "text-slate-400 shrink-0"} />
+                          {assignedPerson ? (
+                            <span className="font-extrabold text-xs text-slate-900 dark:text-white truncate">
+                              {assignedPerson.name}
+                              <span className="text-[10px] text-slate-400 font-normal ml-1">({assignedPerson.badge})</span>
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">
+                              담당자 미배정 (우측 선택)
+                            </span>
+                          )}
+                        </div>
+
+                        {/* 가용성 현황 태그 */}
+                        {assignedPerson && (
+                          <div className="shrink-0">
+                            {assignedPerson.overlaps.length > 0 ? (
+                              <span className="text-[10px] text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950 px-1.5 py-0.5 rounded font-bold">
+                                ⚠ {assignedPerson.overlaps.length}건 겹침
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 rounded font-bold">
+                                🟢 여유
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 담당자 변경 드롭다운 (컴팩트) */}
+                      <select
+                        value={subTask.personId}
+                        onChange={(e) => handleFieldChange(roleName, 'personId', e.target.value)}
+                        className="w-full text-xs font-medium px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none"
+                      >
+                        <option value="">담당자 직접 지정 / 변경</option>
+                        <optgroup label="🇰🇷 한국 본사 인원">
+                          {deptKoreaUsers.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.name} ({u.position})
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="🇻🇳 베트남 팀 유닛">
+                          {deptVietTeams.map((vt) => (
+                            <option key={vt.id} value={vt.id}>
+                              {vt.displayName} (팀장: {vt.leaderName})
+                            </option>
+                          ))}
+                        </optgroup>
+                      </select>
+                    </div>
+
+                    {/* 일정 입력 행: 시작일 ~ 종료일 (컴팩트 인라인) */}
+                    <div className="grid grid-cols-2 gap-2" onClick={(e) => e.stopPropagation()}>
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 mb-0.5">시작일</span>
+                        <input
+                          type="date"
+                          value={subTask.startDate}
+                          onChange={(e) => handleFieldChange(roleName, 'startDate', e.target.value)}
+                          className="w-full text-xs px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 mb-0.5">종료일</span>
+                        <input
+                          type="date"
+                          value={subTask.endDate}
+                          onChange={(e) => handleFieldChange(roleName, 'endDate', e.target.value)}
+                          className="w-full text-xs px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 슬림한 비고/메모 입력란 (더 이상 불필요하게 길고 뚱뚱하지 않음) */}
                     <div onClick={(e) => e.stopPropagation()}>
                       <input
                         type="text"
                         value={subTask.memo}
                         onChange={(e) => handleFieldChange(roleName, 'memo', e.target.value)}
-                        placeholder="공종별 산출 특이사항 및 요청사항 입력"
-                        className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none"
+                        placeholder="특이사항 및 전달 메모 (선택)"
+                        className="w-full text-xs px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:border-[#00338d]"
                       />
-                    </div>
-
-                    {/* 카드 개별 저장 버튼 */}
-                    <div className="flex justify-end pt-1" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        onClick={() => handleSaveCard(roleName)}
-                        className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
-                          isSaved
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-[#00338d] hover:bg-[#002366] text-white shadow-2xs active:scale-95'
-                        }`}
-                      >
-                        {isSaved ? (
-                          <>
-                            <CheckCircle2 size={13} /> 저장 완료!
-                          </>
-                        ) : (
-                          <>
-                            <Save size={13} /> 공종 저장
-                          </>
-                        )}
-                      </button>
                     </div>
                   </div>
                 );
@@ -525,7 +504,7 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
           </div>
 
           {/* ======================= 우측 패널: 팀원 실시간 가용성 & 스케줄 확인 간트 (5 cols, ~42%) ======================= */}
-          <div className="lg:col-span-5 p-5 overflow-y-auto custom-scrollbar flex flex-col gap-4 bg-white dark:bg-slate-900">
+          <div className="lg:col-span-5 p-5 overflow-y-auto custom-scrollbar flex flex-col gap-3.5 bg-white dark:bg-slate-900">
             
             {/* 우측 패널 헤더 */}
             <div>
@@ -534,62 +513,80 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                   <Users size={16} className="text-[#00338d] dark:text-blue-400" />
                   팀원 실시간 가용성 & 투입 현황
                 </h3>
-                <span className="text-[10px] font-bold text-slate-400">
-                  기간: {project.startDate} ~ {project.endDate}
+                <span className="text-[10px] font-mono font-bold text-slate-400">
+                  {project.startDate} ~ {project.endDate}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                타 프로젝트 중복 건수를 확인하고, 인원을 클릭하면 <strong className="text-[#00338d] dark:text-blue-400">[{selectedRole}]</strong> 공종에 자동 배정됩니다.
+                [배정]을 누르면 포커스된 <strong className="text-[#00338d] dark:text-blue-400">[{selectedRole}]</strong> 공종에 즉시 반영됩니다.
               </p>
             </div>
 
-            {/* 필터 탭 바 */}
-            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700">
-              <button
-                onClick={() => setRightFilter('ALL')}
-                className={`flex-1 py-1.5 rounded-lg transition ${
-                  rightFilter === 'ALL'
-                    ? 'bg-white dark:bg-slate-700 text-[#00338d] dark:text-white shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                전체 ({availabilityList.length})
-              </button>
-              <button
-                onClick={() => setRightFilter('AVAILABLE')}
-                className={`flex-1 py-1.5 rounded-lg transition flex items-center justify-center gap-1 ${
-                  rightFilter === 'AVAILABLE'
-                    ? 'bg-emerald-600 text-white shadow-2xs'
-                    : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
-                }`}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                배정 가능 ({availabilityList.filter((a) => a.overlaps.length === 0).length})
-              </button>
-              <button
-                onClick={() => setRightFilter('KOREA')}
-                className={`flex-1 py-1.5 rounded-lg transition ${
-                  rightFilter === 'KOREA'
-                    ? 'bg-white dark:bg-slate-700 text-[#00338d] dark:text-white shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                본사 ({deptKoreaUsers.length})
-              </button>
-              <button
-                onClick={() => setRightFilter('VIETNAM')}
-                className={`flex-1 py-1.5 rounded-lg transition ${
-                  rightFilter === 'VIETNAM'
-                    ? 'bg-white dark:bg-slate-700 text-[#00338d] dark:text-white shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                베트남 ({deptVietTeams.length})
-              </button>
+            {/* 필터 및 컴팩트 검색 바 (검색창 너비 적정화) */}
+            <div className="flex flex-wrap items-center gap-1.5 justify-between bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setRightFilter('ALL')}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition ${
+                    rightFilter === 'ALL'
+                      ? 'bg-white dark:bg-slate-700 text-[#00338d] dark:text-white shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
+                  }`}
+                >
+                  전체 ({availabilityList.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRightFilter('AVAILABLE')}
+                  className={`px-2 py-1 text-xs font-bold rounded-lg transition flex items-center gap-1 ${
+                    rightFilter === 'AVAILABLE'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  여유 ({availabilityList.filter((a) => a.overlaps.length === 0).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRightFilter('KOREA')}
+                  className={`px-2 py-1 text-xs font-bold rounded-lg transition ${
+                    rightFilter === 'KOREA'
+                      ? 'bg-white dark:bg-slate-700 text-[#00338d] dark:text-white shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
+                  }`}
+                >
+                  본사
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRightFilter('VIETNAM')}
+                  className={`px-2 py-1 text-xs font-bold rounded-lg transition ${
+                    rightFilter === 'VIETNAM'
+                      ? 'bg-white dark:bg-slate-700 text-[#00338d] dark:text-white shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
+                  }`}
+                >
+                  베트남
+                </button>
+              </div>
+
+              {/* 컴팩트 검색창 (적정 너비 130px) */}
+              <div className="relative w-32 shrink-0">
+                <Search size={12} className="absolute left-2 top-2 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="팀원 검색..."
+                  className="w-full text-xs pl-6 pr-2 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none"
+                />
+              </div>
             </div>
 
             {/* 인원/팀 가용성 카드 목록 */}
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               {filteredAvailability.map((unit) => {
                 const overlapCount = unit.overlaps.length;
                 const isAvailable = overlapCount === 0;
@@ -597,7 +594,7 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                 return (
                   <div
                     key={unit.id}
-                    className={`p-3.5 rounded-xl border transition-all ${
+                    className={`p-3 rounded-xl border transition-all ${
                       isAvailable
                         ? 'bg-emerald-50/20 dark:bg-emerald-950/10 border-emerald-200 dark:border-emerald-800/60 hover:border-emerald-400'
                         : overlapCount === 1
@@ -606,10 +603,10 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                     }`}
                   >
                     {/* 상단 프로필 & 배정 버튼 */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
                         <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                          className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
                             unit.isVietnam
                               ? 'bg-rose-500 text-white'
                               : 'bg-[#00338d] text-white'
@@ -617,12 +614,12 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                         >
                           {unit.name.slice(0, 1)}
                         </div>
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-extrabold text-slate-900 dark:text-white text-xs">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="font-extrabold text-slate-900 dark:text-white text-xs truncate">
                               {unit.name}
                             </span>
-                            <span className="text-[10px] text-slate-400 font-medium">
+                            <span className="text-[10px] text-slate-400 font-medium truncate">
                               {unit.subTitle}
                             </span>
                           </div>
@@ -630,25 +627,22 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                           {/* 가용성 상태 배지 */}
                           <div className="flex items-center gap-1.5 mt-0.5">
                             {isAvailable ? (
-                              <span className="text-[10px] font-extrabold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.2 rounded-full flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                🟢 배정 가능 (여유)
+                              <span className="text-[10px] font-extrabold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/60 px-1.5 py-0.2 rounded-full flex items-center gap-1">
+                                🟢 투입 추천 (여유)
                               </span>
                             ) : overlapCount === 1 ? (
-                              <span className="text-[10px] font-extrabold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/60 px-2 py-0.2 rounded-full flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                🟡 타 프로젝트 1건 겹침 (주의)
+                              <span className="text-[10px] font-extrabold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/60 px-1.5 py-0.2 rounded-full flex items-center gap-1">
+                                🟡 1건 겹침 (주의)
                               </span>
                             ) : (
-                              <span className="text-[10px] font-extrabold text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-900/60 px-2 py-0.2 rounded-full flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                                🔴 중복 {overlapCount}건 (과부하 위험)
+                              <span className="text-[10px] font-extrabold text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-900/60 px-1.5 py-0.2 rounded-full flex items-center gap-1">
+                                🔴 중복 {overlapCount}건 (과부하)
                               </span>
                             )}
 
                             {unit.assignedRoleInCurrent && (
-                              <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/60 px-2 py-0.2 rounded-full">
-                                현재 [{unit.assignedRoleInCurrent}] 배정됨
+                              <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/60 px-1.5 py-0.2 rounded-full">
+                                현재 [{unit.assignedRoleInCurrent}]
                               </span>
                             )}
                           </div>
@@ -659,47 +653,37 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                       <button
                         type="button"
                         onClick={() => handleQuickAssign(unit.id, unit.name)}
-                        className="px-2.5 py-1.5 rounded-lg bg-[#00338d] hover:bg-[#002266] text-white text-[11px] font-bold shadow-2xs flex items-center gap-1 shrink-0 transition active:scale-95"
+                        className="px-3 py-1.5 rounded-lg bg-[#00338d] hover:bg-[#002266] text-white text-xs font-extrabold shadow-2xs flex items-center gap-1 shrink-0 transition active:scale-95"
                         title={`현재 선택된 [${selectedRole}] 공종에 ${unit.name} 배정`}
                       >
-                        <UserCheck size={12} />
+                        <UserCheck size={13} />
                         <span>배정</span>
                       </button>
                     </div>
 
-                    {/* 중복 일정 타임라인 바 (Overlapping Tasks Timeline) */}
-                    <div className="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-slate-800/60">
-                      {overlapCount > 0 ? (
-                        <div className="space-y-1.5">
-                          <span className="text-[10px] font-bold text-slate-400 block">
-                            동일 기간 진행 중인 타 프로젝트 ({overlapCount}건):
-                          </span>
-                          {unit.overlaps.map((ov, oIdx) => (
-                            <div
-                              key={oIdx}
-                              className="bg-white dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-between text-[11px]"
-                            >
-                              <div className="flex items-center gap-1.5 truncate">
-                                <span className="font-extrabold text-slate-800 dark:text-slate-200 truncate">
-                                  [{ov.projectName}]
-                                </span>
-                                <span className="bg-slate-100 dark:bg-slate-700 text-[#00338d] dark:text-blue-300 px-1.5 py-0.2 rounded font-bold text-[10px]">
-                                  {ov.roleName}
-                                </span>
-                              </div>
-                              <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 shrink-0 ml-2">
-                                {ov.startDate} ~ {ov.endDate}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                          <Sparkles size={12} />
-                          <span>해당 프로젝트 기간 동안 겹치는 타 공종 일정이 없습니다. 투입 추천!</span>
-                        </div>
-                      )}
-                    </div>
+                    {/* 타 프로젝트 중복 표시 (정돈된 뱃지 스타일) */}
+                    {overlapCount > 0 ? (
+                      <div className="mt-2 pt-1.5 border-t border-slate-200/60 dark:border-slate-800/60 space-y-1">
+                        {unit.overlaps.map((ov, oIdx) => (
+                          <div
+                            key={oIdx}
+                            className="bg-white/80 dark:bg-slate-800 px-2 py-1 rounded border border-slate-200 dark:border-slate-700 flex items-center justify-between text-[10px]"
+                          >
+                            <span className="font-bold text-slate-700 dark:text-slate-300 truncate mr-2">
+                              {ov.projectName.length > 18 ? ov.projectName.slice(0, 18) + '...' : ov.projectName}
+                            </span>
+                            <span className="font-mono text-slate-500 dark:text-slate-400 shrink-0">
+                              [{ov.roleName}] {ov.startDate.slice(5)}~{ov.endDate.slice(5)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-1.5 text-[10px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                        <Sparkles size={11} />
+                        <span>겹치는 타 공종 일정이 없습니다.</span>
+                      </div>
+                    )}
                   </div>
                 );
               })}
