@@ -114,6 +114,10 @@ export default function ProjectCalendar({
       code: string;
       name: string;
       client: string;
+      area?: string;
+      usage?: string;
+      buildings?: string;
+      floors?: string;
       departments: Department[];
       lanes: {
         projectId: string;
@@ -133,6 +137,10 @@ export default function ProjectCalendar({
           code: p.code,
           name: p.name,
           client: (p as any).client || '',
+          area: (p as any).area || '',
+          usage: (p as any).usage || '',
+          buildings: (p as any).buildings || '',
+          floors: (p as any).floors || '',
           departments: [],
           lanes: [],
         };
@@ -494,6 +502,18 @@ export default function ProjectCalendar({
                     <div className="font-extrabold text-slate-800 dark:text-white group-hover:text-[#00338d] dark:group-hover:text-blue-400 transition-colors line-clamp-2 leading-tight underline decoration-transparent group-hover:decoration-blue-400">
                       {group.name}
                     </div>
+                    {(group as any).area && (
+                      <div className="mt-1 flex items-center gap-1 flex-wrap">
+                        <span className="text-[10px] font-black text-[#00338d] dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+                          연면적 {(group as any).area}
+                        </span>
+                        {(group as any).usage && (
+                          <span className="text-[9px] text-slate-500 dark:text-slate-400 font-medium">
+                            · {(group as any).usage}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* 고정 열 2: 공정률 (2갈래 상하 분할, 클릭 시 세부 모달 열림) */}

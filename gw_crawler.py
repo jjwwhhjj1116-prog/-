@@ -1,13 +1,12 @@
 """
-CONCOST 사내 그룹웨어 수주소식 실시간 크롤러
+CONCOST 사내 그룹웨어 수주소식 실시간 크롤러 (상세 스펙 크롤링 포함)
 - 그룹웨어 URL: https://gw.con-cost.com:1205/
 - 계정: .env (GW_USERNAME, GW_PASSWORD)
 - 대상: 수주소식 게시판 (RoomNo=95)
-- 기능:
-  1. 단발성 크롤링 (--once)
-  2. 스케줄러 데몬 (--daemon): 평일 09:00 ~ 17:00 매시 정각 자동 크롤링
-  3. 지능형 공종 파싱: (마감, 구조, 토목, 조경, 오승균 등)
-  4. 웹 앱 연동용 JSON (scheduler-web/src/data/intakeProjects.json) 자동 갱신
+- 주요 수집 필드:
+  * 기본: 글번호, 제목, 발주처, 작성자, 작성일, 대상부서
+  * 상세(BbsView): 연면적(area), 건물용도(usage), 동수(buildings), 층수(floors),
+                   발주처 담당자(contacts), 특기사항(notes), 요청사항(request)
 """
 
 import os
@@ -15,12 +14,13 @@ import re
 import sys
 import time
 import json
+import base64
 import logging
 import argparse
 import datetime
-import urllib3
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+import urllib3
 import requests
 from dotenv import load_dotenv
 
@@ -44,24 +44,22 @@ GW_USER = os.getenv("GW_USERNAME", "yjw@con-cost.com")
 GW_PW = os.getenv("GW_PASSWORD", "dbwhddnr1!")
 OUTPUT_JSON = BASE_DIR / "scheduler-web" / "src" / "data" / "intakeProjects.json"
 
+
 class GroupwareSujuCrawler:
-    def __init__(self):
+    def __init__(self) -> None:
         self.session = requests.Session()
         self.session.verify = False
         self.session.headers.update({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
             "Referer": f"{GW_URL}/bbs/BbsMain"
         })
-        self.is_logged_in = False
+        self.is_logged_in: bool = False
 
     def login(self) -> bool:
         """사내 그룹웨어 세션 로그인"""
         try:
             logger.info("그룹웨어 세션 로그인 시도...")
-            # 1. 초기 세션 쿠키 획득
             self.session.get(f"{GW_URL}/AlterServiceLogin/templates/template16/login4?PreUrl=&argSectionType=business", timeout=10)
-            
-            # 2. LoginOK 인증 POST
             payload = {
                 "CorpID": "con-cost.com",
                 "CorpCheck": "N",
@@ -74,34 +72,131 @@ class GroupwareSujuCrawler:
                 logger.info("그룹웨어 로그인 성공!")
                 self.is_logged_in = True
                 return True
-            else:
-                logger.error(f"로그인 실패: {res.status_code}")
-                return False
+            logger.error(f"로그인 실패: {res.status_code}")
+            return False
         except Exception as e:
             logger.error(f"로그인 예외 발생: {e}")
             return False
 
+    def fetch_detail(self, doc_no: int) -> Dict[str, Any]:
+        """수주소식 상세 페이지(BbsView)에서 연면적 및 건축/견적 개요 파싱"""
+        detail_data: Dict[str, Any] = {
+            "area": "",
+            "usage": "",
+            "buildings": "",
+            "floors": "",
+            "contacts": [],
+            "notes": "",
+            "request": ""
+        }
+        try:
+            csrf_obj = {"token": "", "RoomNo": "95", "DocNo": str(doc_no)}
+            csrf_b64 = base64.b64encode(json.dumps(csrf_obj).encode("utf-8")).decode("utf-8")
+            res = self.session.get(f"{GW_URL}/bbs/BbsView?AddBbs=0&csrf={csrf_b64}", timeout=10)
+            if res.status_code != 200:
+                return detail_data
+
+            # UTF-8 디코딩
+            text = res.content.decode("utf-8", errors="replace")
+
+            # 테이블 행 파싱
+            tables = re.findall(r'<table[^>]*>(.*?)</table>', text, re.S)
+            all_rows: List[List[str]] = []
+            for t in tables:
+                if any(k in t for k in ["연면적", "건물용도", "프로젝트 개요", "발주처 담당자", "특기사항", "수주시 요청사항"]):
+                    rows = re.findall(r'<tr[^>]*>(.*?)</tr>', t, re.S)
+                    for r in rows:
+                        tds = re.findall(r'<td[^>]*>(.*?)</td>', r, re.S)
+                        clean = [re.sub(r'<[^>]+>', ' ', x).replace('&nbsp;', ' ').strip() for x in tds]
+                        clean = [c for c in clean if c]
+                        if clean:
+                            all_rows.append(clean)
+
+            contact_list: List[str] = []
+            for i, row in enumerate(all_rows):
+                # 1. 건물용도, 연면적, 동수
+                if "건물용도" in row and "연면적" in row:
+                    try:
+                        u_idx = row.index("건물용도")
+                        detail_data["usage"] = row[u_idx + 1].replace("\r", "").replace("\n", " ").strip()
+                    except Exception:
+                        pass
+                    try:
+                        a_idx = row.index("연면적")
+                        detail_data["area"] = row[a_idx + 1].replace("\r", "").replace("\n", " ").strip()
+                    except Exception:
+                        pass
+                    try:
+                        b_idx = row.index("동수")
+                        detail_data["buildings"] = row[b_idx + 1].replace("\r", "").replace("\n", " ").strip()
+                    except Exception:
+                        pass
+
+                # 2. 층수
+                if "층수" in row:
+                    try:
+                        f_idx = row.index("층수")
+                        if f_idx + 1 < len(row):
+                            detail_data["floors"] = row[f_idx + 1].replace("\r", "").replace("\n", " ").strip()
+                    except Exception:
+                        pass
+
+                # 3. 발주처 담당자
+                if any(k in row for k in ["발주처 담당자", "이름 / 직급"]):
+                    clean_c = [c.replace("\r", "").replace("\n", " ").strip() for c in row if c not in ["이름 / 직급", "발주처 담당자", "부서", "일반전화", "휴대폰", "이메일", "담당", "전화번호"]]
+                    c_str = " ".join([c for c in clean_c if len(c) > 1])
+                    if c_str and c_str not in contact_list:
+                        contact_list.append(c_str)
+
+                # 4. 특기사항
+                if "특기사항" in row and not detail_data["notes"]:
+                    try:
+                        n_idx = row.index("특기사항")
+                        if n_idx + 1 < len(row):
+                            detail_data["notes"] = row[n_idx + 1].replace("\r", "").replace("\n", " ").strip()
+                    except Exception:
+                        pass
+
+                # 5. 수주시 요청사항 / 회의록
+                if "수주시 요청사항" in row:
+                    try:
+                        r_idx = row.index("수주시 요청사항")
+                        req_text = " ".join(row[r_idx + 1:])
+                        if i + 1 < len(all_rows):
+                            next_row = " ".join(all_rows[i + 1])
+                            if "회의록" in next_row:
+                                req_text += " | " + next_row
+                        detail_data["request"] = req_text.replace("\r", "").replace("\n", " ").strip()
+                    except Exception:
+                        pass
+
+            detail_data["contacts"] = contact_list
+        except Exception as e:
+            logger.warning(f"상세 파싱 오류 (DocNo={doc_no}): {e}")
+
+        return detail_data
+
     def crawl_suju_list(self) -> List[Dict[str, Any]]:
-        """수주소식 게시판(RoomNo=95) 목록 크롤링 및 메타데이터 파싱"""
+        """수주소식 게시판 목록 크롤링 및 각 게시글 상세 파싱 연동"""
         if not self.is_logged_in and not self.login():
             logger.error("로그인 불가로 크롤링 중단")
             return []
 
         suju_url = f"{GW_URL}/bbs/bbslist?AddBbs=0&csrf=eyJ0b2tlbiI6IiIsIlJvb21ObyI6Ijk1In0="
         try:
-            logger.info("수주소식 게시판 데이터 수집 중...")
+            logger.info("수주소식 게시판 목록 조회 중...")
             res = self.session.get(suju_url, timeout=15)
             if res.status_code != 200:
                 logger.error(f"수주소식 조회 실패: {res.status_code}")
                 return []
 
-            return self._parse_html(res.text)
+            return self._parse_html(res.content.decode("utf-8", errors="replace"))
         except Exception as e:
             logger.error(f"수주소식 크롤링 오류: {e}")
             return []
 
     def _parse_html(self, html: str) -> List[Dict[str, Any]]:
-        """HTML 테이블에서 수주 목록 추출 및 정규식 분석"""
+        """HTML 테이블에서 수주 목록 추출 및 정규식 분석 + 세부내용 수집"""
         rows = re.findall(r'<tr[^>]*>(.*?)</tr>', html, re.S)
         items: List[Dict[str, Any]] = []
 
@@ -111,34 +206,28 @@ class GroupwareSujuCrawler:
                 continue
 
             clean_tds = [re.sub(r'<[^>]+>', ' ', td).replace('&nbsp;', ' ').strip() for td in tds]
-            # 글번호 (tds[0])
             no_str = clean_tds[0].strip()
             if not no_str.isdigit():
                 continue
 
-            # 제목 추출 (tds[2])
+            doc_no = int(no_str)
             raw_title = clean_tds[2].strip() if len(clean_tds) > 2 else ""
             if not raw_title:
                 continue
 
-            # 작성자 (tds[3]), 작성일 (tds[4])
             author = clean_tds[3].strip() if len(clean_tds) > 3 else ""
             date_str = clean_tds[4].replace('&nbsp;', ' ').strip() if len(clean_tds) > 4 else ""
-            
-            # 정규식 분석: 예: "2026087.[(주)삼성물산]P5 FAB2 신축공사 견적용역(마감,구조)"
-            # 1) 코드 (2026xxx)
+
+            # 정규식 분석
             code_m = re.search(r'^(\d{7})', raw_title)
             project_code = f"TK-{code_m.group(1)}" if code_m else f"TK-2026-{no_str.zfill(5)}"
-            
-            # 2) 발주처 ([...])
+
             client_m = re.search(r'\[(.*?)\]', raw_title)
             client_name = client_m.group(1).strip() if client_m else "미지정 발주처"
-            
-            # 3) 대상 공종 괄호 ((마감, 구조...))
+
             scope_m = re.search(r'\(([^)]*(?:마감|구조|토목|조경|오승균|견적)[^)]*)\)$', raw_title)
             scope_text = scope_m.group(1) if scope_m else "마감,구조"
-            
-            # 타깃 부서 판별
+
             departments = []
             if "마감" in scope_text:
                 departments.append("마감팀")
@@ -149,7 +238,6 @@ class GroupwareSujuCrawler:
             if not departments:
                 departments = ["마감팀"]
 
-            # 프로젝트명 클렌징
             clean_name = raw_title
             if code_m:
                 clean_name = re.sub(r'^\d{7}\.?\s*', '', clean_name)
@@ -160,7 +248,6 @@ class GroupwareSujuCrawler:
 
             display_name = f"[{client_name}] {clean_name}" if client_name != "미지정 발주처" else clean_name
 
-            # 기본 일정 산정 (접수일 기준 1개월~1.5개월)
             try:
                 base_date = datetime.datetime.strptime(date_str.split()[0], "%y.%m.%d")
             except Exception:
@@ -169,9 +256,14 @@ class GroupwareSujuCrawler:
             start_date = base_date.strftime("%Y-%m-%d")
             end_date = (base_date + datetime.timedelta(days=35)).strftime("%Y-%m-%d")
 
+            # 세부 스펙 크롤링
+            logger.info(f"[{doc_no}] {project_code} 세부내용(연면적/스펙) 조회 중...")
+            detail = self.fetch_detail(doc_no)
+            time.sleep(0.05) # 서버 부하 방지용 미세 딜레이
+
             item = {
                 "id": f"intake_{no_str}",
-                "no": int(no_str),
+                "no": doc_no,
                 "code": project_code,
                 "client": client_name,
                 "name": display_name,
@@ -182,20 +274,26 @@ class GroupwareSujuCrawler:
                 "endDate": end_date,
                 "scopeText": scope_text,
                 "targetDepartments": departments,
-                "status": "접수완료", # 접수완료 -> 일정표 등록
-                "isScheduled": False
+                "status": "접수완료",
+                "isScheduled": False,
+                # 세부 스펙 필드
+                "area": detail.get("area", ""),
+                "usage": detail.get("usage", ""),
+                "buildings": detail.get("buildings", ""),
+                "floors": detail.get("floors", ""),
+                "contacts": detail.get("contacts", []),
+                "notes": detail.get("notes", ""),
+                "request": detail.get("request", "")
             }
             items.append(item)
 
-        logger.info(f"총 {len(items)}건 수주소식 파싱 완료")
+        logger.info(f"총 {len(items)}건 수주소식 및 세부스펙 파싱 완료")
         return items
 
     def save_to_json(self, items: List[Dict[str, Any]]) -> None:
         """프론트엔드 React 컴포넌트가 직접 읽을 수 있는 JSON 저장"""
         OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
-        
-        # 기존 저장 데이터가 있다면 스케줄 등록 여부 유지
-        existing_map = {}
+        existing_map: Dict[str, Any] = {}
         if OUTPUT_JSON.exists():
             try:
                 with open(OUTPUT_JSON, "r", encoding="utf-8") as f:
@@ -215,47 +313,19 @@ class GroupwareSujuCrawler:
             json.dump(items, f, ensure_ascii=False, indent=2)
         logger.info(f"성공적으로 JSON 파일 저장 완료: {OUTPUT_JSON}")
 
-    def run_daemon(self):
-        """오전 9시 ~ 오후 5시 1시간 간격 자동 크롤링 데몬"""
-        logger.info("=== 수주소식 자동 크롤러 데몬 모드 가동 시작 ===")
-        logger.info("크롤링 조건: 평일(월~금) 09:00 ~ 17:00, 1시간 주기")
-        
-        while True:
-            now = datetime.datetime.now()
-            # 0=월요일, 4=금요일
-            is_weekday = now.weekday() < 5
-            is_work_hour = 9 <= now.hour <= 17
 
-            if is_weekday and is_work_hour:
-                logger.info(f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] 정기 크롤링 수행")
-                items = self.crawl_suju_list()
-                if items:
-                    self.save_to_json(items)
-            else:
-                logger.info(f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] 업무 시간 외 대기 (평일 09~17시 동작)")
-
-            # 다음 1시간 대기 (또는 10분 주기 체크)
-            time.sleep(3600)
-
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="CONCOST 그룹웨어 수주소식 크롤러")
-    parser.add_argument("--once", action="store_true", help="1회 즉시 실행 후 종료")
-    parser.add_argument("--daemon", action="store_true", help="스케줄러 데몬 모드로 상시 구동")
+    parser.add_argument("--once", action="store_true", default=True, help="1회 즉시 실행 후 종료")
     args = parser.parse_args()
 
     crawler = GroupwareSujuCrawler()
+    items = crawler.crawl_suju_list()
+    if items:
+        crawler.save_to_json(items)
+        print(f"완료! 총 {len(items)}건 저장됨. 예시(첫번째):")
+        print(json.dumps(items[0], ensure_ascii=False, indent=2))
 
-    if args.daemon:
-        # 데몬 모드 실행 전 최초 1회 크롤링
-        items = crawler.crawl_suju_list()
-        if items:
-            crawler.save_to_json(items)
-        crawler.run_daemon()
-    else:
-        # 기본 1회 실행
-        items = crawler.crawl_suju_list()
-        if items:
-            crawler.save_to_json(items)
 
 if __name__ == "__main__":
     main()

@@ -16,7 +16,17 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "444,688평",
+    "usage": "반도체공장",
+    "buildings": "2개동",
+    "floors": "",
+    "contacts": [
+      "전민형   / 프로 미팅요청 010-3050-6640",
+      "김현주   / 프로 계약담당 010-3178-0488"
+    ],
+    "notes": "RC,내화피복,데크,PC,방수,코킹,금속,외장공사 / 공내역서 / AFC 작업",
+    "request": "RC,내화피복,데크,PC,방수,코킹,금속,외장공사 / 공내역서 / AFC   작업 | 회의록 \"[사외회의록_신동헌](삼성물산)평택 P5   FAB-2 물량산출 용역 킥오프 미팅\" 내용 참고"
   },
   {
     "id": "intake_1435",
@@ -35,7 +45,16 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "3,442평",
+    "usage": "업무시설      (오피스텔)",
+    "buildings": "1개동",
+    "floors": "B4/S13",
+    "contacts": [
+      "전성익   팀장 070-4848-2098 010-2226-6181 csi7721@daum.net"
+    ],
+    "notes": "마감,구조,토목,조경공사 / 설계예가 작업",
+    "request": "마감,구조,토목,조경공사    / 설계예가 작성"
   },
   {
     "id": "intake_1434",
@@ -54,7 +73,18 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "30,260평      (작업해당면적 3,557평)",
+    "usage": "운동시설",
+    "buildings": "1개동",
+    "floors": "B1/S3",
+    "contacts": [
+      "이상학   / 책임 업무담당자 잠실주경기장   리모델링현장 사업지원2팀 010-5497-4781 hj7520025@hdec.co.kr",
+      "변우주   / 팀장 총괄 잠실주경기장   리모델링현장 010-8865-9418 wuju.byun@hdec.co.kr",
+      "임상민   / 책임 계약 잠실주경기장   리모델링현장 010-6733-3942 shangren@hdec.co.kr"
+    ],
+    "notes": "① 대체야구장   해당면적만 작업 (공사범위계획도에 있는 리모델링 구간만)    (3,557평)        ② 필드 내 RC 담장 및 철골구조물이 포함되어 있어 업무에   포함되어야 함 (4,154평)        ③ 부분적으로 철거에 대한 금액을 견적하는 부분은 업무   포함        ④ 기존 제공 내역서와 비교 내역서 작성        ⑤ 도급 설계내역화",
+    "request": "정미물량산출   (마감, 구조공사) 26년 9월 7일자 도면 기준 1회 작업"
   },
   {
     "id": "intake_1433",
@@ -72,7 +102,17 @@
       "마감팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "48,785평",
+    "usage": "공동주택",
+    "buildings": "9개동",
+    "floors": "B2/S27",
+    "contacts": [
+      "노보균   / 책임 건축견적팀 010-4478-6637 archroh@hycorp.co.kr",
+      "하상욱   / 과장 건축견적팀 02-721-8322 010-5477-9230 hswfx@bs-hanyang.co.kr"
+    ],
+    "notes": "마감공사 / 공내역서 작성 / 사업승인 1회, 실시 1회",
+    "request": "마감공사 / 공내역서 작성 / 사업승인 1회, 실시 1회"
   },
   {
     "id": "intake_1432",
@@ -90,7 +130,17 @@
       "마감팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "65,535평",
+    "usage": "공동주택",
+    "buildings": "",
+    "floors": "",
+    "contacts": [
+      "박민석   / 차장 건축견적팀 010-9086-5963 park@hanwha.com",
+      "이재훈   / 대리 건축견적팀 010-9575-7787 ljhwogns@hanwha.com"
+    ],
+    "notes": "마강공사 / 외부특화변경도면 1회추가산출 /  동별, 건별   구분 및  비교작업포함",
+    "request": "마강공사 / 외부특화변경도면 1회추가산출 /  동별, 건별 구분 및    비교작업포함"
   },
   {
     "id": "intake_1431",
@@ -109,7 +159,16 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "21,074평",
+    "usage": "데이터센터",
+    "buildings": "",
+    "floors": "B1/S4",
+    "contacts": [
+      "박태훈   / 매니저 건축국내견적팀 02-746-0874 010-8806-0269 taehoon_park@hdec.co.kr"
+    ],
+    "notes": "마감/구조공사 / 공내역서 작성 / 입찰PJ / V.E공사 포함",
+    "request": "마감/구조공사 / 공내역서 작성 / 입찰PJ / V.E공사 포함"
   },
   {
     "id": "intake_1430",
@@ -128,7 +187,16 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "30,050평",
+    "usage": "공동주택",
+    "buildings": "7개동",
+    "floors": "B1/S29",
+    "contacts": [
+      "배준석/선임 본사 062-360-9315 010-6614-5158 gs5158@clickdk.com"
+    ],
+    "notes": "마감, 구조공사 / 공내역서 작성",
+    "request": "정미물량산출 (마감,구조)"
   },
   {
     "id": "intake_1429",
@@ -147,7 +215,17 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "동수",
+    "usage": "연면적",
+    "buildings": "",
+    "floors": "",
+    "contacts": [
+      "백종현   / 변호사 김앤장법률사무소 02-6441-2717 jonghyun.baek@KimChang.com",
+      "정민오   / 상무 엠엘텍 010-3422-5492 mojeong@mltech.co.kr"
+    ],
+    "notes": "공사비 적정성 검증 및 송무지원 용역",
+    "request": "1. 서류 검토 ; 소송 서류 및 도면의 검토"
   },
   {
     "id": "intake_1428",
@@ -166,7 +244,17 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "약 165,000평",
+    "usage": "반도체공장",
+    "buildings": "",
+    "floors": "",
+    "contacts": [
+      "김택수   /프로 010-4474-6529 ts0620.kim@samsung.com",
+      "김찬호   /프로 010-3134-0434 c_h.kim@samsung.com"
+    ],
+    "notes": "마감, 구조공사 / 공내역서 / AFC, AS-BUILT 작업",
+    "request": "마감, 구조공사 / 공내역서 / AFC, AS-BUILT 작업"
   },
   {
     "id": "intake_1427",
@@ -185,7 +273,16 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "5,052평",
+    "usage": "공장",
+    "buildings": "",
+    "floors": "B0/S2",
+    "contacts": [
+      "정정훈   / 매니저 010-4565-1425 correcthoon@hec.co.kr"
+    ],
+    "notes": "마감/구조공사 / 공내역서 작성",
+    "request": "마감/구조공사 / 공내역서 작성"
   },
   {
     "id": "intake_1426",
@@ -204,7 +301,16 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "동수",
+    "usage": "연면적",
+    "buildings": "",
+    "floors": "",
+    "contacts": [
+      "박홍준/이사 010-2973-4175 djun1223@hanmail.net"
+    ],
+    "notes": "물가변동(지수조정)",
+    "request": "물가변동으로 인한 계약금액 조정 작성 용역"
   },
   {
     "id": "intake_1425",
@@ -224,7 +330,16 @@
       "토목&조경팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "1,924평",
+    "usage": "업무시설      (오피스텔)",
+    "buildings": "1개동",
+    "floors": "B4/S14",
+    "contacts": [
+      "전성익   팀장 070-4848-2098 010-2226-6181 csi7721@daum.net"
+    ],
+    "notes": "마감,구조,토목,조경공사 / 설계예가 작업",
+    "request": "마감,구조,토목,조경공사    / 설계예가 작성"
   },
   {
     "id": "intake_1424",
@@ -242,7 +357,16 @@
       "토목&조경팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "동수",
+    "usage": "연면적",
+    "buildings": "",
+    "floors": "",
+    "contacts": [
+      "차재현 032-265-0404 010-8923-2526 acost@naver.com"
+    ],
+    "notes": "토공사,흙막이 일위대가 작성 용역",
+    "request": "토공사,흙막이 일위대가 작성 용역"
   },
   {
     "id": "intake_1423",
@@ -260,7 +384,17 @@
       "토목&조경팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "동수",
+    "usage": "연면적",
+    "buildings": "",
+    "floors": "",
+    "contacts": [
+      "김광재   관리부장 02-2677-8104 010-7223-6386 esan1212@hanmail.net",
+      "임지섭   차장 계약 02-2677-8104 010-6407-5035 cduntry@naver.com"
+    ],
+    "notes": "파일공사 내역작성 용역",
+    "request": "파일공사 내역작성"
   },
   {
     "id": "intake_1422",
@@ -278,7 +412,16 @@
       "토목&조경팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "동수",
+    "usage": "연면적",
+    "buildings": "",
+    "floors": "",
+    "contacts": [
+      "임완혁   대표 02-2686-6941 010-5216-5625 sy42429@hanmail.net"
+    ],
+    "notes": "기 작성된 내역 단가 업데이트 1회 작업 기준 (토목공사)",
+    "request": "- 기   작성된 내역 단가 업데이트 1회 작업 기준 (토목공사)"
   },
   {
     "id": "intake_1421",
@@ -297,7 +440,17 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "90,319평",
+    "usage": "공동주택",
+    "buildings": "13개동",
+    "floors": "B3/S34",
+    "contacts": [
+      "신정섭   / 프로 예산관림팀 010-8533-6449 sinjs@sk.com",
+      "오성일   / 프로 예산관림팀 010-5703-6004 sungiloh@sk.com"
+    ],
+    "notes": "구조선실행, 구조본실행, 마감본실행공사 / 공내역서 작성",
+    "request": "구조선실행, 구조본실행, 마감본실행공사 / 공내역서 작성"
   },
   {
     "id": "intake_1420",
@@ -316,7 +469,16 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "동수",
+    "usage": "연면적",
+    "buildings": "",
+    "floors": "",
+    "contacts": [
+      "이용민   / 주무관 관광개발팀 054-840-5818 not1635@korea.kr"
+    ],
+    "notes": "물가변동 검토 용역",
+    "request": "물품구매 계약의 물가변동 검토 용역"
   },
   {
     "id": "intake_1419",
@@ -336,7 +498,17 @@
       "토목&조경팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "43,990평",
+    "usage": "의료시설",
+    "buildings": "",
+    "floors": "B3/S13",
+    "contacts": [
+      "손현호   / 매니저 기술견적팀 02-6303-0405 010-4211-1422 hhson5@kumhoenc.com",
+      "김홍석   / 매니저 계약 일반건축사업팀 02-6303-0697 010-9011-4006 hskim33@kumhoenc.com"
+    ],
+    "notes": "구조,마감,부대토목,조경,인테리어공사 / 공내역서 작성 / 지하골조, 되메우기, 토공사, 흙막이, 가시설 제외",
+    "request": "구조,마감,부대토목,조경,인테리어공사 / 공내역서 작성"
   },
   {
     "id": "intake_1418",
@@ -355,7 +527,16 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "1,186평",
+    "usage": "교육연구시설",
+    "buildings": "1개동",
+    "floors": "B0/S5",
+    "contacts": [
+      "박경모   / 상무 010-4727-9342 kmpark8@hanmail.net"
+    ],
+    "notes": "구조,마감,철거공사 / 설계예가 작성",
+    "request": "구조,마감,철거공사 / 설계예가 작성"
   },
   {
     "id": "intake_1417",
@@ -374,7 +555,16 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "동수",
+    "usage": "연면적",
+    "buildings": "",
+    "floors": "",
+    "contacts": [
+      "나찬호/매니저 일반견적팀 010-4393-3744 6528@hdc-dvp.com"
+    ],
+    "notes": "마감, 구조공사 / 공내역서 작성",
+    "request": "&lt; 웹하드:   https://idisk.hdc-dvp.com/advanced_explorer/index.php/explorer/index   &gt;  ID: iparkguest   / PW: 12341234"
   },
   {
     "id": "intake_1416",
@@ -393,7 +583,16 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "동수",
+    "usage": "공동주택",
+    "buildings": "",
+    "floors": "",
+    "contacts": [
+      "이재붕   / 조합장 02-529-5860 010-4809-4557 kw6cha@naver.com"
+    ],
+    "notes": "계약관리 업무지원 및 공사비 관련 업무",
+    "request": "1. 계약관리 업무 지원"
   },
   {
     "id": "intake_1415",
@@ -413,7 +612,16 @@
       "토목&조경팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "1,768평",
+    "usage": "공장",
+    "buildings": "3개동",
+    "floors": "B1/S4",
+    "contacts": [
+      "성세일   / 이사 010-6412-6135 korseil@box4u.co.kr"
+    ],
+    "notes": "구조,마감,토목공사 / 설계예가 작성",
+    "request": "구조,마감,토목공사 / 설계예가 작성"
   },
   {
     "id": "intake_1414",
@@ -432,7 +640,16 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "22,985평",
+    "usage": "아파트   부대복리시설",
+    "buildings": "",
+    "floors": "",
+    "contacts": [
+      "전성익 팀장 070-4848-2098 010-2226-6181 csi7721@daum.net"
+    ],
+    "notes": "마감,구조공사 / 설계예가 작업",
+    "request": "마감,구조공사 / 설계예가 작업"
   },
   {
     "id": "intake_1413",
@@ -451,7 +668,16 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "2,064평",
+    "usage": "위험물저장소",
+    "buildings": "4개동",
+    "floors": "B0/S1",
+    "contacts": [
+      "우정진 과장 건축영업팀 02-6984-9252 010-3080-3832 wooj2j@krindus.co.kr"
+    ],
+    "notes": "정미물량산출(마감,구조,토목,기계,전기) / 공내역서",
+    "request": "정미물량산출(마감,구조,토목,기계,전기) / 공내역서"
   },
   {
     "id": "intake_1412",
@@ -470,7 +696,16 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "76,153평",
+    "usage": "반도체공장",
+    "buildings": "",
+    "floors": "",
+    "contacts": [
+      "송애리   / 프로 현장 공무팀 +1-512-574-0267 aelee.song@samsung.com"
+    ],
+    "notes": "외장/구조공사 / BOQ작성 / US단위 적용",
+    "request": "외장/구조공사 / BOQ작성 / US단위 적용"
   },
   {
     "id": "intake_1411",
@@ -489,7 +724,16 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "동수",
+    "usage": "연면적",
+    "buildings": "",
+    "floors": "",
+    "contacts": [
+      "노형규   / 부장 010-8147-3934 bandabi202412@daum.net"
+    ],
+    "notes": "물가변동(지수조정)",
+    "request": "물가변동으로 인한 계약금액 조정 작성 용역"
   },
   {
     "id": "intake_1410",
@@ -508,7 +752,16 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "동수",
+    "usage": "연면적",
+    "buildings": "",
+    "floors": "",
+    "contacts": [
+      "윤상학/소장 010-2547-9181 918475@naver.com"
+    ],
+    "notes": "물가변동(지수조정)",
+    "request": "물가변동으로 인한 계약금액 조정 작성 용역"
   },
   {
     "id": "intake_1409",
@@ -527,7 +780,16 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "15,934평",
+    "usage": "데이터센터",
+    "buildings": "1개동",
+    "floors": "B2/S8",
+    "contacts": [
+      "백종휘/책임 건축주택수행팀 02-746-6175 010-6862-4454 jh.baik@hdec.co.kr"
+    ],
+    "notes": "마감/구조공사 / 공내역서 작성 / 입찰PJ / V.E공사 미정",
+    "request": "마감/구조공사 / 공내역서 작성 / 입찰PJ / V.E공사 미정"
   },
   {
     "id": "intake_1408",
@@ -546,7 +808,16 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "동수",
+    "usage": "숙박시설",
+    "buildings": "",
+    "floors": "",
+    "contacts": [
+      "김성현   / 파트너 CS팀 02-3406-6617 010-7124-9655 gentle@shinsegae.com"
+    ],
+    "notes": "하자소송 감정 대응",
+    "request": "1. 하자 평가에 대한 검토"
   },
   {
     "id": "intake_1407",
@@ -565,6 +836,17 @@
       "구조팀"
     ],
     "status": "접수완료",
-    "isScheduled": false
+    "isScheduled": false,
+    "area": "동수",
+    "usage": "공동주택",
+    "buildings": "",
+    "floors": "",
+    "contacts": [
+      "오정섭   / 조합장 010-9282-6039 njho2234@naver.com",
+      "오세찬   / 상임감사 qwer010191@naver.com",
+      "최동환   / 이사 cdhhddc@hanmail.net"
+    ],
+    "notes": "공사비 검증 관련 기술 업무 / 시공사 공사비 협상 기술지원 업무",
+    "request": "1. 공사비 검증 관련 기술 업무"
   }
 ]

@@ -9,7 +9,13 @@ import {
   Layers,
   Trees,
   ExternalLink,
-  ArrowRight
+  ArrowRight,
+  Maximize2,
+  Building,
+  FileText,
+  PhoneCall,
+  X,
+  Info
 } from 'lucide-react';
 import { useProjectStore, type Department } from '../store/useProjectStore';
 import intakeRawData from '../data/intakeProjects.json';
@@ -29,6 +35,14 @@ export interface IntakeProject {
   targetDepartments: string[];
   status: string;
   isScheduled: boolean;
+  // 그룹웨어 세부 스펙
+  area?: string;
+  usage?: string;
+  buildings?: string;
+  floors?: string;
+  contacts?: string[];
+  notes?: string;
+  request?: string;
 }
 
 interface Props {
@@ -37,7 +51,8 @@ interface Props {
 }
 
 export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = 'ko' }) => {
-  const { addProject, projects } = useProjectStore();
+  const { addProject, projects, setSelectedProjectId } = useProjectStore();
+  const [selectedIntake, setSelectedIntake] = useState<IntakeProject | null>(null);
   const [intakeList, setIntakeList] = useState<IntakeProject[]>(() => {
     // 기존 프로젝트 코드들과 비교하여 이미 등록된 항목은 isScheduled=true로 동기화
     const scheduledCodes = new Set(projects.map((p) => p.code));
@@ -358,12 +373,33 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
                       </td>
 
                       {/* 프로젝트명 */}
-                      <td className="py-3.5 px-4">
-                        <div className="font-extrabold text-slate-900 dark:text-white">
-                          {item.name}
+                      <td className="py-3.5 px-4 cursor-pointer group" onClick={() => setSelectedIntake(item)}>
+                        <div className="font-extrabold text-slate-900 dark:text-white group-hover:text-[#00338d] dark:group-hover:text-blue-400 flex items-center gap-1.5 transition-colors">
+                          <span className="group-hover:underline">{item.name}</span>
+                          <span className="text-[10px] bg-blue-50 dark:bg-slate-700 text-[#00338d] dark:text-blue-300 px-1.5 py-0.5 rounded font-bold border border-blue-200 dark:border-slate-600">
+                            세부내용 확인
+                          </span>
                         </div>
                         <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">
                           {item.rawTitle}
+                        </div>
+                        {/* 연면적 및 세부 스펙 태그 */}
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                          {item.area && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-black bg-blue-50 text-[#00338d] dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800 px-2 py-0.5 rounded-md">
+                              <Maximize2 size={10} /> 연면적 {item.area}
+                            </span>
+                          )}
+                          {item.usage && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded-md">
+                              <Building size={10} /> {item.usage}
+                            </span>
+                          )}
+                          {(item.buildings || item.floors) && (
+                            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 px-1">
+                              {[item.buildings, item.floors].filter(Boolean).join(' · ')}
+                            </span>
+                          )}
                         </div>
                       </td>
 
@@ -443,6 +479,172 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
           </table>
         </div>
       </div>
+
+      {/* 수주 프로젝트 세부내용 확인 모달 */}
+      {selectedIntake && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-3xl overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+            
+            {/* 모달 헤더 */}
+            <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between bg-slate-50/80 dark:bg-slate-850">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[11px] font-black tracking-wider text-[#00338d] dark:text-blue-400 uppercase">
+                    GROUPWARE INTAKE DETAIL · 수주소식 원문 및 건축 개요
+                  </span>
+                  <span className="bg-blue-100 dark:bg-blue-900/40 text-[#00338d] dark:text-blue-300 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
+                    {selectedIntake.status}
+                  </span>
+                </div>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <span className="font-mono text-[#00338d] dark:text-blue-400">{selectedIntake.code}</span>
+                  <span className="text-slate-300">·</span>
+                  <span>{selectedIntake.name}</span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  작성자: {selectedIntake.author} · 접수일: {selectedIntake.receivedDate} · 기간: {selectedIntake.startDate} ~ {selectedIntake.endDate}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedIntake(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* 모달 본문: 세부 스펙 카드 그리드 */}
+            <div className="p-6 overflow-y-auto space-y-4 custom-scrollbar">
+              {/* 4대 핵심 지표 */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {/* 1. 연면적 */}
+                <div className="bg-slate-50 dark:bg-slate-800/80 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div className="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <Maximize2 size={14} className="text-[#00338d] dark:text-blue-400" />
+                    연면적
+                  </div>
+                  <div className="text-base font-black text-slate-900 dark:text-white mt-1.5">
+                    {selectedIntake.area || '미기재'}
+                  </div>
+                  {selectedIntake.buildings && (
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      동수: {selectedIntake.buildings}
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. 건물용도 및 규모 */}
+                <div className="bg-slate-50 dark:bg-slate-800/80 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div className="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <Building size={14} className="text-[#00338d] dark:text-blue-400" />
+                    건물용도 / 층수
+                  </div>
+                  <div className="text-base font-black text-slate-900 dark:text-white mt-1.5">
+                    {selectedIntake.usage || '일반 건축물'}
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    {selectedIntake.floors ? `층수: ${selectedIntake.floors}` : (selectedIntake.buildings ? `동수: ${selectedIntake.buildings}` : '규모: 정보 확인중')}
+                  </div>
+                </div>
+
+                {/* 3. 발주처 / 의뢰처 */}
+                <div className="bg-slate-50 dark:bg-slate-800/80 p-4 rounded-xl border border-slate-200 dark:border-slate-700 sm:col-span-2 lg:col-span-1">
+                  <div className="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <PhoneCall size={14} className="text-[#00338d] dark:text-blue-400" />
+                    발주처 / 담당자
+                  </div>
+                  <div className="text-base font-black text-slate-900 dark:text-white mt-1.5">
+                    {selectedIntake.client}
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    {selectedIntake.contacts && selectedIntake.contacts.length > 0 ? selectedIntake.contacts.join(' / ') : '담당자 미지정'}
+                  </div>
+                </div>
+              </div>
+
+              {/* 대상 공종 및 견적조건 */}
+              <div className="bg-slate-50 dark:bg-slate-800/80 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+                <div className="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <FileText size={14} className="text-[#00338d] dark:text-blue-400" />
+                  견적조건 및 특기사항 (원문)
+                </div>
+                <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-relaxed bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
+                  {selectedIntake.notes || selectedIntake.request || '공내역서 및 시공사 견적기준 물량산출 진행'}
+                </div>
+              </div>
+
+              {/* 수주시 요청사항 / 회의록 */}
+              {selectedIntake.request && (
+                <div className="bg-blue-50/60 dark:bg-blue-950/20 p-4 rounded-xl border border-blue-200 dark:border-blue-900/50 space-y-1.5">
+                  <div className="text-xs font-bold text-[#00338d] dark:text-blue-400 flex items-center gap-1.5">
+                    <Info size={14} />
+                    수주시 요청사항 & 회의록 연계
+                  </div>
+                  <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                    {selectedIntake.request}
+                  </div>
+                </div>
+              )}
+
+              {/* 원본 수주소식 타이틀 */}
+              <div className="text-[11px] text-slate-400 font-mono bg-slate-100 dark:bg-slate-800 p-2.5 rounded-lg">
+                그룹웨어 원문: {selectedIntake.rawTitle}
+              </div>
+            </div>
+
+            {/* 모달 푸터 액션 */}
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850 flex items-center justify-between gap-3">
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                대상부서: <strong className="text-slate-800 dark:text-slate-200">{selectedIntake.targetDepartments.join(', ')}</strong>
+              </span>
+
+              <div className="flex items-center gap-2">
+                {selectedIntake.isScheduled ? (
+                  <button
+                    onClick={() => {
+                      const found = projects.find((p) => p.code === selectedIntake.code);
+                      if (found) {
+                        setSelectedProjectId(found.id);
+                        setSelectedIntake(null);
+                        onNavigateToSchedule(found.department);
+                      } else {
+                        setSelectedIntake(null);
+                        onNavigateToSchedule();
+                      }
+                    }}
+                    className="px-4 py-2 rounded-xl text-xs font-bold bg-[#00338d] hover:bg-[#002266] text-white transition-all shadow-sm flex items-center gap-1.5"
+                  >
+                    일정표 & 공종별 상세 배정 모달 열기 <ArrowRight size={14} />
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    {selectedIntake.targetDepartments.map((dept) => (
+                      <button
+                        key={dept}
+                        onClick={() => {
+                          handleRegisterToSchedule(selectedIntake, dept as Department);
+                          setSelectedIntake(null);
+                        }}
+                        className="px-3 py-2 rounded-xl text-xs font-bold bg-[#00338d] hover:bg-[#002266] text-white transition-all shadow-sm flex items-center gap-1"
+                      >
+                        <CalendarPlus size={13} />
+                        {dept} 일정 등록
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={() => setSelectedIntake(null)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors"
+                >
+                  닫기
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 };

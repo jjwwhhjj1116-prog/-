@@ -71,6 +71,16 @@ export interface Project {
   subTasks: Record<string, SubTaskSchedule>; // 공종명 -> 세부 일정
   roles: Partial<Record<string, ProjectRole>>; // 이전 호환
   revisions?: Revision[];
+  // 그룹웨어 수주 세부 스펙 필드
+  client?: string;
+  area?: string; // 연면적 (예: 444,688평)
+  usage?: string; // 건물용도 (예: 반도체공장)
+  buildings?: string; // 동수 (예: 2개동)
+  floors?: string; // 층수 (예: B4/S13)
+  contacts?: string[]; // 발주처 담당자 리스트
+  notes?: string; // 견적조건 및 특기사항
+  request?: string; // 수주시 요청사항 및 회의록
+  rawTitle?: string;
 }
 
 interface ProjectState {

@@ -9,7 +9,14 @@ import {
   Calendar,
   UserCheck,
   Sparkles,
-  Search
+  Search,
+  Building,
+  Maximize2,
+  FileText,
+  PhoneCall,
+  ChevronDown,
+  ChevronUp,
+  Info
 } from 'lucide-react';
 import {
   useProjectStore,
@@ -48,6 +55,9 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
 
   // 배정 피드백 토스트
   const [assignToast, setAssignToast] = useState<{ role: string; name: string } | null>(null);
+
+  // 그룹웨어 수주 세부 스펙 아코디언 토글 (기본 펼침)
+  const [isSpecExpanded, setIsSpecExpanded] = useState(true);
 
   useEffect(() => {
     if (project) {
@@ -309,6 +319,104 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
             <span className="text-[11px] bg-emerald-700 px-2 py-0.5 rounded">실시간 반영</span>
           </div>
         )}
+
+        {/* 그룹웨어 수주 세부 스펙 & 건축 개요 카드 */}
+        <div className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/90 px-5 py-3 transition-all">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-[#00338d] dark:text-blue-300">
+                <Building size={16} />
+              </span>
+              <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                그룹웨어 수주 세부 스펙 & 건축 개요
+                <span className="text-[10px] bg-blue-50 dark:bg-blue-950/60 text-[#00338d] dark:text-blue-400 font-bold px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800">
+                  사내 그룹웨어 실시간 연동
+                </span>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsSpecExpanded(!isSpecExpanded)}
+              className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
+            >
+              {isSpecExpanded ? (
+                <>세부정보 접기 <ChevronUp size={14} /></>
+              ) : (
+                <>연면적/세부스펙 보기 <ChevronDown size={14} /></>
+              )}
+            </button>
+          </div>
+
+          {isSpecExpanded && (
+            <div className="mt-3 pt-3 border-t border-slate-200/80 dark:border-slate-800 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 animate-in fade-in duration-200">
+              {/* 1. 연면적 */}
+              <div className="bg-white dark:bg-slate-800/90 p-3 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-2xs">
+                <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <Maximize2 size={13} className="text-[#00338d] dark:text-blue-400" />
+                  연면적
+                </div>
+                <div className="text-sm font-black text-slate-900 dark:text-white mt-1">
+                  {project.area || '미기재'}
+                </div>
+                {project.buildings && (
+                  <div className="text-[10px] text-slate-400 dark:text-slate-400 mt-0.5 font-medium">
+                    동수: {project.buildings}
+                  </div>
+                )}
+              </div>
+
+              {/* 2. 건물용도 및 규모 */}
+              <div className="bg-white dark:bg-slate-800/90 p-3 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-2xs">
+                <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <Building size={13} className="text-[#00338d] dark:text-blue-400" />
+                  건물 용도 및 층수
+                </div>
+                <div className="text-sm font-black text-slate-900 dark:text-white mt-1 line-clamp-1">
+                  {project.usage || '일반 건축물'}
+                </div>
+                <div className="text-[10px] text-slate-400 dark:text-slate-400 mt-0.5 font-medium">
+                  {project.floors ? `층수: ${project.floors}` : (project.buildings ? `동수: ${project.buildings}` : '규모: 정보 확인중')}
+                </div>
+              </div>
+
+              {/* 3. 발주처 및 담당자 */}
+              <div className="bg-white dark:bg-slate-800/90 p-3 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-2xs">
+                <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <PhoneCall size={13} className="text-[#00338d] dark:text-blue-400" />
+                  발주처 / 의뢰처
+                </div>
+                <div className="text-sm font-black text-slate-900 dark:text-white mt-1 line-clamp-1">
+                  {project.client || '삼성물산(주)'}
+                </div>
+                <div className="text-[10px] text-slate-400 dark:text-slate-400 mt-0.5 font-medium line-clamp-1" title={project.contacts?.join(', ')}>
+                  {project.contacts && project.contacts.length > 0 ? project.contacts.join(' / ') : '담당자 미지정'}
+                </div>
+              </div>
+
+              {/* 4. 견적조건 및 특기사항 */}
+              <div className="bg-white dark:bg-slate-800/90 p-3 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-2xs">
+                <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <FileText size={13} className="text-[#00338d] dark:text-blue-400" />
+                  견적조건 및 특기사항
+                </div>
+                <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-1 line-clamp-2" title={project.notes || project.request}>
+                  {project.notes || project.request || '공내역서 및 설계도서 기준 산출'}
+                </div>
+              </div>
+
+              {/* 수주시 요청사항/회의록 전문 (내용이 있을 경우 가로 전체 표시) */}
+              {(project.request || project.notes) && (
+                <div className="col-span-1 md:col-span-2 lg:col-span-4 bg-blue-50/50 dark:bg-blue-950/20 px-3.5 py-2.5 rounded-xl border border-blue-100 dark:border-blue-900/40 text-[11px] text-slate-700 dark:text-slate-300 flex items-start gap-2">
+                  <Info size={14} className="text-[#00338d] dark:text-blue-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <strong className="text-[#00338d] dark:text-blue-400 font-bold">수주 세부 요청사항 / 회의록: </strong>
+                    <span>{project.request || project.notes}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* 2. 메인 바디: 와이드 2-Column Split 레이아웃 */}
         <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-12 bg-slate-100/60 dark:bg-slate-950">
