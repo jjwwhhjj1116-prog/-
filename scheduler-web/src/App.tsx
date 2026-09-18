@@ -34,6 +34,7 @@ import { PrintScheduleModal } from './components/PrintScheduleModal';
 import { useProjectStore, type Department } from './store/useProjectStore';
 import { useAuthStore } from './store/useAuthStore';
 import { exportProjectsToExcel, importProjectsFromExcel } from './services/excelService';
+import realProjectsData from './data/realProjects.json';
 
 // 좌측 카테고리 정의 (최상단에 '프로젝트 접수목록' 추가)
 export type NavCategory =
@@ -85,6 +86,16 @@ export default function App() {
       document.documentElement.classList.remove('dark');
     }
   }, [darkMode]);
+
+  // 구버전 가짜 샘플(수택E구역 등) 감지 시 실제 수주 접수목록 프로젝트(58건)로 전면 자동 갱신
+  useEffect(() => {
+    const hasFakeSample = projects.some(
+      (p) => p.name.includes('수택E구역') || p.name.includes('광양 바이오매스') || p.id === 'p1' || p.id === 'p2'
+    );
+    if (hasFakeSample || projects.length <= 5) {
+      setProjects(realProjectsData as any);
+    }
+  }, [projects, setProjects]);
 
   // KPI 지표 계산
   const totalCount = projects.length;
