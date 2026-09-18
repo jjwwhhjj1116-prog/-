@@ -8,7 +8,7 @@ export const DEPARTMENTS: Department[] = ['마감팀', '구조팀', '토목&조�
 
 // 팀별 물량산출 공종 정의
 export const TEAM_ROLES: Record<Department, string[]> = {
-  마감팀: ['PM', '조적', '창호', '외부', '내부', '세대', '가설'],
+  마감팀: ['PM', '조적', '창호', '외부', '내부', '세대', '가설', '내역'],
   구조팀: ['PM', '보', '슬라브', '옹벽', '기둥', '기초', '아파트슬라브', '아파트옹벽'],
   '토목&조경팀': ['PM', '토목', '부대토목', '조경'],
 };
@@ -41,15 +41,17 @@ export interface Person {
 export type ProjectStatus = '착수예정' | '진행중' | '납품' | '수정';
 export type SubTaskStatus = '예정' | '진행중' | '완료' | '지연';
 
-// 1~N 세부 공종 일정 스키마 (스크린샷 2 모달 카드 연동)
+// 1~N 세부 공종 일정 스키마 (다중 인원 및 내역 유형 지원)
 export interface SubTaskSchedule {
   roleName: string;
-  personId: string;
+  personId: string; // 단일 호환용
+  personIds?: string[]; // 다중인원 배정 (예: ['원종수', '성대용'] or ['u_14', 'u_15'])
   startDate: string;
   endDate: string;
   status: SubTaskStatus;
   memo: string;
   version?: string;
+  subType?: '공내역' | '설계예가' | '실행가' | string; // '내역' 공종 유형 (공내역 / 설계예가 / 실행가)
 }
 
 export interface ProjectRole {

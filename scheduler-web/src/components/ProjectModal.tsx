@@ -112,12 +112,69 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
     });
   };
 
-  // 원클릭 인원 배정 핸들러 (우측 가용 팀원 카드 클릭 시 좌측의 선택된 공종에 자동 배정)
-  const handleQuickAssign = (unitId: string, unitName: string) => {
-    const targetRole = selectedRole || rolesForTeam[0];
-    handleFieldChange(targetRole, 'personId', unitId);
-    setAssignToast({ role: targetRole, name: unitName });
+  // 원클릭 인원 배정 핸들러 (다중 인원 지원: 이미 배정되어 있으면 해제, 없으면 추가)
+  const handleTogglePerson = (roleName: string, unitId: string, unitName: string) => {
+    const targetRole = roleName || selectedRole || rolesForTeam[0];
+    setLocalSubTasks((prev) => {
+      const current = prev[targetRole] || {
+        roleName: targetRole,
+        personId: unitId,
+        personIds: [unitId],
+        startDate: project.startDate,
+        endDate: project.endDate,
+        status: '예정' as SubTaskStatus,
+        memo: '',
+        version: 'v1'
+      };
+
+      const existingIds = current.personIds && current.personIds.length > 0
+        ? [...current.personIds]
+        : (current.personId ? [current.personId] : []);
+
+      let updatedIds: string[];
+      if (existingIds.includes(unitId)) {
+        updatedIds = existingIds.filter((id) => id !== unitId);
+      } else {
+        updatedIds = [...existingIds, unitId];
+      }
+
+      const primaryPersonId = updatedIds[0] || '';
+      return {
+        ...prev,
+        [targetRole]: {
+          ...current,
+          personId: primaryPersonId,
+          personIds: updatedIds
+        }
+      };
+    });
+
+    const isRemovedAction = (localSubTasks[targetRole]?.personIds || []).includes(unitId);
+    setAssignToast({
+      role: targetRole,
+      name: isRemovedAction ? `${unitName} (배정 해제)` : `${unitName} (투입 배정)`
+    });
     setTimeout(() => setAssignToast(null), 3000);
+  };
+
+  // 개별 인원 칩 X 클릭시 제거
+  const handleRemovePerson = (roleName: string, unitId: string) => {
+    setLocalSubTasks((prev) => {
+      const current = prev[roleName];
+      if (!current) return prev;
+      const existing = current.personIds && current.personIds.length > 0
+        ? current.personIds
+        : (current.personId ? [current.personId] : []);
+      const updated = existing.filter((id) => id !== unitId);
+      return {
+        ...prev,
+        [roleName]: {
+          ...current,
+          personId: updated[0] || '',
+          personIds: updated
+        }
+      };
+    });
   };
 
   // 전체 공종 일괄 저장
@@ -125,7 +182,7 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
     Object.entries(localSubTasks).forEach(([roleName, item]) => {
       updateSubTask(project.id, roleName, item);
     });
-    alert('전체 공종 일정이 성공적으로 저장되었습니다. 개인별 캘린더에 실시간 동기화되었습니다.');
+    alert('전체 공종 일정이 성공적으로 저장되었습니다. 다중 배정 인원 및 내역 유형이 실시간 동기화되었습니다.');
     onClose();
   };
 
@@ -452,11 +509,6 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
 
                 const isSelected = selectedRole === roleName;
 
-                // 담당자 이름 표시
-                const assignedPerson = availabilityList.find(
-                  (a) => a.id === subTask.personId || a.name === subTask.personId
-                );
-
                 return (
                   <div
                     key={roleName}
@@ -513,65 +565,160 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                       </div>
                     </div>
 
-                    {/* 담당자 배정 카드 영역 */}
+                    {/* 담당자 배정 카드 영역 (다중 인원 지원) */}
                     <div
-                      className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-1.5"
+                      className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 truncate">
-                          <UserCheck size={14} className={assignedPerson ? "text-emerald-600 dark:text-emerald-400 shrink-0" : "text-slate-400 shrink-0"} />
-                          {assignedPerson ? (
-                            <span className="font-extrabold text-xs text-slate-900 dark:text-white truncate">
-                              {assignedPerson.name}
-                              <span className="text-[10px] text-slate-400 font-normal ml-1">({assignedPerson.badge})</span>
-                            </span>
-                          ) : (
-                            <span className="text-xs text-slate-400 italic">
-                              담당자 미배정 (우측 선택)
-                            </span>
-                          )}
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <UserCheck size={14} className={((subTask.personIds && subTask.personIds.length > 0) || subTask.personId) ? "text-emerald-600 dark:text-emerald-400 shrink-0" : "text-slate-400 shrink-0"} />
+                          <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                            투입 인원 {((subTask.personIds && subTask.personIds.length > 0) ? subTask.personIds.length : (subTask.personId ? 1 : 0))}명
+                          </span>
                         </div>
 
-                        {/* 가용성 현황 태그 */}
-                        {assignedPerson && (
-                          <div className="shrink-0">
-                            {assignedPerson.overlaps.length > 0 ? (
-                              <span className="text-[10px] text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950 px-1.5 py-0.5 rounded font-bold">
-                                ⚠ {assignedPerson.overlaps.length}건 겹침
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 rounded font-bold">
-                                🟢 여유
-                              </span>
-                            )}
+                        {/* 가용성 현황 요약 */}
+                        {((subTask.personIds && subTask.personIds.length > 0) ? subTask.personIds : (subTask.personId ? [subTask.personId] : [])).length > 0 && (
+                          <div className="shrink-0 flex items-center gap-1">
+                            {((subTask.personIds && subTask.personIds.length > 0) ? subTask.personIds : (subTask.personId ? [subTask.personId] : [])).map((pId) => {
+                              const avail = availabilityList.find(a => a.id === pId || a.name === pId);
+                              const hasOverlap = (avail?.overlaps.length || 0) > 0;
+                              return (
+                                <span
+                                  key={pId}
+                                  className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
+                                    hasOverlap
+                                      ? 'text-amber-700 bg-amber-100 dark:bg-amber-950 dark:text-amber-300'
+                                      : 'text-emerald-700 bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300'
+                                  }`}
+                                  title={hasOverlap ? `${avail?.name || pId}: ⚠ ${avail?.overlaps.length}건 겹침` : `${avail?.name || pId}: 🟢 여유`}
+                                >
+                                  {avail?.name || pId}{hasOverlap ? '⚠' : '✓'}
+                                </span>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
 
-                      {/* 담당자 변경 드롭다운 (컴팩트) */}
+                      {/* 배정된 다중 인원 칩 목록 (X 버튼으로 개별 제외) */}
+                      {(() => {
+                        const currentIds = subTask.personIds && subTask.personIds.length > 0
+                          ? subTask.personIds
+                          : (subTask.personId ? [subTask.personId] : []);
+
+                        if (currentIds.length === 0) {
+                          return (
+                            <div className="text-xs text-slate-400 italic py-0.5">
+                              담당자 미배정 (우측 목록에서 [배정] 클릭)
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="flex flex-wrap gap-1.5">
+                            {currentIds.map((pId) => {
+                              const kUser = deptKoreaUsers.find(k => k.id === pId || String(k.no) === pId || k.name === pId);
+                              const vTeam = deptVietTeams.find(vt => vt.id === pId || vt.code === pId || vt.displayName.includes(pId));
+                              const avail = availabilityList.find(a => a.id === pId || a.name === pId);
+                              const displayName = kUser?.name || vTeam?.displayName || avail?.name || pId;
+                              const badge = kUser?.position || (vTeam ? '베트남팀' : avail?.badge || '배정');
+
+                              return (
+                                <span
+                                  key={pId}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-extrabold bg-blue-100 text-blue-900 dark:bg-blue-900/60 dark:text-blue-200 border border-blue-200 dark:border-blue-700 shadow-2xs"
+                                >
+                                  <span>{displayName}</span>
+                                  <span className="text-[10px] text-blue-500 dark:text-blue-300 font-normal">
+                                    ({badge})
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemovePerson(roleName, pId)}
+                                    className="text-blue-400 hover:text-rose-600 transition p-0.5 rounded ml-0.5"
+                                    title={`${displayName} 투입 해제`}
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+
+                      {/* 추가 인원 지정 드롭다운 */}
                       <select
-                        value={subTask.personId}
-                        onChange={(e) => handleFieldChange(roleName, 'personId', e.target.value)}
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            const unitName = deptKoreaUsers.find(k => k.id === e.target.value)?.name || deptVietTeams.find(v => v.id === e.target.value)?.displayName || e.target.value;
+                            handleTogglePerson(roleName, e.target.value, unitName);
+                          }
+                        }}
                         className="w-full text-xs font-medium px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none"
                       >
-                        <option value="">담당자 직접 지정 / 변경</option>
+                        <option value="">+ 인원 추가 투입 선택...</option>
                         <optgroup label="🇰🇷 한국 본사 인원">
-                          {deptKoreaUsers.map((u) => (
-                            <option key={u.id} value={u.id}>
-                              {u.name} ({u.position})
-                            </option>
-                          ))}
+                          {deptKoreaUsers.map((u) => {
+                            const isAssigned = (subTask.personIds || [subTask.personId]).includes(u.id);
+                            return (
+                              <option key={u.id} value={u.id}>
+                                {isAssigned ? '✓ ' : ''}{u.name} ({u.position}) {isAssigned ? '(배정됨)' : ''}
+                              </option>
+                            );
+                          })}
                         </optgroup>
                         <optgroup label="🇻🇳 베트남 팀 유닛">
-                          {deptVietTeams.map((vt) => (
-                            <option key={vt.id} value={vt.id}>
-                              {vt.displayName} (팀장: {vt.leaderName})
-                            </option>
-                          ))}
+                          {deptVietTeams.map((vt) => {
+                            const isAssigned = (subTask.personIds || [subTask.personId]).includes(vt.id);
+                            return (
+                              <option key={vt.id} value={vt.id}>
+                                {isAssigned ? '✓ ' : ''}{vt.displayName} (팀장: {vt.leaderName}) {isAssigned ? '(배정됨)' : ''}
+                              </option>
+                            );
+                          })}
                         </optgroup>
                       </select>
                     </div>
+
+                    {/* 내역 공종 전용: 3대 유형 (공내역, 설계예가, 실행가) 선택 버튼 */}
+                    {roleName === '내역' && (
+                      <div
+                        className="p-2.5 rounded-lg bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 space-y-1.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-black text-[#00338d] dark:text-blue-300 flex items-center gap-1">
+                            📊 내역 유형 선택:
+                          </span>
+                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-[#00338d] text-white">
+                            {subTask.subType || '공내역'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1">
+                          {(['공내역', '설계예가', '실행가'] as const).map((t) => {
+                            const isCurrent = (subTask.subType || '공내역') === t;
+                            return (
+                              <button
+                                key={t}
+                                type="button"
+                                onClick={() => handleFieldChange(roleName, 'subType', t)}
+                                className={`py-1 text-xs font-black rounded-md transition ${
+                                  isCurrent
+                                    ? 'bg-[#00338d] text-white shadow-2xs ring-2 ring-blue-400'
+                                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                                }`}
+                              >
+                                {t}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
 
                     {/* 일정 입력 행: 시작일 ~ 종료일 (컴팩트 인라인) */}
                     <div className="grid grid-cols-2 gap-2" onClick={(e) => e.stopPropagation()}>
@@ -753,20 +900,62 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                                 현재 [{unit.assignedRoleInCurrent}]
                               </span>
                             )}
+
+                            {(() => {
+                              const targetRole = selectedRole || rolesForTeam[0];
+                              const targetSub = localSubTasks[targetRole];
+                              const pIds = targetSub?.personIds && targetSub.personIds.length > 0
+                                ? targetSub.personIds
+                                : (targetSub?.personId ? [targetSub.personId] : []);
+                              const isCurrentRoleAssigned = pIds.includes(unit.id) || pIds.includes(unit.name);
+
+                              if (isCurrentRoleAssigned) {
+                                return (
+                                  <span className="text-[10px] font-black text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-950 px-1.5 py-0.2 rounded-full ring-1 ring-indigo-400">
+                                    ★ 포커스 [{targetRole}] 배정중
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
                         </div>
                       </div>
 
-                      {/* 원클릭 배정 액션 버튼 */}
-                      <button
-                        type="button"
-                        onClick={() => handleQuickAssign(unit.id, unit.name)}
-                        className="px-3 py-1.5 rounded-lg bg-[#00338d] hover:bg-[#002266] text-white text-xs font-extrabold shadow-2xs flex items-center gap-1 shrink-0 transition active:scale-95"
-                        title={`현재 선택된 [${selectedRole}] 공종에 ${unit.name} 배정`}
-                      >
-                        <UserCheck size={13} />
-                        <span>배정</span>
-                      </button>
+                      {/* 원클릭 배정/해제 토글 액션 버튼 */}
+                      {(() => {
+                        const targetRole = selectedRole || rolesForTeam[0];
+                        const targetSub = localSubTasks[targetRole];
+                        const pIds = targetSub?.personIds && targetSub.personIds.length > 0
+                          ? targetSub.personIds
+                          : (targetSub?.personId ? [targetSub.personId] : []);
+                        const isAssigned = pIds.includes(unit.id) || pIds.includes(unit.name);
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePerson(targetRole, unit.id, unit.name)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-extrabold shadow-2xs flex items-center gap-1 shrink-0 transition active:scale-95 ${
+                              isAssigned
+                                ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                                : 'bg-[#00338d] hover:bg-[#002266] text-white'
+                            }`}
+                            title={isAssigned ? `현재 [${targetRole}] 공종에서 ${unit.name} 투입 해제` : `현재 [${targetRole}] 공종에 ${unit.name} 추가 배정`}
+                          >
+                            {isAssigned ? (
+                              <>
+                                <CheckCircle2 size={13} />
+                                <span>배정됨 (해제)</span>
+                              </>
+                            ) : (
+                              <>
+                                <UserCheck size={13} />
+                                <span>+ 배정</span>
+                              </>
+                            )}
+                          </button>
+                        );
+                      })()}
                     </div>
 
                     {/* 타 프로젝트 중복 표시 (정돈된 뱃지 스타일) */}

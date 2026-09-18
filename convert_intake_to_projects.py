@@ -109,13 +109,30 @@ def generate_schedule():
                     '가설': {
                         'roleName': '가설',
                         'personId': finish_users[(idx + 2) % len(finish_users)]['id'] if finish_users else 'u_18',
+                        'personIds': [finish_users[(idx + 2) % len(finish_users)]['id'] if finish_users else 'u_18'],
                         'startDate': '2026-10-10',
                         'endDate': end_date,
                         'status': '예정',
                         'memo': '외부비계 및 가설울타리 적산',
                         'version': 'v1'
                     },
+                    '내역': {
+                        'roleName': '내역',
+                        'personId': finish_users[(idx + 3) % len(finish_users)]['id'] if finish_users else 'u_14',
+                        'personIds': [finish_users[(idx + 3) % len(finish_users)]['id'] if finish_users else 'u_14'],
+                        'subType': '공내역' if idx % 3 == 0 else ('설계예가' if idx % 3 == 1 else '실행가'),
+                        'startDate': '2026-10-12',
+                        'endDate': end_date,
+                        'status': '예정',
+                        'memo': f"{'공내역' if idx % 3 == 0 else ('설계예가' if idx % 3 == 1 else '실행가')} 산출 및 내역서 취합",
+                        'version': 'v1'
+                    },
                 }
+                # 첫번째 프로젝트(TK-2026087 등) 조적 공종에 원종수(u_16) + 성대용(u_14) 다중인원 배정 예시 적용
+                if idx == 0 and '조적' in sub_tasks:
+                    sub_tasks['조적']['personId'] = 'u_16'
+                    sub_tasks['조적']['personIds'] = ['u_16', 'u_14']
+                    sub_tasks['조적']['memo'] = '원종수 수석 · 성대용 수석 합동 조적 수량산출'
             elif dept == '구조팀':
                 pm = struct_users[idx % len(struct_users)] if struct_users else {'id': 'u_13', 'name': '김재헌'}
                 # 공종: PM, 보, 슬라브, 옹벽, 기둥, 기초, 아파트슬라브, 아파트옹벽
@@ -215,6 +232,11 @@ def generate_schedule():
                         'version': 'v1'
                     },
                 }
+
+            # 모든 공종에 personIds 보정
+            for k, v in sub_tasks.items():
+                if 'personIds' not in v:
+                    v['personIds'] = [v['personId']] if v.get('personId') else []
 
             proj_obj = {
                 'id': p_id,

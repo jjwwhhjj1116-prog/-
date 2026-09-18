@@ -177,29 +177,46 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
 
       if (p.subTasks) {
         Object.values(p.subTasks).forEach((st) => {
-          // 1. 한국 개인 매칭
-          const matchedKoreaUser = koreaUsers.find(
-            (ku) => ku.id === st.personId || String(ku.no) === st.personId || ku.name === st.personId
-          );
-          if (matchedKoreaUser && rawMap[matchedKoreaUser.id]) {
-            rawMap[matchedKoreaUser.id].push({
-              projectId: p.id,
-              projectName: p.name,
-              projectShortName: shortName,
-              projectDisplayName: displayName,
-              roleName: st.roleName,
-              startDate: st.startDate,
-              endDate: st.endDate,
-              status: st.status,
-              memo: st.memo,
-              version: st.version,
-            });
-          }
+          // 1. 한국 개인 매칭 (다중 인원 personIds 및 단일 personId 모두 지원)
+          koreaUsers.forEach((ku) => {
+            const isAssigned =
+              (st.personIds && (st.personIds.includes(ku.id) || st.personIds.includes(String(ku.no)) || st.personIds.includes(ku.name))) ||
+              st.personId === ku.id ||
+              st.personId === String(ku.no) ||
+              st.personId === ku.name;
+
+            if (isAssigned && rawMap[ku.id]) {
+              const alreadyExists = rawMap[ku.id].some(
+                (t) => t.projectId === p.id && t.roleName === st.roleName
+              );
+              if (!alreadyExists) {
+                rawMap[ku.id].push({
+                  projectId: p.id,
+                  projectName: p.name,
+                  projectShortName: shortName,
+                  projectDisplayName: displayName,
+                  roleName: st.roleName + (st.subType ? ` (${st.subType})` : ''),
+                  startDate: st.startDate,
+                  endDate: st.endDate,
+                  status: st.status,
+                  memo: st.memo,
+                  version: st.version,
+                });
+              }
+            }
+          });
 
           // 2. 베트남 팀 매칭 (공종명 또는 베트남 인원 번호로 해당 팀 매핑)
           vietTeams.forEach((vt) => {
             const isMemberInTeam = vt.members.some(
-              (m) => m.id === st.personId || String(m.no) === st.personId || m.name === st.personId
+              (m) =>
+                (st.personIds && (st.personIds.includes(m.id) || st.personIds.includes(String(m.no)) || st.personIds.includes(m.name))) ||
+                m.id === st.personId ||
+                String(m.no) === st.personId ||
+                m.name === st.personId ||
+                (st.personIds && (st.personIds.includes(vt.id) || st.personIds.includes(vt.code))) ||
+                st.personId === vt.id ||
+                st.personId === vt.code
             );
             // 공종명 기반 매핑 (예: 내부 -> 내부팀, 창호 -> 창호팀, 조적 -> 조적팀, 외부 -> 외부팀, 슬라브/보 -> 수평팀, 기둥/옹벽 -> 수직팀)
             const isRoleMapped =
@@ -221,7 +238,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                   projectName: p.name,
                   projectShortName: shortName,
                   projectDisplayName: displayName,
-                  roleName: st.roleName,
+                  roleName: st.roleName + (st.subType ? ` (${st.subType})` : ''),
                   startDate: st.startDate,
                   endDate: st.endDate,
                   status: st.status,
@@ -301,6 +318,9 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
   const getTaskColorClass = (roleName: string, status: string) => {
     if (status === '완료') {
       return 'bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700';
+    }
+    if (roleName.includes('내역')) {
+      return 'bg-amber-600 text-white border-amber-700 hover:bg-amber-700';
     }
     if (roleName === 'PM') {
       return 'bg-slate-900 text-white border-slate-950 hover:bg-black shadow-xs';

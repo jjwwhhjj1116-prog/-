@@ -8,7 +8,7 @@
     "endDate": "2026-10-21",
     "department": "마감팀",
     "pmId": "u_12",
-    "progress": 23,
+    "progress": 17,
     "status": "진행중",
     "area": "444,688평",
     "usage": "반도체공장",
@@ -28,7 +28,7 @@
         "endDate": "2026-10-21"
       },
       "조적": {
-        "personId": "BRICK",
+        "personId": "u_16",
         "startDate": "2026-09-16",
         "endDate": "2026-10-05"
       },
@@ -56,6 +56,11 @@
         "personId": "u_14",
         "startDate": "2026-10-10",
         "endDate": "2026-10-21"
+      },
+      "내역": {
+        "personId": "u_15",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-21"
       }
     },
     "subTasks": {
@@ -66,16 +71,23 @@
         "endDate": "2026-10-21",
         "status": "진행중",
         "memo": "조한빈 실장: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_12"
+        ]
       },
       "조적": {
         "roleName": "조적",
-        "personId": "BRICK",
+        "personId": "u_16",
         "startDate": "2026-09-16",
         "endDate": "2026-10-05",
         "status": "예정",
-        "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "memo": "원종수 수석 · 성대용 수석 합동 조적 수량산출",
+        "version": "v1",
+        "personIds": [
+          "u_16",
+          "u_14"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -84,7 +96,10 @@
         "endDate": "2026-10-10",
         "status": "예정",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -93,7 +108,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -102,7 +120,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -111,15 +132,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_14",
+        "personIds": [
+          "u_14"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-10-21",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_15",
+        "personIds": [
+          "u_15"
+        ],
+        "subType": "공내역",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-21",
+        "status": "예정",
+        "memo": "공내역 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -133,7 +173,7 @@
     "endDate": "2026-10-21",
     "department": "구조팀",
     "pmId": "u_24",
-    "progress": 23,
+    "progress": 17,
     "status": "진행중",
     "area": "444,688평",
     "usage": "반도체공장",
@@ -186,16 +226,22 @@
         "endDate": "2026-10-21",
         "status": "진행중",
         "memo": "장범선 실장: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_24"
+        ]
       },
       "기초": {
         "roleName": "기초",
         "personId": "VERT",
         "startDate": "2026-09-16",
         "endDate": "2026-10-05",
-        "status": "진행중",
+        "status": "예정",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -204,7 +250,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -213,7 +262,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -222,7 +274,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -231,7 +286,10 @@
         "endDate": "2026-10-21",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -244,7 +302,7 @@
     "endDate": "2026-10-20",
     "department": "마감팀",
     "pmId": "u_13",
-    "progress": 50,
+    "progress": 15,
     "status": "진행중",
     "area": "3,442평",
     "usage": "업무시설      (오피스텔)",
@@ -291,6 +349,11 @@
         "personId": "u_15",
         "startDate": "2026-10-10",
         "endDate": "2026-10-20"
+      },
+      "내역": {
+        "personId": "u_16",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-20"
       }
     },
     "subTasks": {
@@ -301,25 +364,34 @@
         "endDate": "2026-10-20",
         "status": "진행중",
         "memo": "김재헌 수석: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_13"
+        ]
       },
       "조적": {
         "roleName": "조적",
         "personId": "BRICK",
         "startDate": "2026-09-15",
         "endDate": "2026-10-05",
-        "status": "진행중",
+        "status": "예정",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
         "personId": "WIN",
         "startDate": "2026-09-20",
         "endDate": "2026-10-10",
-        "status": "진행중",
+        "status": "예정",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -328,7 +400,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -337,7 +412,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -346,15 +424,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_15",
+        "personIds": [
+          "u_15"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_16",
+        "personIds": [
+          "u_16"
+        ],
+        "subType": "설계예가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-20",
+        "status": "예정",
+        "memo": "설계예가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -368,7 +465,7 @@
     "endDate": "2026-10-20",
     "department": "구조팀",
     "pmId": "u_25",
-    "progress": 50,
+    "progress": 15,
     "status": "진행중",
     "area": "3,442평",
     "usage": "업무시설      (오피스텔)",
@@ -420,16 +517,22 @@
         "endDate": "2026-10-20",
         "status": "진행중",
         "memo": "신동헌 팀장: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_25"
+        ]
       },
       "기초": {
         "roleName": "기초",
         "personId": "VERT",
         "startDate": "2026-09-15",
         "endDate": "2026-10-05",
-        "status": "진행중",
+        "status": "예정",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -438,7 +541,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -447,7 +553,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -456,7 +565,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -465,7 +577,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -527,6 +642,11 @@
         "personId": "u_16",
         "startDate": "2026-10-10",
         "endDate": "2026-10-19"
+      },
+      "내역": {
+        "personId": "u_17",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-19"
       }
     },
     "subTasks": {
@@ -537,7 +657,10 @@
         "endDate": "2026-10-19",
         "status": "착수예정",
         "memo": "성대용 수석: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_14"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -546,7 +669,10 @@
         "endDate": "2026-10-05",
         "status": "예정",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -555,7 +681,10 @@
         "endDate": "2026-10-10",
         "status": "예정",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -564,7 +693,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -573,7 +705,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -582,15 +717,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_16",
+        "personIds": [
+          "u_16"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-10-19",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_17",
+        "personIds": [
+          "u_17"
+        ],
+        "subType": "실행가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-19",
+        "status": "예정",
+        "memo": "실행가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -658,7 +812,10 @@
         "endDate": "2026-10-19",
         "status": "착수예정",
         "memo": "김채원 수석: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_26"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -667,7 +824,10 @@
         "endDate": "2026-10-05",
         "status": "예정",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -676,7 +836,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -685,7 +848,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -694,7 +860,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -703,7 +872,10 @@
         "endDate": "2026-10-19",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -716,7 +888,7 @@
     "endDate": "2026-10-19",
     "department": "마감팀",
     "pmId": "u_15",
-    "progress": 41,
+    "progress": 90,
     "status": "진행중",
     "area": "48,785평",
     "usage": "공동주택",
@@ -764,6 +936,11 @@
         "personId": "u_17",
         "startDate": "2026-10-10",
         "endDate": "2026-10-19"
+      },
+      "내역": {
+        "personId": "u_18",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-19"
       }
     },
     "subTasks": {
@@ -774,7 +951,10 @@
         "endDate": "2026-10-19",
         "status": "진행중",
         "memo": "양한규 수석: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_15"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -783,7 +963,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -792,7 +975,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -801,7 +987,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -810,7 +999,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -819,15 +1011,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_17",
+        "personIds": [
+          "u_17"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-10-19",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_18",
+        "personIds": [
+          "u_18"
+        ],
+        "subType": "공내역",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-19",
+        "status": "예정",
+        "memo": "공내역 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -889,6 +1100,11 @@
         "personId": "u_18",
         "startDate": "2026-10-10",
         "endDate": "2026-10-16"
+      },
+      "내역": {
+        "personId": "u_19",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-16"
       }
     },
     "subTasks": {
@@ -899,7 +1115,10 @@
         "endDate": "2026-10-16",
         "status": "진행중",
         "memo": "원종수 수석: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_16"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -908,7 +1127,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -917,7 +1139,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -926,7 +1151,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -935,7 +1163,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -944,15 +1175,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_18",
+        "personIds": [
+          "u_18"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-10-16",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_19",
+        "personIds": [
+          "u_19"
+        ],
+        "subType": "설계예가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-16",
+        "status": "예정",
+        "memo": "설계예가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -966,7 +1216,7 @@
     "endDate": "2026-10-15",
     "department": "마감팀",
     "pmId": "u_17",
-    "progress": 64,
+    "progress": 90,
     "status": "진행중",
     "area": "21,074평",
     "usage": "데이터센터",
@@ -1013,6 +1263,11 @@
         "personId": "u_19",
         "startDate": "2026-10-10",
         "endDate": "2026-10-15"
+      },
+      "내역": {
+        "personId": "u_20",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-15"
       }
     },
     "subTasks": {
@@ -1023,7 +1278,10 @@
         "endDate": "2026-10-15",
         "status": "진행중",
         "memo": "송영길 수석: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_17"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -1032,7 +1290,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -1041,7 +1302,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -1050,7 +1314,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -1059,7 +1326,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -1068,15 +1338,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_19",
+        "personIds": [
+          "u_19"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_20",
+        "personIds": [
+          "u_20"
+        ],
+        "subType": "실행가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-15",
+        "status": "예정",
+        "memo": "실행가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -1090,7 +1379,7 @@
     "endDate": "2026-10-15",
     "department": "구조팀",
     "pmId": "u_29",
-    "progress": 64,
+    "progress": 90,
     "status": "진행중",
     "area": "21,074평",
     "usage": "데이터센터",
@@ -1142,7 +1431,10 @@
         "endDate": "2026-10-15",
         "status": "진행중",
         "memo": "서화원 책임: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_29"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -1151,7 +1443,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -1160,7 +1455,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -1169,7 +1467,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -1178,7 +1479,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -1187,7 +1491,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -1247,6 +1554,11 @@
         "personId": "u_20",
         "startDate": "2026-10-10",
         "endDate": "2026-10-14"
+      },
+      "내역": {
+        "personId": "u_21",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-14"
       }
     },
     "subTasks": {
@@ -1257,7 +1569,10 @@
         "endDate": "2026-10-14",
         "status": "착수예정",
         "memo": "이은지 책임: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_18"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -1266,7 +1581,10 @@
         "endDate": "2026-10-05",
         "status": "예정",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -1275,7 +1593,10 @@
         "endDate": "2026-10-10",
         "status": "예정",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -1284,7 +1605,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -1293,7 +1617,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -1302,15 +1629,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_20",
+        "personIds": [
+          "u_20"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-10-14",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_21",
+        "personIds": [
+          "u_21"
+        ],
+        "subType": "공내역",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-14",
+        "status": "예정",
+        "memo": "공내역 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -1376,7 +1722,10 @@
         "endDate": "2026-10-14",
         "status": "착수예정",
         "memo": "양진혁 프로: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_30"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -1385,7 +1734,10 @@
         "endDate": "2026-10-05",
         "status": "예정",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -1394,7 +1746,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -1403,7 +1758,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -1412,7 +1770,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -1421,7 +1782,10 @@
         "endDate": "2026-10-14",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -1482,6 +1846,11 @@
         "personId": "u_21",
         "startDate": "2026-10-10",
         "endDate": "2026-10-14"
+      },
+      "내역": {
+        "personId": "u_22",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-14"
       }
     },
     "subTasks": {
@@ -1492,7 +1861,10 @@
         "endDate": "2026-10-14",
         "status": "납품",
         "memo": "남은주 책임: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_19"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -1501,7 +1873,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -1510,7 +1885,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -1519,7 +1897,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -1528,7 +1909,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -1537,15 +1921,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_21",
+        "personIds": [
+          "u_21"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-10-14",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_22",
+        "personIds": [
+          "u_22"
+        ],
+        "subType": "설계예가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-14",
+        "status": "예정",
+        "memo": "설계예가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -1612,7 +2015,10 @@
         "endDate": "2026-10-14",
         "status": "납품",
         "memo": "이성희 파트장: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_31"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -1621,7 +2027,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -1630,7 +2039,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -1639,7 +2051,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -1648,7 +2063,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -1657,7 +2075,10 @@
         "endDate": "2026-10-14",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -1670,7 +2091,7 @@
     "endDate": "2026-10-05",
     "department": "마감팀",
     "pmId": "u_20",
-    "progress": 54,
+    "progress": 79,
     "status": "진행중",
     "area": "약 165,000평",
     "usage": "반도체공장",
@@ -1718,6 +2139,11 @@
         "personId": "u_22",
         "startDate": "2026-10-10",
         "endDate": "2026-10-05"
+      },
+      "내역": {
+        "personId": "u_23",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-05"
       }
     },
     "subTasks": {
@@ -1728,7 +2154,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "송치영 책임: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_20"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -1737,7 +2166,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -1746,7 +2178,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -1755,7 +2190,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -1764,7 +2202,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -1773,15 +2214,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_22",
+        "personIds": [
+          "u_22"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-10-05",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_23",
+        "personIds": [
+          "u_23"
+        ],
+        "subType": "실행가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-10-05",
+        "status": "예정",
+        "memo": "실행가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -1795,7 +2255,7 @@
     "endDate": "2026-10-05",
     "department": "구조팀",
     "pmId": "u_24",
-    "progress": 54,
+    "progress": 79,
     "status": "진행중",
     "area": "약 165,000평",
     "usage": "반도체공장",
@@ -1848,7 +2308,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "장범선 실장: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_24"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -1857,7 +2320,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -1866,7 +2332,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -1875,7 +2344,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -1884,7 +2356,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -1893,7 +2368,10 @@
         "endDate": "2026-10-05",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -1906,7 +2384,7 @@
     "endDate": "2026-09-29",
     "department": "마감팀",
     "pmId": "u_21",
-    "progress": 29,
+    "progress": 53,
     "status": "진행중",
     "area": "5,052평",
     "usage": "공장",
@@ -1953,6 +2431,11 @@
         "personId": "u_23",
         "startDate": "2026-10-10",
         "endDate": "2026-09-29"
+      },
+      "내역": {
+        "personId": "u_12",
+        "startDate": "2026-10-12",
+        "endDate": "2026-09-29"
       }
     },
     "subTasks": {
@@ -1963,25 +2446,34 @@
         "endDate": "2026-09-29",
         "status": "진행중",
         "memo": "임승주 선임: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_21"
+        ]
       },
       "조적": {
         "roleName": "조적",
         "personId": "BRICK",
         "startDate": "2026-08-25",
         "endDate": "2026-10-05",
-        "status": "예정",
+        "status": "진행중",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
         "personId": "WIN",
         "startDate": "2026-09-20",
         "endDate": "2026-10-10",
-        "status": "예정",
+        "status": "진행중",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -1990,7 +2482,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -1999,7 +2494,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -2008,15 +2506,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_23",
+        "personIds": [
+          "u_23"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-09-29",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_12",
+        "personIds": [
+          "u_12"
+        ],
+        "subType": "공내역",
+        "startDate": "2026-10-12",
+        "endDate": "2026-09-29",
+        "status": "예정",
+        "memo": "공내역 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -2030,7 +2547,7 @@
     "endDate": "2026-09-29",
     "department": "구조팀",
     "pmId": "u_25",
-    "progress": 29,
+    "progress": 53,
     "status": "진행중",
     "area": "5,052평",
     "usage": "공장",
@@ -2082,7 +2599,10 @@
         "endDate": "2026-09-29",
         "status": "진행중",
         "memo": "신동헌 팀장: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_25"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -2091,7 +2611,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -2100,7 +2623,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -2109,7 +2635,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -2118,7 +2647,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -2127,7 +2659,10 @@
         "endDate": "2026-09-29",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -2187,6 +2722,11 @@
         "personId": "u_12",
         "startDate": "2026-10-10",
         "endDate": "2026-09-22"
+      },
+      "내역": {
+        "personId": "u_13",
+        "startDate": "2026-10-12",
+        "endDate": "2026-09-22"
       }
     },
     "subTasks": {
@@ -2197,7 +2737,10 @@
         "endDate": "2026-09-22",
         "status": "착수예정",
         "memo": "임창열 선임: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_22"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -2206,7 +2749,10 @@
         "endDate": "2026-10-05",
         "status": "예정",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -2215,7 +2761,10 @@
         "endDate": "2026-10-10",
         "status": "예정",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -2224,7 +2773,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -2233,7 +2785,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -2242,15 +2797,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_12",
+        "personIds": [
+          "u_12"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-09-22",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_13",
+        "personIds": [
+          "u_13"
+        ],
+        "subType": "설계예가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-09-22",
+        "status": "예정",
+        "memo": "설계예가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -2316,7 +2890,10 @@
         "endDate": "2026-09-22",
         "status": "착수예정",
         "memo": "김채원 수석: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_26"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -2325,7 +2902,10 @@
         "endDate": "2026-10-05",
         "status": "예정",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -2334,7 +2914,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -2343,7 +2926,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -2352,7 +2938,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -2361,7 +2950,10 @@
         "endDate": "2026-09-22",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -2374,7 +2966,7 @@
     "endDate": "2026-09-17",
     "department": "마감팀",
     "pmId": "u_23",
-    "progress": 88,
+    "progress": 41,
     "status": "진행중",
     "area": "1,924평",
     "usage": "업무시설      (오피스텔)",
@@ -2421,6 +3013,11 @@
         "personId": "u_13",
         "startDate": "2026-10-10",
         "endDate": "2026-09-17"
+      },
+      "내역": {
+        "personId": "u_14",
+        "startDate": "2026-10-12",
+        "endDate": "2026-09-17"
       }
     },
     "subTasks": {
@@ -2431,7 +3028,10 @@
         "endDate": "2026-09-17",
         "status": "진행중",
         "memo": "김수겸 프로: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_23"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -2440,7 +3040,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -2449,7 +3052,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -2458,7 +3064,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -2467,7 +3076,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -2476,15 +3088,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_13",
+        "personIds": [
+          "u_13"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-09-17",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_14",
+        "personIds": [
+          "u_14"
+        ],
+        "subType": "실행가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-09-17",
+        "status": "예정",
+        "memo": "실행가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -2498,7 +3129,7 @@
     "endDate": "2026-09-17",
     "department": "구조팀",
     "pmId": "u_27",
-    "progress": 88,
+    "progress": 41,
     "status": "진행중",
     "area": "1,924평",
     "usage": "업무시설      (오피스텔)",
@@ -2550,7 +3181,10 @@
         "endDate": "2026-09-17",
         "status": "진행중",
         "memo": "이정철 수석: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_27"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -2559,7 +3193,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -2568,7 +3205,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -2577,7 +3217,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -2586,7 +3229,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -2595,7 +3241,10 @@
         "endDate": "2026-09-17",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -2608,7 +3257,7 @@
     "endDate": "2026-09-17",
     "department": "토목&조경팀",
     "pmId": "u_33",
-    "progress": 88,
+    "progress": 41,
     "status": "진행중",
     "area": "1,924평",
     "usage": "업무시설      (오피스텔)",
@@ -2650,7 +3299,10 @@
         "endDate": "2026-09-17",
         "status": "진행중",
         "memo": "장명진 선임: 토공 및 조경 적산 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_33"
+        ]
       },
       "토목": {
         "roleName": "토목",
@@ -2659,7 +3311,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "절·성토 토공량 및 흙막이 가시설 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "CIVIL"
+        ]
       },
       "부대토목": {
         "roleName": "부대토목",
@@ -2668,7 +3323,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "우오수 배수관로 및 도로포장 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "CIVIL"
+        ]
       },
       "조경": {
         "roleName": "조경",
@@ -2677,7 +3335,10 @@
         "endDate": "2026-09-17",
         "status": "예정",
         "memo": "수목 식재 및 조경시설물 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_33"
+        ]
       }
     }
   },
@@ -2732,7 +3393,10 @@
         "endDate": "2026-09-15",
         "status": "진행중",
         "memo": "오승균 파트장: 토공 및 조경 적산 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_32"
+        ]
       },
       "토목": {
         "roleName": "토목",
@@ -2741,7 +3405,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "절·성토 토공량 및 흙막이 가시설 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "CIVIL"
+        ]
       },
       "부대토목": {
         "roleName": "부대토목",
@@ -2750,7 +3417,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "우오수 배수관로 및 도로포장 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "CIVIL"
+        ]
       },
       "조경": {
         "roleName": "조경",
@@ -2759,7 +3429,10 @@
         "endDate": "2026-09-15",
         "status": "예정",
         "memo": "수목 식재 및 조경시설물 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_32"
+        ]
       }
     }
   },
@@ -2772,7 +3445,7 @@
     "endDate": "2026-09-11",
     "department": "토목&조경팀",
     "pmId": "u_33",
-    "progress": 15,
+    "progress": 82,
     "status": "진행중",
     "area": "동수",
     "usage": "연면적",
@@ -2815,16 +3488,22 @@
         "endDate": "2026-09-11",
         "status": "진행중",
         "memo": "장명진 선임: 토공 및 조경 적산 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_33"
+        ]
       },
       "토목": {
         "roleName": "토목",
         "personId": "CIVIL",
         "startDate": "2026-08-07",
         "endDate": "2026-10-10",
-        "status": "예정",
+        "status": "진행중",
         "memo": "절·성토 토공량 및 흙막이 가시설 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "CIVIL"
+        ]
       },
       "부대토목": {
         "roleName": "부대토목",
@@ -2833,7 +3512,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "우오수 배수관로 및 도로포장 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "CIVIL"
+        ]
       },
       "조경": {
         "roleName": "조경",
@@ -2842,7 +3524,10 @@
         "endDate": "2026-09-11",
         "status": "예정",
         "memo": "수목 식재 및 조경시설물 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_33"
+        ]
       }
     }
   },
@@ -2897,7 +3582,10 @@
         "endDate": "2026-09-09",
         "status": "착수예정",
         "memo": "오승균 파트장: 토공 및 조경 적산 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_32"
+        ]
       },
       "토목": {
         "roleName": "토목",
@@ -2906,7 +3594,10 @@
         "endDate": "2026-10-10",
         "status": "예정",
         "memo": "절·성토 토공량 및 흙막이 가시설 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "CIVIL"
+        ]
       },
       "부대토목": {
         "roleName": "부대토목",
@@ -2915,7 +3606,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "우오수 배수관로 및 도로포장 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "CIVIL"
+        ]
       },
       "조경": {
         "roleName": "조경",
@@ -2924,7 +3618,10 @@
         "endDate": "2026-09-09",
         "status": "예정",
         "memo": "수목 식재 및 조경시설물 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_32"
+        ]
       }
     }
   },
@@ -2985,6 +3682,11 @@
         "personId": "u_17",
         "startDate": "2026-10-10",
         "endDate": "2026-09-08"
+      },
+      "내역": {
+        "personId": "u_18",
+        "startDate": "2026-10-12",
+        "endDate": "2026-09-08"
       }
     },
     "subTasks": {
@@ -2995,7 +3697,10 @@
         "endDate": "2026-09-08",
         "status": "납품",
         "memo": "양한규 수석: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_15"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -3004,7 +3709,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -3013,7 +3721,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -3022,7 +3733,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -3031,7 +3745,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -3040,15 +3757,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_17",
+        "personIds": [
+          "u_17"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-09-08",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_18",
+        "personIds": [
+          "u_18"
+        ],
+        "subType": "공내역",
+        "startDate": "2026-10-12",
+        "endDate": "2026-09-08",
+        "status": "예정",
+        "memo": "공내역 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -3115,7 +3851,10 @@
         "endDate": "2026-09-08",
         "status": "납품",
         "memo": "이성희 파트장: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_31"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -3124,7 +3863,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -3133,7 +3875,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -3142,7 +3887,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -3151,7 +3899,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -3160,7 +3911,10 @@
         "endDate": "2026-09-08",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -3173,7 +3927,7 @@
     "endDate": "2026-09-08",
     "department": "마감팀",
     "pmId": "u_16",
-    "progress": 42,
+    "progress": 47,
     "status": "진행중",
     "area": "동수",
     "usage": "연면적",
@@ -3220,6 +3974,11 @@
         "personId": "u_18",
         "startDate": "2026-10-10",
         "endDate": "2026-09-08"
+      },
+      "내역": {
+        "personId": "u_19",
+        "startDate": "2026-10-12",
+        "endDate": "2026-09-08"
       }
     },
     "subTasks": {
@@ -3230,7 +3989,10 @@
         "endDate": "2026-09-08",
         "status": "진행중",
         "memo": "원종수 수석: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_16"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -3239,7 +4001,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -3248,7 +4013,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -3257,7 +4025,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -3266,7 +4037,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -3275,15 +4049,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_18",
+        "personIds": [
+          "u_18"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-09-08",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_19",
+        "personIds": [
+          "u_19"
+        ],
+        "subType": "설계예가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-09-08",
+        "status": "예정",
+        "memo": "설계예가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -3297,7 +4090,7 @@
     "endDate": "2026-09-08",
     "department": "구조팀",
     "pmId": "u_24",
-    "progress": 42,
+    "progress": 47,
     "status": "진행중",
     "area": "동수",
     "usage": "연면적",
@@ -3349,7 +4142,10 @@
         "endDate": "2026-09-08",
         "status": "진행중",
         "memo": "장범선 실장: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_24"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -3358,7 +4154,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -3367,7 +4166,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -3376,7 +4178,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -3385,7 +4190,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -3394,7 +4202,10 @@
         "endDate": "2026-09-08",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -3407,7 +4218,7 @@
     "endDate": "2026-09-02",
     "department": "마감팀",
     "pmId": "u_17",
-    "progress": 81,
+    "progress": 71,
     "status": "진행중",
     "area": "43,990평",
     "usage": "의료시설",
@@ -3455,6 +4266,11 @@
         "personId": "u_19",
         "startDate": "2026-10-10",
         "endDate": "2026-09-02"
+      },
+      "내역": {
+        "personId": "u_20",
+        "startDate": "2026-10-12",
+        "endDate": "2026-09-02"
       }
     },
     "subTasks": {
@@ -3465,7 +4281,10 @@
         "endDate": "2026-09-02",
         "status": "진행중",
         "memo": "송영길 수석: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_17"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -3474,7 +4293,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -3483,7 +4305,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -3492,7 +4317,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -3501,7 +4329,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -3510,15 +4341,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_19",
+        "personIds": [
+          "u_19"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-09-02",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_20",
+        "personIds": [
+          "u_20"
+        ],
+        "subType": "실행가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-09-02",
+        "status": "예정",
+        "memo": "실행가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -3532,7 +4382,7 @@
     "endDate": "2026-09-02",
     "department": "구조팀",
     "pmId": "u_25",
-    "progress": 81,
+    "progress": 71,
     "status": "진행중",
     "area": "43,990평",
     "usage": "의료시설",
@@ -3585,7 +4435,10 @@
         "endDate": "2026-09-02",
         "status": "진행중",
         "memo": "신동헌 팀장: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_25"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -3594,7 +4447,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -3603,7 +4459,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -3612,7 +4471,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -3621,7 +4483,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -3630,7 +4495,10 @@
         "endDate": "2026-09-02",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -3643,7 +4511,7 @@
     "endDate": "2026-09-02",
     "department": "토목&조경팀",
     "pmId": "u_33",
-    "progress": 81,
+    "progress": 71,
     "status": "진행중",
     "area": "43,990평",
     "usage": "의료시설",
@@ -3686,7 +4554,10 @@
         "endDate": "2026-09-02",
         "status": "진행중",
         "memo": "장명진 선임: 토공 및 조경 적산 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_33"
+        ]
       },
       "토목": {
         "roleName": "토목",
@@ -3695,7 +4566,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "절·성토 토공량 및 흙막이 가시설 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "CIVIL"
+        ]
       },
       "부대토목": {
         "roleName": "부대토목",
@@ -3704,7 +4578,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "우오수 배수관로 및 도로포장 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "CIVIL"
+        ]
       },
       "조경": {
         "roleName": "조경",
@@ -3713,7 +4590,10 @@
         "endDate": "2026-09-02",
         "status": "예정",
         "memo": "수목 식재 및 조경시설물 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_33"
+        ]
       }
     }
   },
@@ -3773,6 +4653,11 @@
         "personId": "u_20",
         "startDate": "2026-10-10",
         "endDate": "2026-08-28"
+      },
+      "내역": {
+        "personId": "u_21",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-28"
       }
     },
     "subTasks": {
@@ -3783,7 +4668,10 @@
         "endDate": "2026-08-28",
         "status": "착수예정",
         "memo": "이은지 책임: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_18"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -3792,7 +4680,10 @@
         "endDate": "2026-10-05",
         "status": "예정",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -3801,7 +4692,10 @@
         "endDate": "2026-10-10",
         "status": "예정",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -3810,7 +4704,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -3819,7 +4716,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -3828,15 +4728,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_20",
+        "personIds": [
+          "u_20"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-08-28",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_21",
+        "personIds": [
+          "u_21"
+        ],
+        "subType": "공내역",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-28",
+        "status": "예정",
+        "memo": "공내역 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -3902,7 +4821,10 @@
         "endDate": "2026-08-28",
         "status": "착수예정",
         "memo": "김채원 수석: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_26"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -3911,7 +4833,10 @@
         "endDate": "2026-10-05",
         "status": "예정",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -3920,7 +4845,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -3929,7 +4857,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -3938,7 +4869,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -3947,7 +4881,10 @@
         "endDate": "2026-08-28",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -3960,7 +4897,7 @@
     "endDate": "2026-08-24",
     "department": "마감팀",
     "pmId": "u_19",
-    "progress": 30,
+    "progress": 22,
     "status": "진행중",
     "area": "동수",
     "usage": "연면적",
@@ -4007,6 +4944,11 @@
         "personId": "u_21",
         "startDate": "2026-10-10",
         "endDate": "2026-08-24"
+      },
+      "내역": {
+        "personId": "u_22",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-24"
       }
     },
     "subTasks": {
@@ -4017,7 +4959,10 @@
         "endDate": "2026-08-24",
         "status": "진행중",
         "memo": "남은주 책임: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_19"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -4026,7 +4971,10 @@
         "endDate": "2026-10-05",
         "status": "예정",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -4035,7 +4983,10 @@
         "endDate": "2026-10-10",
         "status": "예정",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -4044,7 +4995,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -4053,7 +5007,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -4062,15 +5019,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_21",
+        "personIds": [
+          "u_21"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-08-24",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_22",
+        "personIds": [
+          "u_22"
+        ],
+        "subType": "설계예가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-24",
+        "status": "예정",
+        "memo": "설계예가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -4084,7 +5060,7 @@
     "endDate": "2026-08-24",
     "department": "구조팀",
     "pmId": "u_27",
-    "progress": 30,
+    "progress": 22,
     "status": "진행중",
     "area": "동수",
     "usage": "연면적",
@@ -4136,7 +5112,10 @@
         "endDate": "2026-08-24",
         "status": "진행중",
         "memo": "이정철 수석: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_27"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -4145,7 +5124,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -4154,7 +5136,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -4163,7 +5148,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -4172,7 +5160,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -4181,7 +5172,10 @@
         "endDate": "2026-08-24",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -4241,6 +5235,11 @@
         "personId": "u_22",
         "startDate": "2026-10-10",
         "endDate": "2026-08-24"
+      },
+      "내역": {
+        "personId": "u_23",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-24"
       }
     },
     "subTasks": {
@@ -4251,7 +5250,10 @@
         "endDate": "2026-08-24",
         "status": "진행중",
         "memo": "송치영 책임: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_20"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -4260,7 +5262,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -4269,7 +5274,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -4278,7 +5286,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -4287,7 +5298,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -4296,15 +5310,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_22",
+        "personIds": [
+          "u_22"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-08-24",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_23",
+        "personIds": [
+          "u_23"
+        ],
+        "subType": "실행가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-24",
+        "status": "예정",
+        "memo": "실행가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -4370,7 +5403,10 @@
         "endDate": "2026-08-24",
         "status": "진행중",
         "memo": "박소현 책임: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_28"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -4379,7 +5415,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -4388,7 +5427,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -4397,7 +5439,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -4406,7 +5451,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -4415,7 +5463,10 @@
         "endDate": "2026-08-24",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -4428,7 +5479,7 @@
     "endDate": "2026-08-14",
     "department": "마감팀",
     "pmId": "u_21",
-    "progress": 71,
+    "progress": 22,
     "status": "진행중",
     "area": "1,768평",
     "usage": "공장",
@@ -4475,6 +5526,11 @@
         "personId": "u_23",
         "startDate": "2026-10-10",
         "endDate": "2026-08-14"
+      },
+      "내역": {
+        "personId": "u_12",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-14"
       }
     },
     "subTasks": {
@@ -4485,25 +5541,34 @@
         "endDate": "2026-08-14",
         "status": "진행중",
         "memo": "임승주 선임: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_21"
+        ]
       },
       "조적": {
         "roleName": "조적",
         "personId": "BRICK",
         "startDate": "2026-07-10",
         "endDate": "2026-10-05",
-        "status": "진행중",
+        "status": "예정",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
         "personId": "WIN",
         "startDate": "2026-09-20",
         "endDate": "2026-10-10",
-        "status": "진행중",
+        "status": "예정",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -4512,7 +5577,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -4521,7 +5589,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -4530,15 +5601,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_23",
+        "personIds": [
+          "u_23"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-08-14",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_12",
+        "personIds": [
+          "u_12"
+        ],
+        "subType": "공내역",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-14",
+        "status": "예정",
+        "memo": "공내역 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -4552,7 +5642,7 @@
     "endDate": "2026-08-14",
     "department": "구조팀",
     "pmId": "u_29",
-    "progress": 71,
+    "progress": 22,
     "status": "진행중",
     "area": "1,768평",
     "usage": "공장",
@@ -4604,7 +5694,10 @@
         "endDate": "2026-08-14",
         "status": "진행중",
         "memo": "서화원 책임: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_29"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -4613,7 +5706,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -4622,7 +5718,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -4631,7 +5730,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -4640,7 +5742,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -4649,7 +5754,10 @@
         "endDate": "2026-08-14",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -4662,7 +5770,7 @@
     "endDate": "2026-08-14",
     "department": "토목&조경팀",
     "pmId": "u_33",
-    "progress": 71,
+    "progress": 22,
     "status": "진행중",
     "area": "1,768평",
     "usage": "공장",
@@ -4704,7 +5812,10 @@
         "endDate": "2026-08-14",
         "status": "진행중",
         "memo": "장명진 선임: 토공 및 조경 적산 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_33"
+        ]
       },
       "토목": {
         "roleName": "토목",
@@ -4713,7 +5824,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "절·성토 토공량 및 흙막이 가시설 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "CIVIL"
+        ]
       },
       "부대토목": {
         "roleName": "부대토목",
@@ -4722,7 +5836,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "우오수 배수관로 및 도로포장 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "CIVIL"
+        ]
       },
       "조경": {
         "roleName": "조경",
@@ -4731,7 +5848,10 @@
         "endDate": "2026-08-14",
         "status": "예정",
         "memo": "수목 식재 및 조경시설물 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_33"
+        ]
       }
     }
   },
@@ -4791,6 +5911,11 @@
         "personId": "u_12",
         "startDate": "2026-10-10",
         "endDate": "2026-08-13"
+      },
+      "내역": {
+        "personId": "u_13",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-13"
       }
     },
     "subTasks": {
@@ -4801,7 +5926,10 @@
         "endDate": "2026-08-13",
         "status": "착수예정",
         "memo": "임창열 선임: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_22"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -4810,7 +5938,10 @@
         "endDate": "2026-10-05",
         "status": "예정",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -4819,7 +5950,10 @@
         "endDate": "2026-10-10",
         "status": "예정",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -4828,7 +5962,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -4837,7 +5974,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -4846,15 +5986,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_12",
+        "personIds": [
+          "u_12"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-08-13",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_13",
+        "personIds": [
+          "u_13"
+        ],
+        "subType": "설계예가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-13",
+        "status": "예정",
+        "memo": "설계예가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -4920,7 +6079,10 @@
         "endDate": "2026-08-13",
         "status": "착수예정",
         "memo": "양진혁 프로: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_30"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -4929,7 +6091,10 @@
         "endDate": "2026-10-05",
         "status": "예정",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -4938,7 +6103,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -4947,7 +6115,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -4956,7 +6127,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -4965,7 +6139,10 @@
         "endDate": "2026-08-13",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -5025,6 +6202,11 @@
         "personId": "u_13",
         "startDate": "2026-10-10",
         "endDate": "2026-08-13"
+      },
+      "내역": {
+        "personId": "u_14",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-13"
       }
     },
     "subTasks": {
@@ -5035,7 +6217,10 @@
         "endDate": "2026-08-13",
         "status": "납품",
         "memo": "김수겸 프로: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_23"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -5044,7 +6229,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -5053,7 +6241,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -5062,7 +6253,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -5071,7 +6265,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -5080,15 +6277,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_13",
+        "personIds": [
+          "u_13"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-08-13",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_14",
+        "personIds": [
+          "u_14"
+        ],
+        "subType": "실행가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-13",
+        "status": "예정",
+        "memo": "실행가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -5154,7 +6370,10 @@
         "endDate": "2026-08-13",
         "status": "납품",
         "memo": "이성희 파트장: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_31"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -5163,7 +6382,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -5172,7 +6394,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -5181,7 +6406,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -5190,7 +6418,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -5199,7 +6430,10 @@
         "endDate": "2026-08-13",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -5212,7 +6446,7 @@
     "endDate": "2026-08-12",
     "department": "마감팀",
     "pmId": "u_12",
-    "progress": 72,
+    "progress": 71,
     "status": "진행중",
     "area": "76,153평",
     "usage": "반도체공장",
@@ -5259,6 +6493,11 @@
         "personId": "u_14",
         "startDate": "2026-10-10",
         "endDate": "2026-08-12"
+      },
+      "내역": {
+        "personId": "u_15",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-12"
       }
     },
     "subTasks": {
@@ -5269,7 +6508,10 @@
         "endDate": "2026-08-12",
         "status": "진행중",
         "memo": "조한빈 실장: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_12"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -5278,7 +6520,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -5287,7 +6532,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -5296,7 +6544,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -5305,7 +6556,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -5314,15 +6568,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_14",
+        "personIds": [
+          "u_14"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-08-12",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_15",
+        "personIds": [
+          "u_15"
+        ],
+        "subType": "공내역",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-12",
+        "status": "예정",
+        "memo": "공내역 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -5336,7 +6609,7 @@
     "endDate": "2026-08-12",
     "department": "구조팀",
     "pmId": "u_24",
-    "progress": 72,
+    "progress": 71,
     "status": "진행중",
     "area": "76,153평",
     "usage": "반도체공장",
@@ -5388,7 +6661,10 @@
         "endDate": "2026-08-12",
         "status": "진행중",
         "memo": "장범선 실장: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_24"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -5397,7 +6673,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -5406,7 +6685,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -5415,7 +6697,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -5424,7 +6709,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -5433,7 +6721,10 @@
         "endDate": "2026-08-12",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -5446,7 +6737,7 @@
     "endDate": "2026-08-11",
     "department": "마감팀",
     "pmId": "u_13",
-    "progress": 28,
+    "progress": 77,
     "status": "진행중",
     "area": "동수",
     "usage": "연면적",
@@ -5493,6 +6784,11 @@
         "personId": "u_15",
         "startDate": "2026-10-10",
         "endDate": "2026-08-11"
+      },
+      "내역": {
+        "personId": "u_16",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-11"
       }
     },
     "subTasks": {
@@ -5503,25 +6799,34 @@
         "endDate": "2026-08-11",
         "status": "진행중",
         "memo": "김재헌 수석: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_13"
+        ]
       },
       "조적": {
         "roleName": "조적",
         "personId": "BRICK",
         "startDate": "2026-07-07",
         "endDate": "2026-10-05",
-        "status": "예정",
+        "status": "진행중",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
         "personId": "WIN",
         "startDate": "2026-09-20",
         "endDate": "2026-10-10",
-        "status": "예정",
+        "status": "진행중",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -5530,7 +6835,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -5539,7 +6847,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -5548,15 +6859,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_15",
+        "personIds": [
+          "u_15"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-08-11",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_16",
+        "personIds": [
+          "u_16"
+        ],
+        "subType": "설계예가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-11",
+        "status": "예정",
+        "memo": "설계예가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -5570,7 +6900,7 @@
     "endDate": "2026-08-11",
     "department": "구조팀",
     "pmId": "u_25",
-    "progress": 28,
+    "progress": 77,
     "status": "진행중",
     "area": "동수",
     "usage": "연면적",
@@ -5622,7 +6952,10 @@
         "endDate": "2026-08-11",
         "status": "진행중",
         "memo": "신동헌 팀장: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_25"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -5631,7 +6964,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -5640,7 +6976,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -5649,7 +6988,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -5658,7 +7000,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -5667,7 +7012,10 @@
         "endDate": "2026-08-11",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -5727,6 +7075,11 @@
         "personId": "u_16",
         "startDate": "2026-10-10",
         "endDate": "2026-08-06"
+      },
+      "내역": {
+        "personId": "u_17",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-06"
       }
     },
     "subTasks": {
@@ -5737,7 +7090,10 @@
         "endDate": "2026-08-06",
         "status": "착수예정",
         "memo": "성대용 수석: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_14"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -5746,7 +7102,10 @@
         "endDate": "2026-10-05",
         "status": "예정",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -5755,7 +7114,10 @@
         "endDate": "2026-10-10",
         "status": "예정",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -5764,7 +7126,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -5773,7 +7138,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -5782,15 +7150,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_16",
+        "personIds": [
+          "u_16"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-08-06",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_17",
+        "personIds": [
+          "u_17"
+        ],
+        "subType": "실행가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-06",
+        "status": "예정",
+        "memo": "실행가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -5856,7 +7243,10 @@
         "endDate": "2026-08-06",
         "status": "착수예정",
         "memo": "김채원 수석: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_26"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -5865,7 +7255,10 @@
         "endDate": "2026-10-05",
         "status": "예정",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -5874,7 +7267,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -5883,7 +7279,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -5892,7 +7291,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -5901,7 +7303,10 @@
         "endDate": "2026-08-06",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -5914,7 +7319,7 @@
     "endDate": "2026-08-06",
     "department": "마감팀",
     "pmId": "u_15",
-    "progress": 75,
+    "progress": 91,
     "status": "진행중",
     "area": "15,934평",
     "usage": "데이터센터",
@@ -5961,6 +7366,11 @@
         "personId": "u_17",
         "startDate": "2026-10-10",
         "endDate": "2026-08-06"
+      },
+      "내역": {
+        "personId": "u_18",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-06"
       }
     },
     "subTasks": {
@@ -5971,7 +7381,10 @@
         "endDate": "2026-08-06",
         "status": "진행중",
         "memo": "양한규 수석: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_15"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -5980,7 +7393,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -5989,7 +7405,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -5998,7 +7417,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -6007,7 +7429,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -6016,15 +7441,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_17",
+        "personIds": [
+          "u_17"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-08-06",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_18",
+        "personIds": [
+          "u_18"
+        ],
+        "subType": "공내역",
+        "startDate": "2026-10-12",
+        "endDate": "2026-08-06",
+        "status": "예정",
+        "memo": "공내역 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -6038,7 +7482,7 @@
     "endDate": "2026-08-06",
     "department": "구조팀",
     "pmId": "u_27",
-    "progress": 75,
+    "progress": 91,
     "status": "진행중",
     "area": "15,934평",
     "usage": "데이터센터",
@@ -6090,7 +7534,10 @@
         "endDate": "2026-08-06",
         "status": "진행중",
         "memo": "이정철 수석: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_27"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -6099,7 +7546,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -6108,7 +7558,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -6117,7 +7570,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -6126,7 +7582,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -6135,7 +7594,10 @@
         "endDate": "2026-08-06",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -6195,6 +7657,11 @@
         "personId": "u_18",
         "startDate": "2026-10-10",
         "endDate": "2026-07-24"
+      },
+      "내역": {
+        "personId": "u_19",
+        "startDate": "2026-10-12",
+        "endDate": "2026-07-24"
       }
     },
     "subTasks": {
@@ -6205,7 +7672,10 @@
         "endDate": "2026-07-24",
         "status": "진행중",
         "memo": "원종수 수석: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_16"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -6214,7 +7684,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -6223,7 +7696,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -6232,7 +7708,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -6241,7 +7720,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -6250,15 +7732,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_18",
+        "personIds": [
+          "u_18"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-07-24",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_19",
+        "personIds": [
+          "u_19"
+        ],
+        "subType": "설계예가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-07-24",
+        "status": "예정",
+        "memo": "설계예가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -6324,7 +7825,10 @@
         "endDate": "2026-07-24",
         "status": "진행중",
         "memo": "박소현 책임: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_28"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -6333,7 +7837,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -6342,7 +7849,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -6351,7 +7861,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -6360,7 +7873,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -6369,7 +7885,10 @@
         "endDate": "2026-07-24",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   },
@@ -6382,7 +7901,7 @@
     "endDate": "2026-07-24",
     "department": "마감팀",
     "pmId": "u_17",
-    "progress": 65,
+    "progress": 44,
     "status": "진행중",
     "area": "동수",
     "usage": "공동주택",
@@ -6431,6 +7950,11 @@
         "personId": "u_19",
         "startDate": "2026-10-10",
         "endDate": "2026-07-24"
+      },
+      "내역": {
+        "personId": "u_20",
+        "startDate": "2026-10-12",
+        "endDate": "2026-07-24"
       }
     },
     "subTasks": {
@@ -6441,7 +7965,10 @@
         "endDate": "2026-07-24",
         "status": "진행중",
         "memo": "송영길 수석: 공정 및 산출물 총괄 관리",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_17"
+        ]
       },
       "조적": {
         "roleName": "조적",
@@ -6450,7 +7977,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "벽체 및 방화구획 조적 수량 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "BRICK"
+        ]
       },
       "창호": {
         "roleName": "창호",
@@ -6459,7 +7989,10 @@
         "endDate": "2026-10-10",
         "status": "진행중",
         "memo": "커튼월 및 금속창호 리스트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "WIN"
+        ]
       },
       "외부": {
         "roleName": "외부",
@@ -6468,7 +8001,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "외부 석재 및 복합판넬 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "EXT"
+        ]
       },
       "내부": {
         "roleName": "내부",
@@ -6477,7 +8013,10 @@
         "endDate": "2026-10-18",
         "status": "예정",
         "memo": "공용부 및 계단실 내부 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN1"
+        ]
       },
       "세대": {
         "roleName": "세대",
@@ -6486,15 +8025,34 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "단위세대 전용부 바닥·벽·천장 마감",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "IN2"
+        ]
       },
       "가설": {
         "roleName": "가설",
         "personId": "u_19",
+        "personIds": [
+          "u_19"
+        ],
         "startDate": "2026-10-10",
         "endDate": "2026-07-24",
         "status": "예정",
         "memo": "외부비계 및 가설울타리 적산",
+        "version": "v1"
+      },
+      "내역": {
+        "roleName": "내역",
+        "personId": "u_20",
+        "personIds": [
+          "u_20"
+        ],
+        "subType": "실행가",
+        "startDate": "2026-10-12",
+        "endDate": "2026-07-24",
+        "status": "예정",
+        "memo": "실행가 산출 및 내역서 취합",
         "version": "v1"
       }
     }
@@ -6508,7 +8066,7 @@
     "endDate": "2026-07-24",
     "department": "구조팀",
     "pmId": "u_29",
-    "progress": 65,
+    "progress": 44,
     "status": "진행중",
     "area": "동수",
     "usage": "공동주택",
@@ -6562,7 +8120,10 @@
         "endDate": "2026-07-24",
         "status": "진행중",
         "memo": "서화원 책임: 구조 계산서 및 배근도 검토 총괄",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "u_29"
+        ]
       },
       "기초": {
         "roleName": "기초",
@@ -6571,7 +8132,10 @@
         "endDate": "2026-10-05",
         "status": "진행중",
         "memo": "MAT기초 및 파일캡 배근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "기둥": {
         "roleName": "기둥",
@@ -6580,7 +8144,10 @@
         "endDate": "2026-10-12",
         "status": "예정",
         "memo": "지하~지상 RC기둥 철근 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       },
       "보": {
         "roleName": "보",
@@ -6589,7 +8156,10 @@
         "endDate": "2026-10-15",
         "status": "예정",
         "memo": "대보 및 작은보 철근 물량 집계",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "슬라브": {
         "roleName": "슬라브",
@@ -6598,7 +8168,10 @@
         "endDate": "2026-10-20",
         "status": "예정",
         "memo": "기준층 슬라브 및 데크플레이트 산출",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "HORIZ"
+        ]
       },
       "옹벽": {
         "roleName": "옹벽",
@@ -6607,7 +8180,10 @@
         "endDate": "2026-07-24",
         "status": "예정",
         "memo": "코어벽체 및 외벽 배근 적산",
-        "version": "v1"
+        "version": "v1",
+        "personIds": [
+          "VERT"
+        ]
       }
     }
   }
