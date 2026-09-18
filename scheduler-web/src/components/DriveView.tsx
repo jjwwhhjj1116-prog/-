@@ -86,7 +86,7 @@ export const DriveView: React.FC = () => {
     setIsAuthenticating(true);
     setAuthError(null);
     try {
-      const clientId = googleDriveConfig.clientId || '849204918234-concost-tech.apps.googleusercontent.com';
+      const clientId = googleDriveConfig.clientId;
       const token = await requestGoogleDriveAuth(clientId);
       setAuthToken(token);
       await loadRealFiles();

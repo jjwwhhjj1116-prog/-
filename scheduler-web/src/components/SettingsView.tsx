@@ -14,7 +14,8 @@ import {
   Trash2,
   Save,
   Copy,
-  ExternalLink,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -50,11 +51,11 @@ export const SettingsView: React.FC = () => {
     }
   }, [isAdmin, activeTab]);
 
-  // 1. Google Drive 설정 폼 상태
+  // 1. Google Drive 설정 폼 상태 (사용자 실제 OAuth 2.0 Credentials 연동)
   const [clientIdInput, setClientIdInput] = useState(googleDriveConfig.clientId);
   const [clientSecretInput, setClientSecretInput] = useState(googleDriveConfig.clientSecret);
   const [redirectUriInput, setRedirectUriInput] = useState(googleDriveConfig.redirectUri);
-  const [rootFolderIdInput, setRootFolderIdInput] = useState(googleDriveConfig.rootFolderId);
+  const [showConsoleGuide, setShowConsoleGuide] = useState(false);
   const [isTestingDrive, setIsTestingDrive] = useState(false);
   const [driveToast, setDriveToast] = useState<string | null>(null);
 
@@ -77,14 +78,14 @@ export const SettingsView: React.FC = () => {
   const [newUserPw, setNewUserPw] = useState('1234');
   const [newUserCompany, setNewUserCompany] = useState('컨코스트');
 
-  // Google Drive 설정 저장
+  // Google Drive 설정 저장 (루트 폴더는 '기술본부 자료실'로 자동 관리)
   const handleSaveGDrive = (e: React.FormEvent) => {
     e.preventDefault();
     updateGoogleDriveConfig({
       clientId: clientIdInput,
       clientSecret: clientSecretInput,
       redirectUri: redirectUriInput,
-      rootFolderId: rootFolderIdInput,
+      rootFolderId: '',
     });
     setDriveToast('Google Drive 연동 환경설정이 안전하게 저장되었습니다.');
     setTimeout(() => setDriveToast(null), 3000);
@@ -277,249 +278,217 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Google Cloud Console 입력값 원클릭 복사 가이드 (사용자 요청 항목) */}
-          <div className="bg-blue-50/70 dark:bg-blue-950/40 p-5 rounded-2xl border border-blue-200 dark:border-blue-800 text-xs space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="font-extrabold text-blue-900 dark:text-blue-200 flex items-center gap-2 text-sm">
+          {/* Google Cloud Console 등록 가이드 (기본 접힘/숨김, 필요시 클릭하여 확인) */}
+          <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden text-xs">
+            <button
+              type="button"
+              onClick={() => setShowConsoleGuide(!showConsoleGuide)}
+              className="w-full px-5 py-3.5 flex items-center justify-between text-left hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            >
+              <span className="font-extrabold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-blue-600" />
-                Google Cloud Console (console.cloud.google.com) 등록 필수값 가이드
-              </h4>
-              <a
-                href="https://console.cloud.google.com/apis/credentials"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-blue-600 dark:text-blue-400 font-bold hover:underline flex items-center gap-1"
-              >
-                Google Console 바로가기 <ExternalLink size={12} />
-              </a>
-            </div>
-            <p className="text-slate-600 dark:text-slate-300 text-[11px]">
-              Google Cloud Console의 [OAuth 동의 화면] 및 [사용자 인증 정보 &gt; OAuth 2.0 클라이언트 ID] 생성 시 아래 각 항목을 그대로 복사하여 붙여넣으시면 됩니다.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 font-mono text-[11px]">
-              {/* 1. 브랜딩: 앱 이름 */}
-              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-sans font-bold">1. 앱 이름 (App Name)</span>
-                  <span className="font-bold text-slate-800 dark:text-white">CONCOST TECH SCHEDULER</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText('CONCOST TECH SCHEDULER');
-                    setDriveToast('앱 이름이 복사되었습니다.');
-                    setTimeout(() => setDriveToast(null), 2500);
-                  }}
-                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded"
-                  title="복사"
-                >
-                  <Copy size={13} />
-                </button>
+                Google Cloud Console 등록 파라미터 가이드 (필요시 클릭하여 펼침)
+              </span>
+              <div className="flex items-center gap-2 text-slate-400">
+                <span className="text-[11px] font-mono">{showConsoleGuide ? '접기' : '상세보기'}</span>
+                {showConsoleGuide ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </div>
+            </button>
 
-              {/* 2. 브랜딩: 사용자 지원 / 개발자 이메일 */}
-              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-sans font-bold">2. 사용자 지원 및 개발자 이메일</span>
-                  <span className="font-bold text-slate-800 dark:text-white">concost_dt@gmail.com</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText('concost_dt@gmail.com');
-                    setDriveToast('이메일 주소가 복사되었습니다.');
-                    setTimeout(() => setDriveToast(null), 2500);
-                  }}
-                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded"
-                  title="복사"
-                >
-                  <Copy size={13} />
-                </button>
-              </div>
+            {showConsoleGuide && (
+              <div className="p-5 border-t border-slate-200 dark:border-slate-700 space-y-3 bg-blue-50/40 dark:bg-blue-950/20">
+                <p className="text-slate-600 dark:text-slate-300 text-[11px]">
+                  Google Cloud Console의 [OAuth 동의 화면] 및 [사용자 인증 정보 &gt; OAuth 2.0 클라이언트 ID] 생성 시 각 항목을 복사하여 붙여넣으실 수 있습니다.
+                </p>
 
-              {/* 3. 승인된 도메인 */}
-              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-sans font-bold">3. 승인된 도메인 (Authorized Domain)</span>
-                  <span className="font-bold text-[#00338d] dark:text-blue-300">concost-tech-scheduler.pages.dev</span>
-                  <span className="text-[10px] text-amber-600 dark:text-amber-400 block mt-0.5 font-medium">* 'pages.dev'가 아닌 전체 주소를 입력하거나 비워두셔도 됩니다.</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText('concost-tech-scheduler.pages.dev');
-                    setDriveToast('승인된 도메인이 복사되었습니다.');
-                    setTimeout(() => setDriveToast(null), 2500);
-                  }}
-                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded"
-                  title="복사"
-                >
-                  <Copy size={13} />
-                </button>
-              </div>
-
-              {/* 4. 앱 도메인 (홈페이지, 개인정보처리방침, 약관) */}
-              <div className="bg-white dark:bg-slate-800 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2.5">
-                <span className="text-[10px] text-slate-400 block font-sans font-bold uppercase tracking-wider">
-                  4. 앱 도메인 (Google OAuth 앱 게시 심사 필수 링크)
-                </span>
-                
-                {/* 4-1. 애플리케이션 홈페이지 */}
-                <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
-                  <div className="truncate mr-2">
-                    <span className="text-[10px] text-slate-500 font-bold block">애플리케이션 홈페이지</span>
-                    <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200 truncate block">
-                      https://concost-tech-scheduler.pages.dev
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <a
-                      href="https://concost-tech-scheduler.pages.dev"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="p-1.5 hover:bg-white dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-slate-700"
-                      title="페이지 열기"
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 font-mono text-[11px]">
+                  {/* 1. 브랜딩: 앱 이름 */}
+                  <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-sans font-bold">1. 앱 이름 (App Name)</span>
+                      <span className="font-bold text-slate-800 dark:text-white">CONCOST TECH SCHEDULER</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText('CONCOST TECH SCHEDULER');
+                        setDriveToast('앱 이름이 복사되었습니다.');
+                        setTimeout(() => setDriveToast(null), 2500);
+                      }}
+                      className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded"
+                      title="복사"
                     >
-                      <ExternalLink size={12} />
-                    </a>
+                      <Copy size={13} />
+                    </button>
+                  </div>
+
+                  {/* 2. 브랜딩: 사용자 지원 / 개발자 이메일 */}
+                  <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-sans font-bold">2. 사용자 지원 및 개발자 이메일</span>
+                      <span className="font-bold text-slate-800 dark:text-white">concost_dt@gmail.com</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText('concost_dt@gmail.com');
+                        setDriveToast('이메일 주소가 복사되었습니다.');
+                        setTimeout(() => setDriveToast(null), 2500);
+                      }}
+                      className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded"
+                      title="복사"
+                    >
+                      <Copy size={13} />
+                    </button>
+                  </div>
+
+                  {/* 3. 승인된 도메인 */}
+                  <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-sans font-bold">3. 승인된 도메인 (Authorized Domain)</span>
+                      <span className="font-bold text-[#00338d] dark:text-blue-300">concost-tech-scheduler.pages.dev</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText('concost-tech-scheduler.pages.dev');
+                        setDriveToast('승인된 도메인이 복사되었습니다.');
+                        setTimeout(() => setDriveToast(null), 2500);
+                      }}
+                      className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded"
+                      title="복사"
+                    >
+                      <Copy size={13} />
+                    </button>
+                  </div>
+
+                  {/* 4. 앱 도메인 (홈페이지, 개인정보처리방침, 약관) */}
+                  <div className="bg-white dark:bg-slate-800 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2.5">
+                    <span className="text-[10px] text-slate-400 block font-sans font-bold uppercase tracking-wider">
+                      4. 앱 도메인 (Google OAuth 앱 게시 심사 링크)
+                    </span>
+                    
+                    <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                      <div className="truncate mr-2">
+                        <span className="text-[10px] text-slate-500 font-bold block">홈페이지</span>
+                        <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200 truncate block">
+                          https://concost-tech-scheduler.pages.dev
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText('https://concost-tech-scheduler.pages.dev');
+                          setDriveToast('홈페이지 링크가 복사되었습니다.');
+                          setTimeout(() => setDriveToast(null), 2500);
+                        }}
+                        className="p-1.5 hover:bg-white dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-slate-700"
+                      >
+                        <Copy size={12} />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                      <div className="truncate mr-2">
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block">개인정보처리방침</span>
+                        <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200 truncate block">
+                          https://concost-tech-scheduler.pages.dev/privacy.html
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText('https://concost-tech-scheduler.pages.dev/privacy.html');
+                          setDriveToast('개인정보처리방침 링크가 복사되었습니다.');
+                          setTimeout(() => setDriveToast(null), 2500);
+                        }}
+                        className="p-1.5 hover:bg-white dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-slate-700"
+                      >
+                        <Copy size={12} />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                      <div className="truncate mr-2">
+                        <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold block">서비스 약관</span>
+                        <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200 truncate block">
+                          https://concost-tech-scheduler.pages.dev/terms.html
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText('https://concost-tech-scheduler.pages.dev/terms.html');
+                          setDriveToast('서비스 약관 링크가 복사되었습니다.');
+                          setTimeout(() => setDriveToast(null), 2500);
+                        }}
+                        className="p-1.5 hover:bg-white dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-slate-700"
+                      >
+                        <Copy size={12} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 5. 승인된 자바스크립트 원본 */}
+                  <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between md:col-span-2">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-sans font-bold">5. 승인된 자바스크립트 원본 (Authorized JavaScript origins)</span>
+                      <span className="font-bold text-emerald-700 dark:text-emerald-300">https://concost-tech-scheduler.pages.dev</span>
+                      <span className="text-slate-400 mx-2">|</span>
+                      <span className="text-slate-600 dark:text-slate-400">http://localhost:5173</span>
+                    </div>
                     <button
                       type="button"
                       onClick={() => {
                         navigator.clipboard.writeText('https://concost-tech-scheduler.pages.dev');
-                        setDriveToast('애플리케이션 홈페이지 링크가 복사되었습니다.');
+                        setDriveToast('승인된 자바스크립트 원본 URL이 복사되었습니다.');
                         setTimeout(() => setDriveToast(null), 2500);
                       }}
-                      className="p-1.5 hover:bg-white dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-slate-700"
-                      title="복사"
+                      className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded"
                     >
-                      <Copy size={12} />
+                      <Copy size={13} />
                     </button>
                   </div>
-                </div>
 
-                {/* 4-2. 애플리케이션 개인정보처리방침 */}
-                <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
-                  <div className="truncate mr-2">
-                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block">애플리케이션 개인정보처리방침 링크</span>
-                    <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200 truncate block">
-                      https://concost-tech-scheduler.pages.dev/privacy.html
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <a
-                      href="https://concost-tech-scheduler.pages.dev/privacy.html"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="p-1.5 hover:bg-white dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-slate-700"
-                      title="약관 확인"
-                    >
-                      <ExternalLink size={12} />
-                    </a>
+                  {/* 6. 승인된 리디렉션 URI */}
+                  <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between md:col-span-2">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-sans font-bold">6. 승인된 리디렉션 URI (Authorized redirect URIs)</span>
+                      <span className="font-bold text-emerald-700 dark:text-emerald-300">https://concost-tech-scheduler.pages.dev</span>
+                      <span className="text-slate-400 mx-2">|</span>
+                      <span className="text-slate-600 dark:text-slate-400">http://localhost:5173</span>
+                    </div>
                     <button
                       type="button"
                       onClick={() => {
-                        navigator.clipboard.writeText('https://concost-tech-scheduler.pages.dev/privacy.html');
-                        setDriveToast('개인정보처리방침 링크가 복사되었습니다.');
+                        navigator.clipboard.writeText('https://concost-tech-scheduler.pages.dev');
+                        setDriveToast('승인된 리디렉션 URI가 복사되었습니다.');
                         setTimeout(() => setDriveToast(null), 2500);
                       }}
-                      className="p-1.5 hover:bg-white dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-slate-700"
-                      title="복사"
+                      className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded"
                     >
-                      <Copy size={12} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* 4-3. 애플리케이션 서비스 약관 링크 */}
-                <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
-                  <div className="truncate mr-2">
-                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold block">애플리케이션 서비스 약관 링크</span>
-                    <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200 truncate block">
-                      https://concost-tech-scheduler.pages.dev/terms.html
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <a
-                      href="https://concost-tech-scheduler.pages.dev/terms.html"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="p-1.5 hover:bg-white dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-slate-700"
-                      title="약관 확인"
-                    >
-                      <ExternalLink size={12} />
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText('https://concost-tech-scheduler.pages.dev/terms.html');
-                        setDriveToast('서비스 약관 링크가 복사되었습니다.');
-                        setTimeout(() => setDriveToast(null), 2500);
-                      }}
-                      className="p-1.5 hover:bg-white dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-slate-700"
-                      title="복사"
-                    >
-                      <Copy size={12} />
+                      <Copy size={13} />
                     </button>
                   </div>
                 </div>
               </div>
-
-              {/* 5. 승인된 자바스크립트 원본 */}
-              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between md:col-span-2">
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-sans font-bold">5. 승인된 자바스크립트 원본 (Authorized JavaScript origins)</span>
-                  <span className="font-bold text-emerald-700 dark:text-emerald-300">https://concost-tech-scheduler.pages.dev</span>
-                  <span className="text-slate-400 mx-2">|</span>
-                  <span className="text-slate-600 dark:text-slate-400">http://localhost:5173</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText('https://concost-tech-scheduler.pages.dev');
-                    setDriveToast('승인된 자바스크립트 원본 URL이 복사되었습니다.');
-                    setTimeout(() => setDriveToast(null), 2500);
-                  }}
-                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded"
-                  title="복사"
-                >
-                  <Copy size={13} />
-                </button>
-              </div>
-
-              {/* 6. 승인된 리디렉션 URI */}
-              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between md:col-span-2">
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-sans font-bold">6. 승인된 리디렉션 URI (Authorized redirect URIs)</span>
-                  <span className="font-bold text-emerald-700 dark:text-emerald-300">https://concost-tech-scheduler.pages.dev</span>
-                  <span className="text-slate-400 mx-2">|</span>
-                  <span className="text-slate-600 dark:text-slate-400">http://localhost:5173</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText('https://concost-tech-scheduler.pages.dev');
-                    setDriveToast('승인된 리디렉션 URI가 복사되었습니다.');
-                    setTimeout(() => setDriveToast(null), 2500);
-                  }}
-                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded"
-                  title="복사"
-                >
-                  <Copy size={13} />
-                </button>
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* Google Drive 상세 설정 폼 */}
+          {/* Google Drive 상세 설정 폼 (필수 OAuth 키 3개만 깔끔하게 표시) */}
           <form onSubmit={handleSaveGDrive} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-blue-600" />
-              Google Cloud API OAuth 2.0 Credentials
-            </h4>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-blue-600" />
+                Google Cloud API OAuth 2.0 Credentials
+              </h4>
+              <span className="text-[11px] text-slate-400 font-medium">
+                클라우드 저장소: <strong className="text-blue-700">기술본부 자료실 (자동 매핑)</strong>
+              </span>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
+              <div className="md:col-span-2">
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Google Client ID
                 </label>
@@ -527,7 +496,8 @@ export const SettingsView: React.FC = () => {
                   type="text"
                   value={clientIdInput}
                   onChange={(e) => setClientIdInput(e.target.value)}
-                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg outline-none font-mono"
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg outline-none font-mono font-bold text-slate-800"
+                  placeholder="326035468474-...apps.googleusercontent.com"
                   required
                 />
               </div>
@@ -541,6 +511,7 @@ export const SettingsView: React.FC = () => {
                   value={clientSecretInput}
                   onChange={(e) => setClientSecretInput(e.target.value)}
                   className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg outline-none font-mono"
+                  placeholder="GOCSPX-..."
                   required
                 />
               </div>
@@ -557,19 +528,14 @@ export const SettingsView: React.FC = () => {
                   required
                 />
               </div>
+            </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  기술본부 중앙 드라이브 루트 폴더 ID
-                </label>
-                <input
-                  type="text"
-                  value={rootFolderIdInput}
-                  onChange={(e) => setRootFolderIdInput(e.target.value)}
-                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg outline-none font-mono text-blue-700"
-                  required
-                />
-              </div>
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-500 flex items-center justify-between">
+              <span>※ 루트 폴더는 Google Drive 내 최상위 <strong className="text-slate-800 font-semibold">'기술본부 자료실'</strong>로 자동 생성 및 관리됩니다. (수동 ID 입력 불필요)</span>
+              <span className="text-emerald-600 font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                자동 폴더 트리 매핑 활성
+              </span>
             </div>
 
             <div className="flex items-center justify-between pt-4 border-t border-slate-200">

@@ -24,6 +24,7 @@ const HOLIDAYS_2026: Record<string, { country: 'KR' | 'VN' | 'UK'; name: string 
   '2026-09-24': { country: 'KR', name: '추석 연휴' },
   '2026-09-25': { country: 'KR', name: '추석' },
   '2026-09-26': { country: 'KR', name: '추석 연휴' },
+  '2026-09-28': { country: 'KR', name: '대체공휴일(추석)' },
   // 10월
   '2026-10-03': { country: 'KR', name: '개천절' },
   '2026-10-09': { country: 'KR', name: '한글날' },
@@ -384,23 +385,24 @@ export default function ProjectCalendar({
 
       {/* 3. 간트 그리드 본체 (수평 스크롤) */}
       <div className="overflow-x-auto custom-scrollbar">
-        <div style={{ minWidth: `${360 + daysInMonth.length * cellWidth}px` }}>
+        <div style={{ minWidth: `${410 + daysInMonth.length * cellWidth}px` }}>
           {/* 3-1. 날짜 헤더 행 */}
           <div className="flex border-b border-slate-200 bg-slate-100 text-xs font-semibold text-slate-600 select-none">
-            {/* 고정 열 1: 프로젝트 정보 */}
-            <div className="w-[200px] flex-shrink-0 px-3 py-2.5 border-r border-slate-200 flex items-center">
-              프로젝트 정보
+            {/* 고정 열 1: 프로젝트 정보 (본문 w-[230px]와 1:1 일치) */}
+            <div className="w-[230px] flex-shrink-0 px-3 py-2.5 border-r border-slate-200 flex items-center justify-between">
+              <span>{t.colProject}</span>
+              <span className="text-[10px] text-slate-400 font-normal">클릭시 세부일정</span>
             </div>
-            {/* 고정 열 2: 공정률 */}
-            <div className="w-[80px] flex-shrink-0 px-2 py-2.5 border-r border-slate-200 text-center">
-              공정률
+            {/* 고정 열 2: 공정률 (본문 w-[85px]와 1:1 일치) */}
+            <div className="w-[85px] flex-shrink-0 px-2 py-2.5 border-r border-slate-200 text-center">
+              {t.colProgress}
             </div>
-            {/* 고정 열 3: 담당 PM */}
-            <div className="w-[80px] flex-shrink-0 px-2 py-2.5 border-r border-slate-200 text-center">
-              담당 PM
+            {/* 고정 열 3: 담당 PM (본문 w-[95px]와 1:1 일치) */}
+            <div className="w-[95px] flex-shrink-0 px-2 py-2.5 border-r border-slate-200 text-center">
+              {t.colPm}
             </div>
-            {/* 날짜 그리드 열 */}
-            <div className="flex-1 flex">
+            {/* 날짜 그리드 열 (헤더와 본문 그리드 픽셀 1:1 고정) */}
+            <div className="flex shrink-0" style={{ width: `${daysInMonth.length * cellWidth}px` }}>
               {daysInMonth.map((day) => {
                 const dateKey = format(day, 'yyyy-MM-dd');
                 const holiday = HOLIDAYS_2026[dateKey];
@@ -461,8 +463,12 @@ export default function ProjectCalendar({
                   key={group.code}
                   className={`flex items-stretch hover:bg-slate-50/80 dark:hover:bg-slate-800/80 transition-colors group cursor-pointer text-xs ${rowHeightClass}`}
                 >
-                  {/* 고정 열 1: 프로젝트 통합 정보 (코드 + 참여 부서 뱃지들 + 명칭) */}
-                  <div className="w-[230px] flex-shrink-0 p-3 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center">
+                  {/* 고정 열 1: 프로젝트 통합 정보 (클릭 시 프로젝트 세부 일정표 팝업 즉시 열림) */}
+                  <div
+                    onClick={() => setSelectedProjectId(group.lanes[0]?.projectId)}
+                    className="w-[230px] flex-shrink-0 p-3 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center cursor-pointer hover:bg-blue-50/60 dark:hover:bg-slate-800 transition-colors"
+                    title="클릭하여 프로젝트 세부 일정표 및 공종 배정 열기"
+                  >
                     <div className="flex items-center gap-1.5 flex-wrap mb-1">
                       <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono font-bold bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
                         {group.code}
@@ -485,13 +491,17 @@ export default function ProjectCalendar({
                         );
                       })}
                     </div>
-                    <div className="font-extrabold text-slate-800 dark:text-white group-hover:text-[#00338d] dark:group-hover:text-blue-400 transition-colors line-clamp-2 leading-tight">
+                    <div className="font-extrabold text-slate-800 dark:text-white group-hover:text-[#00338d] dark:group-hover:text-blue-400 transition-colors line-clamp-2 leading-tight underline decoration-transparent group-hover:decoration-blue-400">
                       {group.name}
                     </div>
                   </div>
 
-                  {/* 고정 열 2: 공정률 (2갈래 상하 분할) */}
-                  <div className="w-[85px] flex-shrink-0 p-2 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center text-center">
+                  {/* 고정 열 2: 공정률 (2갈래 상하 분할, 클릭 시 세부 모달 열림) */}
+                  <div
+                    onClick={() => setSelectedProjectId(group.lanes[0]?.projectId)}
+                    className="w-[85px] flex-shrink-0 p-2 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center text-center cursor-pointer hover:bg-slate-100/50"
+                    title="클릭하여 세부 일정 확인"
+                  >
                     {group.lanes.map((lane) => {
                       const colorText =
                         lane.department === '마감팀'
@@ -523,8 +533,12 @@ export default function ProjectCalendar({
                     })}
                   </div>
 
-                  {/* 고정 열 3: 담당 PM (마감/구조 상하 분할) */}
-                  <div className="w-[95px] flex-shrink-0 p-2 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center text-center">
+                  {/* 고정 열 3: 담당 PM (마감/구조 상하 분할, 클릭 시 세부 모달 열림) */}
+                  <div
+                    onClick={() => setSelectedProjectId(group.lanes[0]?.projectId)}
+                    className="w-[95px] flex-shrink-0 p-2 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center text-center cursor-pointer hover:bg-slate-100/50"
+                    title="클릭하여 세부 일정 확인"
+                  >
                     {group.lanes.map((lane) => {
                       const badgeColor =
                         lane.department === '마감팀'
@@ -546,8 +560,11 @@ export default function ProjectCalendar({
                     })}
                   </div>
 
-                  {/* 일자별 간트 타임라인 영역 (2갈래 위/아래 레인 렌더링) */}
-                  <div className={`flex-1 relative ${isMultiLane ? 'h-[76px]' : 'h-[50px]'} flex items-center`}>
+                  {/* 일자별 간트 타임라인 영역 (헤더 날짜와 1:1 너비 고정) */}
+                  <div
+                    className={`flex shrink-0 relative ${isMultiLane ? 'h-[76px]' : 'h-[50px]'} flex items-center`}
+                    style={{ width: `${daysInMonth.length * cellWidth}px` }}
+                  >
                     {/* 배경 그리드 컬럼 */}
                     <div className="absolute inset-0 flex pointer-events-none">
                       {daysInMonth.map((day) => {
