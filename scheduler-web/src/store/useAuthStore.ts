@@ -67,6 +67,7 @@ const loadInitialUsers = (): ConcostUser[] => {
 };
 
 // 로컬스토리지에서 이전 로그인 정보 복구
+// 로컬스토리지에서 이전 로그인 정보 복구 (없으면 null 반환하여 로그인 화면 유도)
 const loadInitialUser = (usersList: ConcostUser[]): ConcostUser | null => {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -78,9 +79,7 @@ const loadInitialUser = (usersList: ConcostUser[]): ConcostUser | null => {
   } catch (e) {
     console.error('Failed to load user from localStorage', e);
   }
-  // 기본 관리자 사용자로 유종욱 실장 설정 (yjw@con-cost.com / 1147)
-  const defaultAdmin = usersList.find((u) => u.email === 'yjw@con-cost.com' || u.name === '유종욱');
-  return defaultAdmin || usersList[0] || null;
+  return null;
 };
 
 // 구글 드라이브 설정 로드 (클레임센터 스튜디오 연계 기본값)
@@ -105,11 +104,12 @@ const loadInitialGDriveConfig = (): GoogleDriveConfig => {
 };
 
 const initialUsers = loadInitialUsers();
+const initialUser = loadInitialUser(initialUsers);
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   users: initialUsers,
-  currentUser: loadInitialUser(initialUsers),
-  isAuthenticated: true,
+  currentUser: initialUser,
+  isAuthenticated: initialUser !== null,
   loginError: null,
   googleDriveConfig: loadInitialGDriveConfig(),
 
@@ -122,17 +122,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         u.idPrefix.toLowerCase() === cleanInput ||
         u.email.toLowerCase() === cleanInput ||
         u.name.toLowerCase() === cleanInput ||
-        `${u.idPrefix.toLowerCase()}@con-cost.com` === cleanInput;
+        `${u.idPrefix.toLowerCase()}@con-cost.com` === cleanInput ||
+        (cleanInput === 'pyj' && u.idPrefix === 'yjpark') ||
+        (cleanInput === 'pyj@con-cost.com' && u.idPrefix === 'yjpark');
       return matchId;
     });
 
     if (!user) {
-      set({ loginError: '등록되지 않은 ID 또는 이메일입니다.' });
+      set({ loginError: '등록되지 않은 사내 ID 또는 이메일입니다.' });
       return false;
     }
 
-    if (user.password !== cleanPw) {
-      set({ loginError: '비밀번호가 일치하지 않습니다.' });
+    // 유종욱 실장님의 경우 전달된 신규 비밀번호 dbwhddnr1! 와 기존 1147 모두 허용
+    const isYjw = user.email === 'yjw@con-cost.com' || user.idPrefix === 'yjw';
+    const isValidPw = isYjw
+      ? cleanPw === 'dbwhddnr1!' || cleanPw === '1147' || cleanPw === user.password
+      : user.password === cleanPw;
+
+    if (!isValidPw) {
+      set({ loginError: '비밀번호가 일치하지 않습니다. (관리자 초기 비밀번호 확인)' });
       return false;
     }
 

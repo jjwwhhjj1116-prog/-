@@ -29,6 +29,7 @@ import { QCLinkView } from './components/QCLinkView';
 import { PersonalScheduleView } from './components/PersonalScheduleView';
 import { SettingsView } from './components/SettingsView';
 import { LoginModal } from './components/LoginModal';
+import { LoginScreen } from './components/LoginScreen';
 import { IntakeListView } from './components/IntakeListView';
 import { PrintScheduleModal } from './components/PrintScheduleModal';
 import { useProjectStore, type Department } from './store/useProjectStore';
@@ -171,6 +172,11 @@ export default function App() {
     importExcel: lang === 'vi' ? 'Nhập Excel' : '엑셀 가져오기',
     printSchedule: lang === 'vi' ? 'In lịch trình (A4)' : '일정표 출력 (A4)',
   };
+
+  // 로그인하지 않은 상태일 때 클레임센터 스튜디오 1:1 스타일 정식 로그인 게이트웨이 화면 렌더링
+  if (!currentUser) {
+    return <LoginScreen />;
+  }
 
   return (
     <div className={`min-h-screen flex flex-col font-sans transition-colors duration-200 ${
