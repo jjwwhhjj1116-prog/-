@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Department, Project } from './useProjectStore';
+import { useProjectStore, type Department, type Project } from './useProjectStore';
 
 export interface WorkLogItem {
   id: string;
@@ -24,7 +24,8 @@ export interface DailyWorkLog {
   department: Department;
   items: WorkLogItem[];
   overallNotes: string;
-  approvalStatus: 'DRAFT' | 'SUBMITTED' | 'APPROVED_PM' | 'APPROVED_DIRECTOR';
+  // 결재 진행 상태: 작성중(DRAFT) -> 주관PM대기(SUBMITTED_PM) -> 팀별실장대기(APPROVED_PM) -> 최종결재완료(APPROVED_FINAL)
+  approvalStatus: 'DRAFT' | 'SUBMITTED_PM' | 'APPROVED_PM' | 'APPROVED_FINAL';
   authorSignature: {
     signed: boolean;
     name: string;
@@ -35,7 +36,7 @@ export interface DailyWorkLog {
     name: string;
     signedAt?: string;
   };
-  directorApproval: {
+  teamLeaderApproval: {
     approved: boolean;
     name: string;
     signedAt?: string;
@@ -44,9 +45,9 @@ export interface DailyWorkLog {
   updatedAt: string;
 }
 
-const STORAGE_KEY = 'concost_daily_worklogs_v1';
+const STORAGE_KEY = 'concost_daily_worklogs_v2';
 
-// 초기 샘플 업무일지 (팀별 일정표 연계 실사 데이터)
+// 초기 샘플 업무일지
 const INITIAL_WORKLOGS: DailyWorkLog[] = [
   {
     id: 'wl-2026-09-21-johanbin',
@@ -84,7 +85,7 @@ const INITIAL_WORKLOGS: DailyWorkLog[] = [
       }
     ],
     overallNotes: 'P5 FAB2 프로젝트 조적 2인(원종수, 성대용) 협업 및 베트남 창호팀 공정 정상 가동 중. 차주 내역 공종 초안 연계 예정.',
-    approvalStatus: 'APPROVED_DIRECTOR',
+    approvalStatus: 'APPROVED_FINAL',
     authorSignature: {
       signed: true,
       name: '조한빈 실장',
@@ -92,12 +93,12 @@ const INITIAL_WORKLOGS: DailyWorkLog[] = [
     },
     pmApproval: {
       approved: true,
-      name: '조한빈 실장',
+      name: '조한빈 PM',
       signedAt: '2026-09-21 17:40'
     },
-    directorApproval: {
+    teamLeaderApproval: {
       approved: true,
-      name: '(주)컨코스트 기술본부장',
+      name: '마감팀 조한빈 실장',
       signedAt: '2026-09-21 18:00'
     },
     createdAt: '2026-09-21 17:00',
@@ -139,7 +140,7 @@ const INITIAL_WORKLOGS: DailyWorkLog[] = [
       }
     ],
     overallNotes: '조적 공종 원종수 수석님과 2인 분할 산출 원활히 진행 중. 내역 공종 사전 준비 완료.',
-    approvalStatus: 'SUBMITTED',
+    approvalStatus: 'SUBMITTED_PM',
     authorSignature: {
       signed: true,
       name: '성대용 수석',
@@ -147,11 +148,11 @@ const INITIAL_WORKLOGS: DailyWorkLog[] = [
     },
     pmApproval: {
       approved: false,
-      name: '조한빈 실장'
+      name: '조한빈 PM'
     },
-    directorApproval: {
+    teamLeaderApproval: {
       approved: false,
-      name: '(주)컨코스트 기술본부장'
+      name: '마감팀 조한빈 실장'
     },
     createdAt: '2026-09-21 17:15',
     updatedAt: '2026-09-21 17:15'
@@ -179,16 +180,19 @@ interface WorkLogState {
   setSelectedWorkLogId: (id: string | null) => void;
   saveWorkLog: (log: DailyWorkLog) => void;
   deleteWorkLog: (id: string) => void;
-  submitApproval: (id: string) => void;
+  // 1단계: 작성자 -> 주관 PM에게 결재 상신
+  submitApprovalToPm: (id: string) => void;
+  // 2단계: 주관 PM 1차 승인 -> 팀별 실장에게 결재 전달
   approveByPm: (id: string, pmName: string) => void;
-  approveByDirector: (id: string, directorName: string) => void;
-  // 팀별 일정표에서 특정 인원의 특정 날짜 업무를 자동 추출하여 WorkLogItem 생성
-  generateItemsFromSchedule: (userName: string, dateStr: string, projects: Project[]) => WorkLogItem[];
+  // 3단계: 팀별 실장 최종 결재 승인 -> 그날 일정이 프로젝트/팀별 일정표에 실제 반영 및 저장
+  approveFinalByLeader: (id: string, leaderName: string) => void;
+  // 팀별 일정표에서 특정 인원의 오늘 업무 자동 추출
+  generateItemsFromSchedule: (userName: string, _dateStr: string, projects: Project[]) => WorkLogItem[];
 }
 
 export const useWorkLogStore = create<WorkLogState>((set) => ({
   workLogs: loadInitialWorkLogs(),
-  selectedWorkLogId: 'wl-2026-09-21-johanbin',
+  selectedWorkLogId: 'wl-2026-09-21-sungdaeyong',
 
   setSelectedWorkLogId: (id) => set({ selectedWorkLogId: id }),
 
@@ -222,14 +226,15 @@ export const useWorkLogStore = create<WorkLogState>((set) => ({
     });
   },
 
-  submitApproval: (id) => {
+  // 1단계: 작성자가 결재 상신 누르면 주관 PM에게 전달
+  submitApprovalToPm: (id) => {
     const nowStr = new Date().toLocaleString('ko-KR');
     set((state) => {
       const updated = state.workLogs.map((w) => {
         if (w.id === id) {
           return {
             ...w,
-            approvalStatus: 'SUBMITTED' as const,
+            approvalStatus: 'SUBMITTED_PM' as const,
             authorSignature: {
               signed: true,
               name: `${w.userName} (${w.userPosition})`,
@@ -249,6 +254,7 @@ export const useWorkLogStore = create<WorkLogState>((set) => ({
     });
   },
 
+  // 2단계: 주관 PM 1차 결재 완료 -> 각 팀별 실장에게 전달
   approveByPm: (id, pmName) => {
     const nowStr = new Date().toLocaleString('ko-KR');
     set((state) => {
@@ -276,17 +282,45 @@ export const useWorkLogStore = create<WorkLogState>((set) => ({
     });
   },
 
-  approveByDirector: (id, directorName) => {
+  // 3단계: 팀별 실장 최종 결재 승인 -> 프로젝트 일정표 및 팀별 일정표에 실시간 정리 및 확정 저장
+  approveFinalByLeader: (id, leaderName) => {
     const nowStr = new Date().toLocaleString('ko-KR');
     set((state) => {
+      const targetLog = state.workLogs.find((w) => w.id === id);
+      
+      // 사용자 요구사항 핵심 반영: 최종결재가 되면 그날 일정이 일정표에 그대로 정리되어 저장
+      if (targetLog) {
+        const projectStore = useProjectStore.getState();
+        targetLog.items.forEach((item) => {
+          const targetProj = projectStore.projects.find(
+            (p) => p.id === item.projectId || (p.code && p.code === item.projectCode)
+          );
+          if (targetProj) {
+            const updatedSubTasks = { ...(targetProj.subTasks || {}) };
+            if (item.roleName && updatedSubTasks[item.roleName]) {
+              const mappedStatus = item.status === '대기' ? '예정' : item.status;
+              updatedSubTasks[item.roleName] = {
+                ...updatedSubTasks[item.roleName],
+                status: mappedStatus as any,
+                memo: item.todayTask
+              };
+            }
+            projectStore.updateProject(targetProj.id, {
+              progress: item.progress,
+              subTasks: updatedSubTasks
+            });
+          }
+        });
+      }
+
       const updated = state.workLogs.map((w) => {
         if (w.id === id) {
           return {
             ...w,
-            approvalStatus: 'APPROVED_DIRECTOR' as const,
-            directorApproval: {
+            approvalStatus: 'APPROVED_FINAL' as const,
+            teamLeaderApproval: {
               approved: true,
-              name: directorName,
+              name: leaderName,
               signedAt: nowStr
             },
             updatedAt: nowStr
@@ -294,6 +328,7 @@ export const useWorkLogStore = create<WorkLogState>((set) => ({
         }
         return w;
       });
+
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       } catch (e) {

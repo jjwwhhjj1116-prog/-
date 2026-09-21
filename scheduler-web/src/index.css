@@ -149,3 +149,96 @@
     background: #94a3b8;
   }
 }
+
+/* =========================================================
+   A4 가로 전용 클린 인쇄 양식 (@media print)
+   사이드바, 헤더, 제어 버튼 완벽 숨김 & 30일 전체 타임라인 100% 폭 최적화
+   ========================================================= */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 8mm 6mm 8mm 6mm;
+  }
+
+  /* 1. 인쇄 시 불필요한 레이아웃/조작 UI 완전 숨김 */
+  header,
+  aside,
+  nav,
+  button,
+  .print-hide,
+  .no-print,
+  [role="dialog"] {
+    display: none !important;
+  }
+
+  /* 2. 전체 페이지 배경 및 여백 정규화 */
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 11px !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* 3. 메인 콘텐츠 영역 여백 제거 및 전체 폭 확장 */
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* 4. 스크롤바 숨김 및 가로 잘림 방지 */
+  .custom-scrollbar,
+  .overflow-x-auto,
+  .overflow-y-auto {
+    overflow: visible !important;
+    max-width: 100% !important;
+  }
+
+  /* 5. 캘린더 그리드 전체 폭 100% 자동 분할 */
+  .gantt-container {
+    width: 100% !important;
+    min-width: 100% !important;
+    border: 1px solid #cbd5e1 !important;
+    page-break-inside: avoid;
+  }
+
+  /* 6. 인쇄 전용 헤더 타이틀 표시 */
+  .print-header-title {
+    display: block !important;
+    font-size: 16px !important;
+    font-weight: 800 !important;
+    text-align: center !important;
+    margin-bottom: 8px !important;
+    color: #00338d !important;
+    border-bottom: 2px solid #00338d !important;
+    padding-bottom: 4px !important;
+  }
+
+  /* 7. 공휴일 빗금 패턴 인쇄 색상 유지 */
+  .pattern-holiday-kr {
+    background-color: #fee2e2 !important;
+  }
+  .pattern-holiday-vn {
+    background-color: #ccfbf1 !important;
+  }
+
+  /* 8. 간트 바 색상 및 텍스트 선명화 */
+  .gantt-bar-primary {
+    background: #00338d !important;
+    color: #ffffff !important;
+  }
+  .gantt-bar-accent {
+    background: #ea580c !important;
+    color: #ffffff !important;
+  }
+  .gantt-bar-green {
+    background: #16a34a !important;
+    color: #ffffff !important;
+  }
+}

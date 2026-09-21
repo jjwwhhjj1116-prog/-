@@ -60,7 +60,11 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
   const { projects, setSelectedProjectId } = useProjectStore();
   const { users } = useAuthStore();
   const [viewMode, setViewMode] = useState<'PERSONAL' | 'TEAM'>('TEAM');
-  const [currentDate, setCurrentDate] = useState(new Date('2026-09-17'));
+  // 실시간 오늘 기준일 (2026-09-21)
+  const [currentDate, setCurrentDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  });
 
   // 지역 필터 (전체 / 한국 본사 / 베트남 팀)
   const [regionFilter, setRegionFilter] = useState<'ALL' | 'KOREA' | 'VIETNAM'>('ALL');
@@ -72,12 +76,19 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
-  const today = new Date('2026-09-17');
+  // 오늘 날짜 구하기 (2026-09-21 등 실제 현재 날짜 실시간 연동)
+  const today = useMemo(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }, []);
   const cellWidth = 38; // 1일당 가로 픽셀
 
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
-  const handleToday = () => setCurrentDate(new Date('2026-09-17'));
+  const handleToday = () => {
+    const now = new Date();
+    setCurrentDate(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+  };
 
   // 해당 부서 한국 본사 인원 (개인별)
   const koreaUsers = useMemo(() => {

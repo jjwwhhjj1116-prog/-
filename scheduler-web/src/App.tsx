@@ -932,7 +932,13 @@ export default function App() {
           onNavigateToTeamSchedule={(team) => {
             setSelectedIntegratedProjectCode(null);
             setFilterDepartment(team);
-            setActiveMenu(team === '마감팀' ? '마감팀 일정표' : '구조팀 일정표');
+            setActiveMenu(
+              team === '마감팀'
+                ? '마감팀 일정표'
+                : team === '구조팀'
+                ? '구조팀 일정표'
+                : '토목&조경팀 일정표'
+            );
           }}
         />
       )}

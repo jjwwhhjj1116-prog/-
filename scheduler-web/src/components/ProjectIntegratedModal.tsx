@@ -14,7 +14,7 @@ import { VIET_TEAMS_DATA } from '../data/vietTeams';
 interface ProjectIntegratedModalProps {
   projectCode: string;
   onClose: () => void;
-  onNavigateToTeamSchedule?: (team: '마감팀' | '구조팀') => void;
+  onNavigateToTeamSchedule?: (team: '마감팀' | '구조팀' | '토목&조경팀') => void;
 }
 
 export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
@@ -25,11 +25,12 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
   const { projects } = useProjectStore();
   const { users } = useAuthStore();
 
-  // 해당 프로젝트 코드의 마감팀 & 구조팀 프로젝트 검색
+  // 해당 프로젝트 코드의 마감팀, 구조팀, 토목&조경팀 프로젝트 검색
   const relatedProjects = projects.filter((p) => (p.code || p.id) === projectCode);
   const finishProject = relatedProjects.find((p) => p.department === '마감팀') || null;
   const structProject = relatedProjects.find((p) => p.department === '구조팀') || null;
-  const baseProject = finishProject || structProject || relatedProjects[0];
+  const civilProject = relatedProjects.find((p) => p.department === '토목&조경팀') || null;
+  const baseProject = finishProject || structProject || civilProject || relatedProjects[0];
 
   if (!baseProject) return null;
 
@@ -106,6 +107,11 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
                     구조팀 공정률 {structProject.progress}%
                   </span>
                 )}
+                {civilProject && (
+                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
+                    토목&조경팀 공정률 {civilProject.progress}%
+                  </span>
+                )}
                 <span className="text-xs font-medium text-slate-400">
                   전체 일정: {baseProject.startDate} ~ {baseProject.endDate}
                 </span>
@@ -126,7 +132,7 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
           </div>
 
           {/* 프로젝트 스펙 요약 바 */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-850 text-xs">
+          <div className={`grid grid-cols-2 ${civilProject ? 'sm:grid-cols-5' : 'sm:grid-cols-4'} gap-2 pt-2 border-t border-slate-850 text-xs`}>
             <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
               <span className="text-slate-400 block text-[11px]">발주처</span>
               <strong className="font-bold text-slate-200 truncate block">{baseProject.client || '삼성물산(주)'}</strong>
@@ -149,6 +155,14 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
                 {structProject ? getPmName(structProject.pmId) : '해당 없음'}
               </strong>
             </div>
+            {civilProject && (
+              <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
+                <span className="text-slate-400 block text-[11px]">토목&조경팀 PM</span>
+                <strong className="font-bold text-emerald-400 truncate block">
+                  {getPmName(civilProject.pmId)}
+                </strong>
+              </div>
+            )}
           </div>
         </div>
 
@@ -159,12 +173,12 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
             <span className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-blue-400" />
               <span>
-                <strong>프로젝트 통합 공종 투입 현황:</strong> 마감팀과 구조팀의 각 공종별 투입 인원과 일정이 한눈에 표시됩니다. 실제 인원 투입 및 배분은 각 팀별 일정표에서 수행합니다.
+                <strong>프로젝트 통합 공종 투입 현황:</strong> 마감팀, 구조팀, 토목&조경팀의 각 공종별 투입 인원과 일정이 한눈에 표시됩니다. 실제 인원 투입 및 배분은 각 팀별 일정표에서 수행합니다.
               </span>
             </span>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className={`grid grid-cols-1 ${civilProject ? 'xl:grid-cols-3 lg:grid-cols-2' : 'lg:grid-cols-2'} gap-6`}>
             
             {/* 좌측: 마감팀 공종별 투입 현황 (조적, 창호, 외부, 내부, 세대, 가설, 내역 등) */}
             <div className="bg-slate-950 border-2 border-blue-900/50 rounded-2xl p-5 space-y-4 shadow-lg flex flex-col justify-between">
@@ -385,6 +399,98 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
                 </div>
               )}
             </div>
+
+            {/* 우측/하단: 토목&조경팀 공종별 투입 현황 (토목, 부대토목, 조경 등) */}
+            {civilProject && (
+              <div className="bg-slate-950 border-2 border-emerald-900/50 rounded-2xl p-5 space-y-4 shadow-lg flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-emerald-500" />
+                      <h3 className="text-base font-black text-white">
+                        토목&조경팀 공종 투입 현황
+                      </h3>
+                      <span className="text-xs font-bold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">
+                        총 {TEAM_ROLES['토목&조경팀'].filter((r) => r !== 'PM').length}개 공종
+                      </span>
+                    </div>
+
+                    {onNavigateToTeamSchedule && (
+                      <button
+                        type="button"
+                        onClick={() => onNavigateToTeamSchedule('토목&조경팀')}
+                        className="text-xs font-black text-emerald-400 hover:text-emerald-300 flex items-center gap-1 bg-emerald-950/80 hover:bg-emerald-900 px-3 py-1.5 rounded-lg border border-emerald-700 transition cursor-pointer"
+                      >
+                        <span>토목팀 일정표에서 배분하기</span>
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {TEAM_ROLES['토목&조경팀']
+                      .filter((r) => r !== 'PM')
+                      .map((roleName) => {
+                        const sub = civilProject.subTasks?.[roleName];
+                        const assignee = getAssigneeNames(sub);
+                        const isAssigned = assignee !== '미배정';
+
+                        return (
+                          <div
+                            key={roleName}
+                            className="p-3.5 rounded-xl border transition-all bg-slate-900/80 border-slate-800"
+                          >
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-black px-2 py-0.5 rounded bg-emerald-900/80 text-emerald-300 border border-emerald-700">
+                                  {roleName}
+                                </span>
+                              </div>
+                              {getStatusBadge(sub?.status)}
+                            </div>
+
+                            <div className="flex items-center justify-between text-xs gap-2">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span className="text-slate-400 text-[11px]">투입 인원:</span>
+                                <strong className={`font-bold truncate ${
+                                  isAssigned ? 'text-white' : 'text-slate-500'
+                                }`}>
+                                  {assignee}
+                                </strong>
+                              </div>
+
+                              <div className="flex items-center gap-1 text-[11px] text-slate-400 shrink-0 font-mono">
+                                <Calendar className="w-3 h-3 text-slate-500" />
+                                <span>{sub?.startDate || civilProject.startDate} ~ {sub?.endDate || civilProject.endDate}</span>
+                              </div>
+                            </div>
+
+                            {sub?.memo && (
+                              <p className="text-[11px] text-slate-400 mt-1.5 bg-slate-950/60 p-1.5 rounded border border-slate-850 truncate">
+                                💬 {sub.memo}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+
+                {civilProject && onNavigateToTeamSchedule && (
+                  <div className="pt-3 border-t border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => onNavigateToTeamSchedule('토목&조경팀')}
+                      className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center justify-center gap-2 shadow-md transition cursor-pointer"
+                    >
+                      <span>토목&조경팀 공종별 인원 배분 및 일정 수정하러 가기</span>
+                      <ArrowUpRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
           </div>
 

@@ -41,9 +41,15 @@ export default function ProjectCalendar({
     setProjects,
   } = useProjectStore();
 
+  // 실시간 오늘 기준일 (2026-09-21)
+  const [currentDate, setCurrentDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  });
+
   // 다국어 라벨 사전
   const t = {
-    titleDate: lang === 'vi' ? format(new Date('2026-09-17'), 'Tháng M năm yyyy') : format(new Date('2026-09-17'), 'yyyy년 M월', { locale: ko }),
+    titleDate: lang === 'vi' ? format(currentDate, 'Tháng M năm yyyy') : format(currentDate, 'yyyy년 M월', { locale: ko }),
     activeCount: lang === 'vi' ? 'Dự án đang tiến hành' : '진행 프로젝트',
     hiddenCount: (count: number) => lang === 'vi' ? `(Ẩn ${count} dự án không có lịch)` : `(일정 없는 ${count}개 프로젝트 숨김됨)`,
     guideNotice: lang === 'vi' ? 'Lịch trình kỹ thuật CONCOST Trụ sở chính & VIETQS' : '한국 본사 · VIETQS 정밀 캘린더 (날짜 칸의 무늬와 마우스 오버로 어느 지사의 휴일인지 확인하세요.)',
@@ -63,8 +69,6 @@ export default function ProjectCalendar({
     colPm: lang === 'vi' ? 'Chủ trì PM' : '담당 PM',
   };
 
-  // 2026년 9월 기본 기준일
-  const [currentDate, setCurrentDate] = useState(new Date('2026-09-17'));
   const [viewMode, setViewMode] = useState<'30일' | '월별'>('월별');
   // 사용자의 요구사항: "일정표에서 9월에 일정이 없는 프로젝트는 표현안해야지" -> 기본값 true
   const [onlyCurrentMonth, setOnlyCurrentMonth] = useState(true);
@@ -169,13 +173,20 @@ export default function ProjectCalendar({
   }, [filteredProjects, personnel]);
 
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
-  const today = new Date('2026-09-17'); // 현재 작업 기준일
+  // 오늘 기준일 (2026-09-21 등 실제 현재 날짜 실시간 연동)
+  const today = useMemo(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }, []);
 
   const cellWidth = 36; // 1일당 가로 너비 (px)
 
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
-  const handleToday = () => setCurrentDate(new Date('2026-09-17'));
+  const handleToday = () => {
+    const now = new Date();
+    setCurrentDate(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+  };
 
   // 엑셀 내보내기 안전 실행
   const handleSafeExportExcel = () => {
@@ -270,7 +281,7 @@ export default function ProjectCalendar({
             </span>
             {onlyCurrentMonth && (
               <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">
-                (마감·구조 협업 2갈래 통합 표현, 완료·타월 {projects.length - filteredProjects.length}건 숨김)
+                (마감·구조·토목 협업 통합 표현, 완료·타월 {projects.length - filteredProjects.length}건 숨김)
               </span>
             )}
           </div>
@@ -453,11 +464,13 @@ export default function ProjectCalendar({
             </div>
           </div>
 
-          {/* 3-2. 통합 프로젝트별 간트 행 목록 (마감+구조 2갈래 통합 렌더링, 단일 다크톤 통일) */}
+          {/* 3-2. 통합 프로젝트별 간트 행 목록 (마감+구조+토목 2~3갈래 통합 렌더링, 단일 다크톤 통일) */}
           <div className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
             {groupedProjects.map((group) => {
-              const isMultiLane = group.lanes.length > 1;
-              const rowHeightClass = isMultiLane ? 'min-h-[76px]' : 'min-h-[50px]';
+              const laneCount = group.lanes.length;
+              const isMultiLane = laneCount > 1;
+              // 1단: 50px, 2단: 76px, 3단: 108px, N단: laneCount * 32 + 12px
+              const rowMinHeight = laneCount <= 1 ? 50 : laneCount === 2 ? 76 : laneCount * 32 + 14;
               const rowBgClass = 'bg-white dark:bg-slate-900';
 
               const handleRowClick = () => {
@@ -471,7 +484,8 @@ export default function ProjectCalendar({
               return (
                 <div
                   key={group.code}
-                  className={`flex items-stretch ${rowBgClass} hover:bg-blue-50/30 dark:hover:bg-slate-800/60 transition-colors group cursor-pointer text-xs ${rowHeightClass}`}
+                  style={{ minHeight: `${rowMinHeight}px` }}
+                  className={`flex items-stretch ${rowBgClass} hover:bg-blue-50/30 dark:hover:bg-slate-800/60 transition-colors group cursor-pointer text-xs`}
                 >
                   {/* 고정 열 1: 프로젝트 통합 정보 (클릭 시 프로젝트 통합 공종 투입 현황 팝업 열림) */}
                   <div
@@ -518,7 +532,7 @@ export default function ProjectCalendar({
                     )}
                   </div>
 
-                  {/* 고정 열 2: 공정률 (2갈래 상하 분할, 클릭 시 세부 모달 열림) */}
+                  {/* 고정 열 2: 공정률 (마감/구조/토목 상하 분할, 클릭 시 세부 모달 열림) */}
                   <div
                     onClick={handleRowClick}
                     className="w-[85px] flex-shrink-0 p-2 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center text-center cursor-pointer hover:bg-slate-100/50 dark:hover:bg-slate-800/50"
@@ -555,7 +569,7 @@ export default function ProjectCalendar({
                     })}
                   </div>
 
-                  {/* 고정 열 3: 담당 PM (마감/구조 상하 분할, 클릭 시 세부 모달 열림) */}
+                  {/* 고정 열 3: 담당 PM (마감/구조/토목 상하 분할, 클릭 시 세부 모달 열림) */}
                   <div
                     onClick={handleRowClick}
                     className="w-[95px] flex-shrink-0 p-2 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center text-center cursor-pointer hover:bg-slate-100/50 dark:hover:bg-slate-800/50"
@@ -584,8 +598,11 @@ export default function ProjectCalendar({
 
                   {/* 일자별 간트 타임라인 영역 (행 전체 높이에 100% 맞춰 휴일 빗금 끊김 원천 차단) */}
                   <div
-                    className={`flex shrink-0 relative self-stretch ${isMultiLane ? 'min-h-[76px]' : 'min-h-[50px]'}`}
-                    style={{ width: `${daysInMonth.length * cellWidth}px` }}
+                    className="flex shrink-0 relative self-stretch"
+                    style={{
+                      width: `${daysInMonth.length * cellWidth}px`,
+                      minHeight: `${rowMinHeight}px`,
+                    }}
                   >
                     {/* 배경 그리드 컬럼 (행의 위부터 아래 끝까지 100% 완전 채움) */}
                     <div className="absolute inset-0 flex pointer-events-none h-full">
@@ -629,13 +646,13 @@ export default function ProjectCalendar({
                       />
                     )}
 
-                    {/* 부서별 간트 바 렌더링 (마감 상단 / 구조 하단 2갈래) */}
+                    {/* 부서별 간트 바 렌더링 (마감 1단 / 구조 2단 / 토목 3단 완전 분리) */}
                     {group.lanes.map((lane, laneIdx) => {
                       const barStyle = getLaneBarStyle(lane.startDate, lane.endDate);
                       if (!barStyle) return null;
 
-                      // 2갈래 레인 위치
-                      const topPos = isMultiLane ? (laneIdx === 0 ? 8 : 40) : 11;
+                      // 동적 레인 수직 위치 계산: 1개면 11px 중앙, 다중 레인이면 각 32px 간격으로 1단(8px), 2단(40px), 3단(72px) 완벽 분리
+                      const topPos = isMultiLane ? (laneIdx * 32 + 8) : 11;
                       const laneGradient =
                         lane.department === '마감팀'
                           ? 'bg-gradient-to-r from-blue-600 via-blue-650 to-blue-700 border-blue-400'
@@ -692,7 +709,7 @@ export default function ProjectCalendar({
           </span>
           <span className="text-slate-300 dark:text-slate-700">|</span>
           <span className="text-slate-600 dark:text-slate-300 font-medium">
-            💡 하나의 프로젝트 행 안에 마감팀(상단 파란색)과 구조팀(하단 보라색) 일정이 2갈래로 동시 표현됩니다.
+            💡 하나의 프로젝트 행 안에 마감팀(파란색), 구조팀(보라색), 토목&조경팀(초록색) 일정이 공종별 층으로 동시 표현됩니다.
           </span>
         </div>
         <div>
