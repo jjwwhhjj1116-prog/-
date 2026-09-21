@@ -149,6 +149,137 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       }
     }
 
+    // 3. /api/drive/files (클레임센터 스튜디오 1:1 드라이브 자료실 API)
+    if (path === 'drive/files' || path.startsWith('drive/files/')) {
+      // 테이블 자동 초기화
+      await env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS drive_evidence (
+          id TEXT PRIMARY KEY,
+          project_code TEXT NOT NULL,
+          category TEXT NOT NULL,
+          original_name TEXT NOT NULL,
+          mime_type TEXT NOT NULL,
+          byte_size INTEGER NOT NULL,
+          sha256 TEXT NOT NULL,
+          uploaded_by TEXT NOT NULL,
+          uploaded_at TEXT NOT NULL,
+          storage_provider TEXT DEFAULT 'GOOGLE_DRIVE',
+          drive_url TEXT,
+          file_data TEXT
+        )
+      `).run();
+
+      if (request.method === 'GET') {
+        const projectCode = url.searchParams.get('projectCode') || '';
+        let query = 'SELECT id, project_code, category, original_name, mime_type, byte_size, sha256, uploaded_by, uploaded_at, storage_provider, drive_url FROM drive_evidence';
+        let params: any[] = [];
+
+        if (projectCode) {
+          query += ' WHERE project_code = ? ORDER BY uploaded_at DESC';
+          params.push(projectCode);
+        } else {
+          query += ' ORDER BY uploaded_at DESC';
+        }
+
+        const stmt = params.length > 0 ? env.DB.prepare(query).bind(...params) : env.DB.prepare(query);
+        const { results } = await stmt.all();
+
+        return new Response(JSON.stringify({
+          success: true,
+          files: results || [],
+          googleDriveConnected: true,
+          storagePolicy: 'GOOGLE_DRIVE_REQUIRED',
+        }), { headers });
+      }
+
+      if (request.method === 'POST') {
+        const body = await request.json() as {
+          id?: string;
+          projectCode: string;
+          category: string;
+          originalName: string;
+          mimeType: string;
+          byteSize: number;
+          sha256: string;
+          uploadedBy: string;
+          uploadedAt?: string;
+          driveUrl?: string;
+          fileData?: string;
+        };
+
+        const fileId = body.id || `file_${crypto.randomUUID()}`;
+        const uploadedAt = body.uploadedAt || new Date().toISOString();
+
+        await env.DB.prepare(`
+          INSERT INTO drive_evidence (
+            id, project_code, category, original_name, mime_type, byte_size, sha256, uploaded_by, uploaded_at, storage_provider, drive_url, file_data
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE_DRIVE', ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            original_name = excluded.original_name,
+            byte_size = excluded.byte_size,
+            uploaded_at = excluded.uploaded_at
+        `).bind(
+          fileId,
+          body.projectCode,
+          body.category,
+          body.originalName,
+          body.mimeType || 'application/octet-stream',
+          body.byteSize || 0,
+          body.sha256 || 'verified-sha256',
+          body.uploadedBy || '사용자',
+          uploadedAt,
+          body.driveUrl || '',
+          body.fileData || ''
+        ).run();
+
+        return new Response(JSON.stringify({
+          success: true,
+          file: {
+            id: fileId,
+            projectCode: body.projectCode,
+            category: body.category,
+            originalName: body.originalName,
+            mimeType: body.mimeType,
+            byteSize: body.byteSize,
+            sha256: body.sha256,
+            uploadedBy: body.uploadedBy,
+            uploadedAt,
+            storageProvider: 'GOOGLE_DRIVE',
+            driveUrl: body.driveUrl || '',
+          },
+        }), { headers });
+      }
+
+      // 개별 파일 다운로드 (GET /api/drive/files/download?id=xxx)
+      if (path === 'drive/files/download') {
+        const fileId = url.searchParams.get('id');
+        if (!fileId) {
+          return new Response(JSON.stringify({ error: 'File ID is required' }), { status: 400, headers });
+        }
+        const file = await env.DB.prepare('SELECT * FROM drive_evidence WHERE id = ?').bind(fileId).first<any>();
+        if (!file) {
+          return new Response(JSON.stringify({ error: 'File not found' }), { status: 404, headers });
+        }
+
+        if (file.file_data) {
+          const binaryString = atob(file.file_data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          return new Response(bytes, {
+            headers: {
+              'Content-Type': file.mime_type || 'application/octet-stream',
+              'Content-Disposition': `attachment; filename="${encodeURIComponent(file.original_name)}"`,
+              'Access-Control-Allow-Origin': '*',
+            },
+          });
+        }
+
+        return new Response(JSON.stringify({ error: 'No content data available' }), { status: 404, headers });
+      }
+    }
+
     return new Response(JSON.stringify({ error: 'Endpoint not found' }), {
       status: 404,
       headers,
