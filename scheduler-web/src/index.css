@@ -21,38 +21,68 @@
     @apply hover:border-[#00338d]/40 hover:shadow-md transition-all;
   }
 
-  /* 정밀 캘린더 공휴일 빗금 해시 무늬 패턴 (스크린샷 1 반영) */
+  /* 정밀 캘린더 공휴일 빗금 해시 무늬 패턴 (선명한 색상 및 다크모드 완벽 대응) */
   .pattern-holiday-kr {
-    background-color: #fff5f5;
+    background-color: #fee2e2 !important;
     background-image: repeating-linear-gradient(
       45deg,
-      rgba(239, 68, 68, 0.12),
-      rgba(239, 68, 68, 0.12) 6px,
+      rgba(239, 68, 68, 0.25),
+      rgba(239, 68, 68, 0.25) 6px,
       transparent 6px,
       transparent 12px
-    );
+    ) !important;
+  }
+  .dark .pattern-holiday-kr {
+    background-color: rgba(127, 29, 29, 0.35) !important;
+    background-image: repeating-linear-gradient(
+      45deg,
+      rgba(248, 113, 113, 0.35),
+      rgba(248, 113, 113, 0.35) 6px,
+      transparent 6px,
+      transparent 12px
+    ) !important;
   }
 
   .pattern-holiday-vn {
-    background-color: #f0fdfa;
+    background-color: #ccfbf1 !important;
     background-image: repeating-linear-gradient(
       -45deg,
-      rgba(13, 148, 136, 0.14),
-      rgba(13, 148, 136, 0.14) 6px,
+      rgba(13, 148, 136, 0.25),
+      rgba(13, 148, 136, 0.25) 6px,
       transparent 6px,
       transparent 12px
-    );
+    ) !important;
+  }
+  .dark .pattern-holiday-vn {
+    background-color: rgba(19, 78, 74, 0.35) !important;
+    background-image: repeating-linear-gradient(
+      -45deg,
+      rgba(45, 212, 191, 0.35),
+      rgba(45, 212, 191, 0.35) 6px,
+      transparent 6px,
+      transparent 12px
+    ) !important;
   }
 
   .pattern-holiday-uk {
-    background-color: #f8fafc;
+    background-color: #f1f5f9 !important;
     background-image: repeating-linear-gradient(
       90deg,
-      rgba(100, 116, 139, 0.1),
-      rgba(100, 116, 139, 0.1) 4px,
+      rgba(100, 116, 139, 0.2),
+      rgba(100, 116, 139, 0.2) 4px,
       transparent 4px,
       transparent 8px
-    );
+    ) !important;
+  }
+  .dark .pattern-holiday-uk {
+    background-color: rgba(30, 41, 59, 0.5) !important;
+    background-image: repeating-linear-gradient(
+      90deg,
+      rgba(148, 163, 184, 0.25),
+      rgba(148, 163, 184, 0.25) 4px,
+      transparent 4px,
+      transparent 8px
+    ) !important;
   }
 
   /* 간트 타임라인 바 스타일 */

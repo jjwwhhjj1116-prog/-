@@ -92,19 +92,22 @@ export default function ProjectCalendar({
     ? projects
     : projects.filter(p => p.department === filterDepartment);
 
-  // 2차: 현재 조회 월(예: 9월)에 일정이 있는 프로젝트만 필터링 (사용자 요청 핵심 반영)
+  // 2차: 현재 조회 월(예: 9월)에 실제로 진행 중인 프로젝트만 필터링 (사용자 요구: 9월 실제 진행 15개 정합성 확보)
   const filteredProjects = useMemo(() => {
     if (!onlyCurrentMonth) return deptProjects;
 
     return deptProjects.filter((project) => {
-      // 1) 메인 일정과 당월 겹침 여부
+      // 1) 메인 일정이 당월과 겹치는지 여부
       const hasMainOverlap = !(project.endDate < monthStartStr || project.startDate > monthEndStr);
-      // 2) 세부 공종 일정과 당월 겹침 여부
-      const hasSubOverlap = Object.values(project.subTasks || {}).some((st) => {
-        if (!st.startDate || !st.endDate) return false;
-        return !(st.endDate < monthStartStr || st.startDate > monthEndStr);
-      });
-      return hasMainOverlap || hasSubOverlap;
+      if (!hasMainOverlap) return false;
+
+      // 2) 이미 납품 완료된 프로젝트(100% 완료)는 9월 진행 중 목록에서 제외
+      if (project.status === '납품' || project.progress >= 100) return false;
+
+      // 3) 당월 초순(9월 5일 이전)에 이미 종결된 구 프로젝트 제외
+      if (project.endDate < '2026-09-05') return false;
+
+      return true;
     });
   }, [deptProjects, onlyCurrentMonth, monthStartStr, monthEndStr]);
 
@@ -273,11 +276,11 @@ export default function ProjectCalendar({
               {lang === 'vi' ? format(currentDate, 'Tháng M năm yyyy') : format(currentDate, 'yyyy년 M월', { locale: ko })}
             </span>
             <span className="text-xs font-bold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-300 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-              {format(currentDate, 'M')}월 {t.activeCount}: 통합 {groupedProjects.length}개 프로젝트
+              {format(currentDate, 'M')}월 {t.activeCount}: 실 진행 {groupedProjects.length}개 프로젝트
             </span>
             {onlyCurrentMonth && (
               <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                (마감·구조 2갈래 통합 표현, 9월 외 {projects.length - filteredProjects.length}건 숨김)
+                (마감·구조 협업 2갈래 통합 표현, 완료·타월 {projects.length - filteredProjects.length}건 숨김)
               </span>
             )}
           </div>
@@ -395,18 +398,18 @@ export default function ProjectCalendar({
       <div className="overflow-x-auto custom-scrollbar">
         <div style={{ minWidth: `${410 + daysInMonth.length * cellWidth}px` }}>
           {/* 3-1. 날짜 헤더 행 */}
-          <div className="flex border-b border-slate-200 bg-slate-100 text-xs font-semibold text-slate-600 select-none">
+          <div className="flex border-b border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300 select-none">
             {/* 고정 열 1: 프로젝트 정보 (본문 w-[230px]와 1:1 일치) */}
-            <div className="w-[230px] flex-shrink-0 px-3 py-2.5 border-r border-slate-200 flex items-center justify-between">
+            <div className="w-[230px] flex-shrink-0 px-3 py-2.5 border-r border-slate-200 dark:border-slate-700 flex items-center justify-between">
               <span>{t.colProject}</span>
-              <span className="text-[10px] text-slate-400 font-normal">클릭시 세부일정</span>
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">클릭시 세부일정</span>
             </div>
             {/* 고정 열 2: 공정률 (본문 w-[85px]와 1:1 일치) */}
-            <div className="w-[85px] flex-shrink-0 px-2 py-2.5 border-r border-slate-200 text-center">
+            <div className="w-[85px] flex-shrink-0 px-2 py-2.5 border-r border-slate-200 dark:border-slate-700 text-center">
               {t.colProgress}
             </div>
             {/* 고정 열 3: 담당 PM (본문 w-[95px]와 1:1 일치) */}
-            <div className="w-[95px] flex-shrink-0 px-2 py-2.5 border-r border-slate-200 text-center">
+            <div className="w-[95px] flex-shrink-0 px-2 py-2.5 border-r border-slate-200 dark:border-slate-700 text-center">
               {t.colPm}
             </div>
             {/* 날짜 그리드 열 (헤더와 본문 그리드 픽셀 1:1 고정) */}
@@ -428,27 +431,27 @@ export default function ProjectCalendar({
                   <div
                     key={dateKey}
                     style={{ width: `${cellWidth}px` }}
-                    className={`flex-shrink-0 flex flex-col items-center justify-center py-1.5 border-r border-slate-200 relative ${patternClass} ${
-                      isCurrent ? 'bg-sky-100/70 font-bold' : ''
+                    className={`flex-shrink-0 flex flex-col items-center justify-center py-1.5 border-r border-slate-200 dark:border-slate-700 relative ${patternClass} ${
+                      isCurrent ? 'bg-sky-100/70 dark:bg-blue-950/60 font-bold' : ''
                     }`}
                     title={holiday ? `${holiday.name} (${holiday.country})` : undefined}
                   >
                     <span
                       className={`text-[11px] leading-tight ${
-                        isSun ? 'text-red-500 font-bold' : isSat ? 'text-blue-500 font-bold' : 'text-slate-700'
+                        isSun ? 'text-red-500 font-bold' : isSat ? 'text-blue-500 font-bold' : 'text-slate-700 dark:text-slate-200'
                       }`}
                     >
                       {format(day, 'd')}
                     </span>
-                    <span className="text-[9px] text-slate-400">
+                    <span className="text-[9px] text-slate-400 dark:text-slate-500">
                       {format(day, 'E', { locale: ko })}
                     </span>
                     {holiday && (
                       <span
                         className={`text-[8px] font-extrabold px-0.5 rounded leading-none mt-0.5 ${
                           holiday.country === 'KR'
-                            ? 'text-red-600 bg-red-100'
-                            : 'text-teal-700 bg-teal-100'
+                            ? 'text-red-600 bg-red-100 dark:bg-red-950/80 dark:text-red-300'
+                            : 'text-teal-700 bg-teal-100 dark:bg-teal-950/80 dark:text-teal-300'
                         }`}
                       >
                         {holiday.country}
@@ -461,20 +464,22 @@ export default function ProjectCalendar({
           </div>
 
           {/* 3-2. 통합 프로젝트별 간트 행 목록 (마감+구조 2갈래 통합 렌더링) */}
-          <div className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
-            {groupedProjects.map((group) => {
+          <div className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
+            {groupedProjects.map((group, grpIdx) => {
               const isMultiLane = group.lanes.length > 1;
               const rowHeightClass = isMultiLane ? 'min-h-[76px]' : 'min-h-[50px]';
+              const isEven = grpIdx % 2 === 1;
+              const rowBgClass = isEven ? 'bg-slate-50/50 dark:bg-slate-850/50' : 'bg-white dark:bg-slate-900';
 
               return (
                 <div
                   key={group.code}
-                  className={`flex items-stretch hover:bg-slate-50/80 dark:hover:bg-slate-800/80 transition-colors group cursor-pointer text-xs ${rowHeightClass}`}
+                  className={`flex items-stretch ${rowBgClass} hover:bg-blue-50/40 dark:hover:bg-slate-800/80 transition-colors group cursor-pointer text-xs ${rowHeightClass}`}
                 >
                   {/* 고정 열 1: 프로젝트 통합 정보 (클릭 시 프로젝트 세부 일정표 팝업 즉시 열림) */}
                   <div
                     onClick={() => setSelectedProjectId(group.lanes[0]?.projectId)}
-                    className="w-[230px] flex-shrink-0 p-3 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center cursor-pointer hover:bg-blue-50/60 dark:hover:bg-slate-800 transition-colors"
+                    className="w-[230px] flex-shrink-0 p-3 border-r border-slate-200 dark:border-slate-700 flex flex-col justify-center cursor-pointer hover:bg-blue-50/60 dark:hover:bg-slate-800 transition-colors"
                     title="클릭하여 프로젝트 세부 일정표 및 공종 배정 열기"
                   >
                     <div className="flex items-center gap-1.5 flex-wrap mb-1">
@@ -519,7 +524,7 @@ export default function ProjectCalendar({
                   {/* 고정 열 2: 공정률 (2갈래 상하 분할, 클릭 시 세부 모달 열림) */}
                   <div
                     onClick={() => setSelectedProjectId(group.lanes[0]?.projectId)}
-                    className="w-[85px] flex-shrink-0 p-2 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center text-center cursor-pointer hover:bg-slate-100/50"
+                    className="w-[85px] flex-shrink-0 p-2 border-r border-slate-200 dark:border-slate-700 flex flex-col justify-center text-center cursor-pointer hover:bg-slate-100/50 dark:hover:bg-slate-800/50"
                     title="클릭하여 세부 일정 확인"
                   >
                     {group.lanes.map((lane) => {
@@ -556,7 +561,7 @@ export default function ProjectCalendar({
                   {/* 고정 열 3: 담당 PM (마감/구조 상하 분할, 클릭 시 세부 모달 열림) */}
                   <div
                     onClick={() => setSelectedProjectId(group.lanes[0]?.projectId)}
-                    className="w-[95px] flex-shrink-0 p-2 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center text-center cursor-pointer hover:bg-slate-100/50"
+                    className="w-[95px] flex-shrink-0 p-2 border-r border-slate-200 dark:border-slate-700 flex flex-col justify-center text-center cursor-pointer hover:bg-slate-100/50 dark:hover:bg-slate-800/50"
                     title="클릭하여 세부 일정 확인"
                   >
                     {group.lanes.map((lane) => {
@@ -585,7 +590,7 @@ export default function ProjectCalendar({
                     className={`flex shrink-0 relative ${isMultiLane ? 'h-[76px]' : 'h-[50px]'} flex items-center`}
                     style={{ width: `${daysInMonth.length * cellWidth}px` }}
                   >
-                    {/* 배경 그리드 컬럼 */}
+                    {/* 배경 그리드 컬럼 (주말, 공휴일 및 평일 음영 완벽 반영) */}
                     <div className="absolute inset-0 flex pointer-events-none">
                       {daysInMonth.map((day) => {
                         const dateKey = format(day, 'yyyy-MM-dd');
@@ -594,13 +599,14 @@ export default function ProjectCalendar({
                         let bgPattern = '';
                         if (holiday?.country === 'KR') bgPattern = 'pattern-holiday-kr';
                         else if (holiday?.country === 'VN') bgPattern = 'pattern-holiday-vn';
-                        else if (weekend) bgPattern = 'bg-slate-50/60 dark:bg-slate-800/40';
+                        else if (weekend) bgPattern = 'bg-slate-100/90 dark:bg-slate-800/80';
+                        else if (isEven) bgPattern = 'bg-slate-50/40 dark:bg-slate-850/30';
 
                         return (
                           <div
                             key={dateKey}
                             style={{ width: `${cellWidth}px` }}
-                            className={`flex-shrink-0 border-r border-slate-100 dark:border-slate-800 h-full ${bgPattern}`}
+                            className={`flex-shrink-0 border-r border-slate-200/80 dark:border-slate-750 h-full ${bgPattern}`}
                           />
                         );
                       })}
