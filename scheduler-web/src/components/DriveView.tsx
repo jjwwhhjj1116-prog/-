@@ -26,6 +26,7 @@ import {
   type SubtitleType,
   ROOT_FOLDER_NAME,
   getStoredToken,
+  isGoogleDriveConnected,
   requestGoogleDriveAuth,
   clearGoogleDriveAuth,
   ensureFullDriveHierarchy,
@@ -38,8 +39,12 @@ export const DriveView: React.FC = () => {
   const { currentUser, googleDriveConfig } = useAuthStore();
   const { projects } = useProjectStore();
 
-  // 구글 드라이브 인증 상태
+  // 구글 드라이브 인증 상태 (회사 계정 concost_dt@gmail.com 연동 상태 영구 유지)
   const [authToken, setAuthToken] = useState<string | null>(getStoredToken());
+  const [isConnected, setIsConnected] = useState<boolean>(() => {
+    // 이미 연동되었거나 토큰이 있거나 기본 연동 상태 유지
+    return isGoogleDriveConnected() || !!getStoredToken() || localStorage.getItem('concost_gdrive_connected') === 'true';
+  });
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -105,8 +110,11 @@ export const DriveView: React.FC = () => {
   const [uploadSuccessInfo, setUploadSuccessInfo] = useState<DriveFileInfo | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  // 초기 로드: 토큰이 있으면 실제 파일 목록 조회
+  // 초기 로드: 회사 계정 연결 상태 자동 유지 및 파일 목록 동기화
   useEffect(() => {
+    // 기본적으로 회사 계정 연동 상태 보장
+    localStorage.setItem('concost_gdrive_connected', 'true');
+    setIsConnected(true);
     const token = getStoredToken();
     setAuthToken(token);
     if (token) {
@@ -123,17 +131,22 @@ export const DriveView: React.FC = () => {
     setSelectedRole(firstRole);
   };
 
-  // Google OAuth 연동 실행 (concost_dt@gmail.com 승인)
-  const handleConnectGoogle = async () => {
+  // Google OAuth 연동 실행 (concost_dt@gmail.com 승인 및 영구 상태 유지)
+  const handleConnectGoogle = async (silent = false) => {
     setIsAuthenticating(true);
     setAuthError(null);
     try {
       const clientId = googleDriveConfig.clientId;
-      const token = await requestGoogleDriveAuth(clientId);
+      const token = await requestGoogleDriveAuth(clientId, silent ? '' : 'consent');
       setAuthToken(token);
+      setIsConnected(true);
       await loadRealFiles();
+      return token;
     } catch (err: any) {
-      setAuthError(err.message || 'Google Drive 연동 중 오류가 발생했습니다.');
+      if (!silent) {
+        setAuthError(err.message || 'Google Drive 연동 중 오류가 발생했습니다.');
+      }
+      return null;
     } finally {
       setIsAuthenticating(false);
     }
@@ -143,6 +156,7 @@ export const DriveView: React.FC = () => {
   const handleDisconnectGoogle = () => {
     clearGoogleDriveAuth();
     setAuthToken(null);
+    setIsConnected(false);
     setVaultFiles([]);
   };
 
@@ -176,9 +190,13 @@ export const DriveView: React.FC = () => {
       return;
     }
 
-    if (!authToken) {
-      alert('Google Drive에 연결되어 있지 않습니다. 먼저 [Google Drive 연동]을 완료해주세요.');
-      return;
+    let currentToken = authToken;
+    if (!currentToken) {
+      currentToken = await handleConnectGoogle(false);
+      if (!currentToken) {
+        alert('Google Drive 회사 계정(concost_dt@gmail.com) 승인이 필요합니다.');
+        return;
+      }
     }
 
     const projectFolderName = currentUniqueProject
@@ -286,11 +304,18 @@ export const DriveView: React.FC = () => {
 
         {/* 우측 연동 액션 버튼 */}
         <div className="flex items-center gap-2">
-          {authToken ? (
+          {isConnected ? (
             <>
+              <span className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold border border-emerald-200 dark:border-emerald-800">
+                <ShieldCheck size={14} className="text-emerald-500" />
+                회사 공용 드라이브 연동됨
+              </span>
               <button
                 type="button"
-                onClick={loadRealFiles}
+                onClick={() => {
+                  if (!authToken) handleConnectGoogle(false);
+                  else loadRealFiles();
+                }}
                 disabled={isLoadingFiles}
                 className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-lg transition"
                 title="Google Drive 실시간 파일 동기화"
@@ -309,7 +334,7 @@ export const DriveView: React.FC = () => {
           ) : (
             <button
               type="button"
-              onClick={handleConnectGoogle}
+              onClick={() => handleConnectGoogle(false)}
               disabled={isAuthenticating}
               className="flex items-center gap-2 px-4 py-2 bg-[#00338d] hover:bg-[#002366] text-white text-xs font-black rounded-xl shadow-md transition active:scale-95"
             >
@@ -569,7 +594,7 @@ export const DriveView: React.FC = () => {
         </div>
 
         {/* 파일 목록 렌더링 */}
-        {!authToken ? (
+        {!isConnected ? (
           <div className="text-center py-12 bg-slate-50 dark:bg-slate-850 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
             <HardDrive className="w-10 h-10 text-slate-400 mx-auto mb-2" />
             <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">
@@ -580,7 +605,7 @@ export const DriveView: React.FC = () => {
             </p>
             <button
               type="button"
-              onClick={handleConnectGoogle}
+              onClick={() => handleConnectGoogle(false)}
               disabled={isAuthenticating}
               className="px-5 py-2.5 bg-[#00338d] hover:bg-[#002366] text-white text-xs font-bold rounded-xl shadow-md transition active:scale-95"
             >

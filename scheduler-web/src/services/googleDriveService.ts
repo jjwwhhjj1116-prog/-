@@ -47,21 +47,22 @@ export interface DriveFolderNode {
   files: DriveFileInfo[];
 }
 
-// Access Token 반환 (만료 체크)
+const CONNECTED_FLAG_KEY = 'concost_gdrive_connected';
+
+// 연동 여부 영구 확인 (사용자가 수동 해제하기 전까지 영구 유지)
+export function isGoogleDriveConnected(): boolean {
+  return localStorage.getItem(CONNECTED_FLAG_KEY) === 'true';
+}
+
+// Access Token 반환 (연결 플래그가 있으면 만료되어도 즉시 삭제하지 않고 최대한 유지)
 export function getStoredToken(): string | null {
   const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-  const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
-  if (!token || !expiry) return null;
-  if (Date.now() > Number(expiry)) {
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
-    localStorage.removeItem(TOKEN_EXPIRY_KEY);
-    return null;
-  }
+  if (!token) return null;
   return token;
 }
 
 // Google Identity Services (GIS) 토큰 클라이언트 기반 로그인
-export function requestGoogleDriveAuth(clientId: string): Promise<string> {
+export function requestGoogleDriveAuth(clientId: string, promptType: 'consent' | '' = 'consent'): Promise<string> {
   return new Promise((resolve, reject) => {
     // @ts-ignore
     if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
@@ -74,7 +75,7 @@ export function requestGoogleDriveAuth(clientId: string): Promise<string> {
       const client = window.google.accounts.oauth2.initTokenClient({
         client_id: clientId,
         scope: 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.file',
-        prompt: 'consent',
+        prompt: promptType,
         callback: (response: any) => {
           if (response.error) {
             reject(new Error(response.error_description || response.error));
@@ -85,6 +86,7 @@ export function requestGoogleDriveAuth(clientId: string): Promise<string> {
             localStorage.setItem(TOKEN_STORAGE_KEY, response.access_token);
             localStorage.setItem(TOKEN_EXPIRY_KEY, String(Date.now() + expiresInMs));
             localStorage.setItem(USER_EMAIL_KEY, 'concost_dt@gmail.com');
+            localStorage.setItem(CONNECTED_FLAG_KEY, 'true');
             resolve(response.access_token);
           } else {
             reject(new Error('액세스 토큰을 수신하지 못했습니다.'));
@@ -103,13 +105,14 @@ export function requestGoogleDriveAuth(clientId: string): Promise<string> {
 export function clearGoogleDriveAuth() {
   localStorage.removeItem(TOKEN_STORAGE_KEY);
   localStorage.removeItem(TOKEN_EXPIRY_KEY);
+  localStorage.removeItem(CONNECTED_FLAG_KEY);
 }
 
 // Google Drive API 호출 헬퍼
 async function driveApiFetch(endpoint: string, options: RequestInit = {}): Promise<any> {
-  const token = getStoredToken();
+  let token = getStoredToken();
   if (!token) {
-    throw new Error('Google Drive 연동이 필요합니다. 먼저 [Google Drive 연동]을 진행해주세요.');
+    throw new Error('Google Drive 연동이 필요합니다. [Google Drive 계정 연결]을 진행해주세요.');
   }
 
   const res = await fetch(`https://www.googleapis.com/drive/v3/${endpoint}`, {

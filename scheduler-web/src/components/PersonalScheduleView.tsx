@@ -25,16 +25,7 @@ import { VIET_TEAMS_DATA, type VietTeam } from '../data/vietTeams';
 import { VietTeamModal } from './VietTeamModal';
 import ProjectCalendar from './ProjectCalendar';
 
-// 2026년 한/베 공휴일 정의
-const HOLIDAYS_2026: Record<string, { country: 'KR' | 'VN'; name: string }> = {
-  '2026-09-02': { country: 'VN', name: '베트남 독립기념일' },
-  '2026-09-03': { country: 'VN', name: '베트남 국경일' },
-  '2026-09-24': { country: 'KR', name: '추석 연휴' },
-  '2026-09-25': { country: 'KR', name: '추석' },
-  '2026-09-26': { country: 'KR', name: '추석 연휴' },
-  '2026-10-03': { country: 'KR', name: '개천절' },
-  '2026-10-09': { country: 'KR', name: '한글날' },
-};
+import { HOLIDAYS_2026 } from '../constants/holidays';
 
 interface PersonalScheduleViewProps {
   department: Department;

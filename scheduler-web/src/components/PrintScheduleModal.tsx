@@ -4,6 +4,7 @@ import {
   X,
 } from 'lucide-react';
 import type { Project, Person, Department } from '../store/useProjectStore';
+import { HOLIDAYS_2026 } from '../constants/holidays';
 
 interface Props {
   isOpen: boolean;
@@ -43,16 +44,11 @@ export const PrintScheduleModal: React.FC<Props> = ({
     { year: 2026, month: 11, days: 30, label: '2026년 11월' },
   ];
 
-  // 한국 / 베트남 / 영국 휴일 정의 (스크린샷 2, 4 기준)
-  const holidays2026: Record<string, { label: string; country: 'KR' | 'VN' | 'UK' }> = {
-    '2026-09-02': { label: 'VN', country: 'VN' },
-    '2026-09-03': { label: 'VN', country: 'VN' },
-    '2026-09-24': { label: 'KR', country: 'KR' },
-    '2026-09-25': { label: 'KR', country: 'KR' },
-    '2026-09-26': { label: 'KR', country: 'KR' },
-    '2026-10-03': { label: 'KR', country: 'KR' },
-    '2026-10-09': { label: 'KR', country: 'KR' },
-  };
+  // 한국 / 베트남 / 영국 휴일 정의 (공통 상수 동기화)
+  const holidays2026 = Object.entries(HOLIDAYS_2026).reduce((acc, [key, val]) => {
+    acc[key] = { label: val.country, country: val.country };
+    return acc;
+  }, {} as Record<string, { label: string; country: 'KR' | 'VN' | 'UK' }>);
 
   const handlePrint = () => {
     window.print();
