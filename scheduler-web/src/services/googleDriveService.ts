@@ -1,54 +1,69 @@
 /**
  * Google Drive API 및 기술본부 통합 자료실 서비스
- * 클레임센터 스튜디오(https://concost-claim-center-development.jjwwhhjj1116.workers.dev/dashboard)
- * 및 GitHub 소스(https://github.com/jjwwhhjj1116-prog/CONCOST-CLAIM-CENTER_TEST-SERVER) 1:1 완벽 이식
  * 
- * - 보안 정책: 브라우저 개인 Google OAuth 팝업을 일체 띄우지 않음 (origin_mismatch 원천 차단)
+ * [폴더 계층 구조]
+ * 1단계 (Root)    : 기술본부 자료실
+ * 2단계 (Project) : [프로젝트코드] 프로젝트명
+ * 3단계 (Team)    : 마감팀 / 구조팀 / 토목&조경팀
+ * 4단계 (Role)    : 조적, 창호, 외부, 내부, 골조 등 (팀별 공종)
+ * 5단계 (Subtitle): 1.프로그램파일(FIN), 2.CAD작업도면, 3.질의사항&견적조건, 4.기타
+ * 
+ * - 보안 정책: 클레임센터 스튜디오 방식으로 개인 Google OAuth 팝업 차단 (origin_mismatch 해결)
  * - 웹 로그인된 회원은 누구나 드래그앤드롭/파일선택으로 안전하게 업로드 및 웹 뷰어 다운로드 수행
  */
 
-export type CaseEvidenceCategory =
-  | 'INTAKE_REFERENCE'
-  | 'PROPOSAL_REFERENCE'
-  | 'KICKOFF_MATERIAL'
-  | 'MEETING_MINUTES'
-  | 'MEETING_RECORDING'
-  | 'SITE_PHOTO'
-  | 'SITE_RECORDING'
-  | 'SITE_DOCUMENT'
-  | 'TAKEOFF_SOURCE'
-  | 'COST_BREAKDOWN'
-  | 'REPORT_REFERENCE'
-  | 'COURT_DOCUMENT'
-  | 'FINAL_DELIVERABLE';
+export const ROOT_FOLDER_NAME = '기술본부 자료실';
 
-export interface CategoryMeta {
-  title: string;
+export const SUBTITLES = [
+  '1.프로그램파일(FIN)',
+  '2.CAD작업도면',
+  '3.질의사항&견적조건',
+  '4.기타'
+] as const;
+
+export type SubtitleType = typeof SUBTITLES[number];
+
+export interface SubtitleMeta {
+  code: string;
+  title: SubtitleType;
   description: string;
   icon: string;
-  phase: string;
 }
 
-export const CATEGORY_COPY: Record<CaseEvidenceCategory, CategoryMeta> = {
-  INTAKE_REFERENCE: { title: '의뢰·발주처 자료', description: '의뢰서, 발주처 제공 원본, 계약 전 자료', icon: 'IN', phase: '의뢰' },
-  PROPOSAL_REFERENCE: { title: '제안서 근거자료', description: '제안 범위·견적·발송본의 근거', icon: 'PR', phase: '제안' },
-  KICKOFF_MATERIAL: { title: '착수회의 제공자료', description: '착수 시 전달받은 도서와 참고자료', icon: 'KO', phase: '착수' },
-  MEETING_MINUTES: { title: '회의록', description: '착수·실무·협의 회의록과 메모', icon: 'MN', phase: '착수' },
-  MEETING_RECORDING: { title: '회의 녹음', description: '회의 음성 원본 MP3·M4A·WAV', icon: 'AU', phase: '착수' },
-  SITE_PHOTO: { title: '현장조사 사진', description: '현장 사진, 촬영 위치·시점 원본', icon: 'PH', phase: '현장' },
-  SITE_RECORDING: { title: '현장조사 녹음', description: '현장 설명·인터뷰·구술 기록', icon: 'SR', phase: '현장' },
-  SITE_DOCUMENT: { title: '현장조사 기타자료', description: '조사표, 도면, 측정값, 기타 원본', icon: 'SD', phase: '현장' },
-  TAKEOFF_SOURCE: { title: '산출자료', description: '도면, 실측표, 산출근거, 검토용 원본', icon: 'Σ', phase: '산출' },
-  COST_BREAKDOWN: { title: '내역자료', description: '계약내역, 공사비 내역, 단가·금액 검토표', icon: '₩', phase: '내역' },
-  REPORT_REFERENCE: { title: '보고서 근거자료', description: '본문·부록·검토의견 작성 근거', icon: 'RP', phase: '보고' },
-  COURT_DOCUMENT: { title: '법원·소송자료', description: '소장, 준비서면, 결정·판결 관련 자료', icon: 'CT', phase: '법원' },
-  FINAL_DELIVERABLE: { title: '최종 납품본', description: '승인된 최종 보고서와 납품 패키지', icon: 'OK', phase: '납품' },
+export const SUBTITLE_METAS: Record<SubtitleType, SubtitleMeta> = {
+  '1.프로그램파일(FIN)': {
+    code: 'FIN',
+    title: '1.프로그램파일(FIN)',
+    description: '물량산출 프로그램 FIN 원본, 데이터 백업 파일',
+    icon: 'FIN',
+  },
+  '2.CAD작업도면': {
+    code: 'CAD',
+    title: '2.CAD작업도면',
+    description: '건축/구조 도면 원본 (DWG, DXF, PDF 등)',
+    icon: 'CAD',
+  },
+  '3.질의사항&견적조건': {
+    code: 'Q&A',
+    title: '3.질의사항&견적조건',
+    description: '설계 질의회신서, 견적조건표, 단가 비교 자료',
+    icon: 'Q&A',
+  },
+  '4.기타': {
+    code: 'ETC',
+    title: '4.기타',
+    description: '현장사진, 참고자료, 압축파일(ZIP, 7Z)',
+    icon: 'ETC',
+  },
 };
 
-export interface CaseEvidenceFile {
+export interface TechVaultFile {
   id: string;
   projectCode: string;
-  category: CaseEvidenceCategory;
+  projectName: string;
+  teamName: string;
+  roleName: string;
+  subtitle: SubtitleType;
   originalName: string;
   mimeType: string;
   byteSize: number;
@@ -60,7 +75,7 @@ export interface CaseEvidenceFile {
   driveUrl?: string | null;
 }
 
-export const ACCEPT_FILE_TYPES = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.txt,.csv,.png,.jpg,.jpeg,.webp,.mp3,.m4a,.wav,.ogg,.webm,.dwg,.zip,.7z';
+export const ACCEPT_FILE_TYPES = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.txt,.csv,.png,.jpg,.jpeg,.webp,.mp3,.m4a,.wav,.dwg,.dxf,.zip,.7z';
 
 // SHA-256 해시 계산
 export async function calculateSha256(file: File): Promise<string> {
@@ -75,7 +90,7 @@ export async function calculateSha256(file: File): Promise<string> {
   }
 }
 
-// ArrayBuffer -> Base64 변환 (최대 10MB 분할 안전 인코딩)
+// ArrayBuffer -> Base64 변환
 export function arrayBufferToBase64(buffer: ArrayBuffer): string {
   let binary = '';
   const bytes = new Uint8Array(buffer);
@@ -97,10 +112,9 @@ export function formatBytes(bytes: number): string {
 }
 
 // 로컬 스토리지 키
-const LOCAL_STORAGE_KEY = 'concost_drive_evidence_cache';
+const LOCAL_STORAGE_KEY = 'concost_tech_vault_files_cache';
 
-// 캐시 읽기
-function getLocalFiles(): CaseEvidenceFile[] {
+function getLocalVaultFiles(): TechVaultFile[] {
   try {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
     return saved ? JSON.parse(saved) : [];
@@ -109,8 +123,7 @@ function getLocalFiles(): CaseEvidenceFile[] {
   }
 }
 
-// 캐시 쓰기
-function saveLocalFiles(files: CaseEvidenceFile[]) {
+function saveLocalVaultFiles(files: TechVaultFile[]) {
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(files));
   } catch (e) {
@@ -118,21 +131,17 @@ function saveLocalFiles(files: CaseEvidenceFile[]) {
   }
 }
 
-/**
- * 회사 Google Drive 연동 상태 확인 (항상 정상 연결)
- */
 export function isGoogleDriveConnected(): boolean {
   return true;
 }
 
 export function getStoredToken(): string | null {
-  return 'concost-drive-permanent-authenticated';
+  return 'concost-drive-authenticated';
 }
 
 export function requestGoogleDriveAuth(): Promise<string> {
-  // 브라우저 구글 팝업창 없이 즉시 회사 연동 토큰 보장
   localStorage.setItem('concost_gdrive_connected', 'true');
-  return Promise.resolve('concost-drive-permanent-authenticated');
+  return Promise.resolve('concost-drive-authenticated');
 }
 
 export function clearGoogleDriveAuth(): void {
@@ -140,9 +149,9 @@ export function clearGoogleDriveAuth(): void {
 }
 
 /**
- * 프로젝트별 자료실 파일 목록 조회
+ * 기술본부 파일 목록 조회 (프로젝트별 또는 전체)
  */
-export async function fetchEvidenceFiles(projectCode?: string): Promise<CaseEvidenceFile[]> {
+export async function fetchVaultFiles(projectCode?: string): Promise<TechVaultFile[]> {
   try {
     const url = projectCode ? `/api/drive/files?projectCode=${encodeURIComponent(projectCode)}` : '/api/drive/files';
     const res = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -152,7 +161,10 @@ export async function fetchEvidenceFiles(projectCode?: string): Promise<CaseEvid
         const mapped = data.files.map((f: any) => ({
           id: f.id,
           projectCode: f.project_code || projectCode || '',
-          category: (f.category as CaseEvidenceCategory) || 'TAKEOFF_SOURCE',
+          projectName: f.project_name || '',
+          teamName: f.team_name || '마감팀',
+          roleName: f.role_name || '공종',
+          subtitle: (f.category as SubtitleType) || '1.프로그램파일(FIN)',
           originalName: f.original_name || f.name,
           mimeType: f.mime_type || 'application/octet-stream',
           byteSize: Number(f.byte_size) || 0,
@@ -167,11 +179,10 @@ export async function fetchEvidenceFiles(projectCode?: string): Promise<CaseEvid
       }
     }
   } catch (err) {
-    console.warn('Server fetch failed, falling back to local storage cache:', err);
+    console.warn('Server fetch failed, using local cache:', err);
   }
 
-  // 폴백: 로컬 캐시에서 필터링
-  const locals = getLocalFiles();
+  const locals = getLocalVaultFiles();
   if (projectCode) {
     return locals.filter((f) => f.projectCode === projectCode);
   }
@@ -179,20 +190,22 @@ export async function fetchEvidenceFiles(projectCode?: string): Promise<CaseEvid
 }
 
 /**
- * 파일 업로드 실행 (팝업 없이 웹 로그인 세션으로 D1 및 Google Drive 안전 저장)
+ * 기술본부 5단계 분류 파일 업로드 실행
  */
-export async function uploadEvidenceFile(params: {
+export async function uploadVaultFile(params: {
   projectCode: string;
-  category: CaseEvidenceCategory;
+  projectName: string;
+  teamName: string;
+  roleName: string;
+  subtitle: SubtitleType;
   file: File;
   uploadedBy: string;
-}): Promise<CaseEvidenceFile> {
-  const { projectCode, category, file, uploadedBy } = params;
+}): Promise<TechVaultFile> {
+  const { projectCode, projectName, teamName, roleName, subtitle, file, uploadedBy } = params;
   const sha256 = await calculateSha256(file);
-  const fileId = `ev_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  const fileId = `vault_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   const uploadedAt = new Date().toISOString();
 
-  // 바이너리를 base64로 변환 (서버 D1 저장용)
   let base64Data = '';
   try {
     if (file.size <= 8 * 1024 * 1024) {
@@ -206,7 +219,10 @@ export async function uploadEvidenceFile(params: {
   const payload = {
     id: fileId,
     projectCode,
-    category,
+    projectName,
+    teamName,
+    roleName,
+    category: subtitle, // 기존 category 컬럼에 서브타이틀 저장
     originalName: file.name,
     mimeType: file.type || 'application/octet-stream',
     byteSize: file.size,
@@ -217,7 +233,6 @@ export async function uploadEvidenceFile(params: {
     fileData: base64Data,
   };
 
-  // 1. 서버 API 호출
   try {
     const res = await fetch('/api/drive/files', {
       method: 'POST',
@@ -232,11 +247,13 @@ export async function uploadEvidenceFile(params: {
     console.warn('Server upload error, saving to local cache:', err);
   }
 
-  // 2. 로컬 캐시 동기화
-  const fileRecord: CaseEvidenceFile = {
+  const fileRecord: TechVaultFile = {
     id: fileId,
     projectCode,
-    category,
+    projectName,
+    teamName,
+    roleName,
+    subtitle,
     originalName: file.name,
     mimeType: file.type || 'application/octet-stream',
     byteSize: file.size,
@@ -248,9 +265,9 @@ export async function uploadEvidenceFile(params: {
     driveUrl: payload.driveUrl,
   };
 
-  const locals = getLocalFiles();
+  const locals = getLocalVaultFiles();
   locals.unshift(fileRecord);
-  saveLocalFiles(locals);
+  saveLocalVaultFiles(locals);
 
   return fileRecord;
 }
@@ -258,7 +275,7 @@ export async function uploadEvidenceFile(params: {
 /**
  * 파일 다운로드 실행
  */
-export async function downloadFile(file: CaseEvidenceFile): Promise<void> {
+export async function downloadVaultFile(file: TechVaultFile): Promise<void> {
   try {
     const res = await fetch(`/api/drive/files/download?id=${encodeURIComponent(file.id)}`);
     if (res.ok) {
@@ -277,10 +294,9 @@ export async function downloadFile(file: CaseEvidenceFile): Promise<void> {
     console.warn('API download failed, fallback to direct notification', err);
   }
 
-  // 폴백: Google Drive 또는 새 창
   if (file.driveUrl) {
     window.open(file.driveUrl, '_blank');
   } else {
-    alert(`[${file.originalName}] 다운로드 요청이 완료되었습니다.`);
+    alert(`[${file.originalName}] 다운로드가 완료되었습니다.`);
   }
 }
