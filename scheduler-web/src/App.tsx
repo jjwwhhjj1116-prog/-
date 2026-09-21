@@ -19,12 +19,14 @@ import {
   Activity,
   AlertCircle,
   ArrowUpRight,
-  Sparkles
+  Sparkles,
+  ClipboardCheck
 } from 'lucide-react';
 import ProjectCalendar from './components/ProjectCalendar';
 import ProjectModal from './components/ProjectModal';
 import { ProjectIntegratedModal } from './components/ProjectIntegratedModal';
 import { MinutesView } from './components/MinutesView';
+import { DailyWorkLogView } from './components/DailyWorkLogView';
 import { DriveView } from './components/DriveView';
 import { QCLinkView } from './components/QCLinkView';
 import { PersonalScheduleView } from './components/PersonalScheduleView';
@@ -38,7 +40,7 @@ import { useAuthStore, isUserAdmin } from './store/useAuthStore';
 import { exportProjectsToExcel, importProjectsFromExcel } from './services/excelService';
 import realProjectsData from './data/realProjects.json';
 
-// 좌측 카테고리 정의 (최상단에 '프로젝트 접수목록' 추가)
+// 좌측 카테고리 정의 (최상단에 '프로젝트 접수목록' 추가, 회의록 하단에 '업무일지' 추가)
 export type NavCategory =
   | '프로젝트 접수목록'
   | '프로젝트 일정표'
@@ -46,6 +48,7 @@ export type NavCategory =
   | '구조팀 일정표'
   | '토목&조경팀 일정표'
   | '회의록'
+  | '업무일지'
   | '자료실(google드라이브)'
   | '연계시스템(검토)'
   | '설정';
@@ -177,6 +180,7 @@ export default function App() {
     structSchedule: lang === 'vi' ? 'Tiến độ Đội Kết cấu' : '구조팀 일정표',
     civilSchedule: lang === 'vi' ? 'Tiến độ Hạ tầng & Cảnh quan' : '토목&조경팀 일정표',
     minutes: lang === 'vi' ? 'Biên bản họp' : '회의록',
+    workLog: lang === 'vi' ? 'Nhật ký công việc' : '업무일지',
     drive: lang === 'vi' ? 'Kho tài liệu (Google Drive)' : '자료실(google드라이브)',
     qcLink: lang === 'vi' ? 'Hệ thống liên kết (Kiểm tra QC)' : '검토 (QC Studio 연계)',
     settings: isAdmin
@@ -479,6 +483,24 @@ export default function App() {
                 </div>
                 <span className="text-[10px] bg-amber-50 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 px-1.5 py-0.2 rounded font-semibold">
                   안건
+                </span>
+              </button>
+
+              {/* ✨ 회의록 하단에 업무일지 (개인별 업무일지 & 결재라인) 신규 추가 */}
+              <button
+                onClick={() => setActiveMenu('업무일지')}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                  activeMenu === '업무일지'
+                    ? 'bg-[#00338d] text-white shadow-sm'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <ClipboardCheck size={16} />
+                  <span>{t.workLog}</span>
+                </div>
+                <span className="text-[10px] bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-1.5 py-0.2 rounded font-semibold">
+                  결재연계
                 </span>
               </button>
 
@@ -827,6 +849,9 @@ export default function App() {
 
           {/* CASE 5: 회의록 */}
           {activeMenu === '회의록' && <MinutesView />}
+
+          {/* CASE 5-2: 업무일지 (팀별 일정표 연계 및 3단 결재라인) */}
+          {activeMenu === '업무일지' && <DailyWorkLogView />}
 
           {/* CASE 6: 자료실 (Google 드라이브) */}
           {activeMenu === '자료실(google드라이브)' && <DriveView />}

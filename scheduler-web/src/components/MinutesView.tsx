@@ -1,23 +1,20 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { useAuthStore } from '../store/useAuthStore';
 import { useProjectStore } from '../store/useProjectStore';
 import {
   FileText,
   Plus,
-  Search,
-  Calendar,
-  Users,
   CheckCircle2,
-  FolderKanban,
   FileSignature,
-  Printer,
   Save,
-  Lock,
   Trash2,
-  ChevronDown,
-  ChevronUp,
   Sparkles,
-  Loader2
+  Loader2,
+  Upload,
+  FileSpreadsheet,
+  Paperclip,
+  Building2
 } from 'lucide-react';
 
 export type MeetingType = '착수회의' | '공정회의' | '도면질의협의' | '내역검토회' | '긴급이슈';
@@ -46,17 +43,20 @@ export interface MeetingRecord {
   attendeesInternal: string[];
   attendeesExternal: string[];
   rawTranscript: string;
+  attachedFileName?: string;
   summary: string;
   decisions: string[];
   actionItems: ActionItem[];
   status: MeetingStatus;
   version: number;
   updatedAt: string;
+  authorSigned: boolean;
+  pmApproved: boolean;
+  directorApproved: boolean;
 }
 
 /**
  * 클레임센터 스튜디오 표준 AI 스마트 회의록 요약 엔진 (AI Summarizer)
- * - 회의 원문 대화록(Raw Transcript)에서 핵심 요약(Summary), 주요 결정사항(Decisions), 공종별 Action Items 자동 추출
  */
 export function extractAiMeetingSummary(rawText: string, projectName: string = ''): {
   summary: string;
@@ -66,7 +66,7 @@ export function extractAiMeetingSummary(rawText: string, projectName: string = '
   if (!rawText || !rawText.trim()) {
     return {
       summary: '회의 원문 대화록이 비어 있어 요약을 생성할 수 없습니다.',
-      decisions: ['대화록 원문을 입력한 뒤 [AI 스마트 요약]을 다시 실행해 주세요.'],
+      decisions: ['대화록 원문을 입력하거나 파일을 첨부한 뒤 [AI 자동 정리]를 실행해 주세요.'],
       actionItems: []
     };
   }
@@ -76,11 +76,11 @@ export function extractAiMeetingSummary(rawText: string, projectName: string = '
   // 1. 도면 버전 및 날짜 파싱
   const dateMatches = rawText.match(/\b(202[0-9]년\s*)?([0-1]?[0-9]월\s*[0-3]?[0-9]일|\d{4}-\d{2}-\d{2})\b/g) || [];
   const revMatches = rawText.match(/\bRev\.?\s*([0-9]+)\b/gi) || [];
-  const latestRev = revMatches.length > 0 ? revMatches[revMatches.length - 1].toUpperCase() : 'Rev.1';
+  const latestRev = revMatches.length > 0 ? revMatches[revMatches.length - 1].toUpperCase() : 'Rev.3';
 
   // 2. 공종별 언급 추출
   const detectedRoles: string[] = [];
-  const roleKeywords = ['조적', '창호', '외부', '내부', '세대', '가설', '내역', '골조', '슬라브', '보', '기둥', '기초', '토목'];
+  const roleKeywords = ['조적', '창호', '외부', '내부', '세대', '가설', '내역', '보', '슬라브', '기둥', '기초', '골조'];
   roleKeywords.forEach((r) => {
     if (rawText.includes(r)) detectedRoles.push(r);
   });
@@ -92,7 +92,7 @@ export function extractAiMeetingSummary(rawText: string, projectName: string = '
   // 4. 핵심 요약문 생성
   const summaryPoints: string[] = [];
   const projectPrefix = projectName ? `[${projectName}] ` : '';
-  summaryPoints.push(`1. ${projectPrefix}[도면 기준] ${latestRev} 최신 건축도면 기준선 및 인터페이스 상세 확정`);
+  summaryPoints.push(`1. ${projectPrefix}[도면 기준] ${latestRev} 최신 건축 도면 기준선 및 인터페이스 상세 확정`);
   if (dateMatches.length > 0) {
     summaryPoints.push(`2. [납품 일정] 주요 협의 일정 및 최종 납품 기한: ${dateMatches[0]} (중간점검 철저)`);
   } else {
@@ -122,13 +122,13 @@ export function extractAiMeetingSummary(rawText: string, projectName: string = '
 
   // 6. Action Items (실행 과제) 자동 생성
   const actionItems: ActionItem[] = [];
-  const actionVerbs = ['산출', '검토', '전달', '작성', '마킹', '공유', '집계', '분할', '확인'];
+  const actionVerbs = ['산출', '검토', '전달', '작성', '마킹', '공유', '집계', '분할', '확인', '진행'];
 
   lines.forEach((line, idx) => {
     const hasAction = actionVerbs.some((v) => line.includes(v));
     if (hasAction && actionItems.length < 6) {
       const matchedSpeaker = speakers.find((sp) => line.includes(sp)) || (speakers[idx % speakers.length] || '조한빈 실장');
-      const matchedRole = detectedRoles.find((r) => line.includes(r)) || 'PM';
+      const matchedRole = detectedRoles.find((r) => line.includes(r)) || '조적';
       const cleanTitle = line.replace(/^[\[\(].*?[\]\)]\s*/, '').replace(/^[가-힣]+:?\s*/, '').trim();
 
       if (cleanTitle.length > 5) {
@@ -147,18 +147,26 @@ export function extractAiMeetingSummary(rawText: string, projectName: string = '
   if (actionItems.length === 0) {
     actionItems.push({
       id: `act-ai-${Date.now()}-1`,
-      title: `${latestRev} 도면 변경점 분석 및 인터페이스 기준선 마킹`,
-      assigneeName: speakers[0] || '조한빈 실장',
-      roleName: detectedRoles[0] || '조적',
-      dueDate: '2026-09-28',
+      title: `${latestRev} 조적벽체 도면 기준선 분할 및 작업 착수`,
+      assigneeName: '원종수 수석, 성대용 수석',
+      roleName: '조적',
+      dueDate: '2026-09-24',
       status: '진행중'
     });
     actionItems.push({
       id: `act-ai-${Date.now()}-2`,
-      title: '공종별 수량 집계표 작성 및 내역서(3대유형) 초안 세팅',
-      assigneeName: speakers[1] || '성대용 수석',
+      title: '클린룸 창호 일람표 집계 및 하노이 지사 전달',
+      assigneeName: '창호팀 (VIET WIN)',
+      roleName: '창호',
+      dueDate: '2026-09-26',
+      status: '진행중'
+    });
+    actionItems.push({
+      id: `act-ai-${Date.now()}-3`,
+      title: '공내역 및 설계예가 서식 세팅 및 일위대가 검토',
+      assigneeName: '성대용 수석',
       roleName: '내역',
-      dueDate: '2026-10-05',
+      dueDate: '2026-10-02',
       status: '대기'
     });
   }
@@ -230,84 +238,48 @@ const INITIAL_MEETINGS: MeetingRecord[] = [
     ],
     status: 'FINAL',
     version: 1,
-    updatedAt: '2026-09-17 15:30'
+    updatedAt: '2026-09-17 15:30',
+    authorSigned: true,
+    pmApproved: true,
+    directorApproved: true
   },
   {
     id: 'meet-02',
-    projectId: 'TK-2026079',
-    projectName: '[수택E구역 재개발] 건축 마감 수량산출 용역',
-    projectCode: 'TK-2026079',
+    projectId: 'TK-2026088',
+    projectName: '[(재)21세기경제연구소] 인천광역시 영종구 운서동 LH매입 오피스텔 신축공사',
+    projectCode: 'TK-2026088',
     type: '착수회의',
-    title: '수택E구역 재개발 마감팀 착수회의 및 인터페이스 사전 조정',
-    meetingDate: '2026-09-15T10:00',
-    location: '기술본부 마감팀 회의실',
+    title: '영종구 운서동 LH매입 오피스텔 착수회의 및 공종별 배분 협의',
+    meetingDate: '2026-09-16T10:30',
+    location: '본사 회의실',
     department: '마감팀',
-    author: '조한빈 실장',
-    attendeesInternal: ['조한빈 실장', '성대용 수석', '김재헌 수석', '임승주 선임'],
-    attendeesExternal: ['수택E구역 조합 실사단'],
-    rawTranscript: `수택E구역 지하층 방수턱 높이 기준 및 조적벽체 단열재 두께 변경건에 대한 물량산출 적용 기준 협의.
-지하 1층~2층 조적벽체와 창호 프레임 디테일은 건축도면 Rev.2 기준으로 10월 5일까지 납품하기로 협의.`,
-    summary: '지하층 방수턱 및 조적벽체 단열재 두께 변경사항 반영 및 도면 Rev.2 기준 1차 납품일정 확정.',
-    decisions: [
-      '지하층 조적벽체 높이 기준 2,400mm 일괄 통일',
-      '세대 내부 경량벽체는 건식패널 적용 여부 재확인'
-    ],
+    author: '김재헌 수석',
+    attendeesInternal: ['김재헌 수석', '신동헌 팀장', '성대용 수석'],
+    attendeesExternal: ['LH 담당 감리단'],
+    rawTranscript: `LH 매입기준에 맞춘 표준 마감재 물량산출 및 내역서 분할 납품 기준 협의.
+조적 및 세대 칸막이벽체 물량 산출은 9월 25일까지 완료 후 1차 검토 진행하기로 함.`,
+    summary: '1. LH 매입기준 마감재 물량산출 기준 확정\n2. 조적/세대벽체 9월 25일까지 1차 산출 완료',
+    decisions: ['LH 표준 시방서 기준 적용', '공정률 66% 목표 일정 관리'],
     actionItems: [
       {
-        id: 'act-201',
-        title: '지하 1~2층 조적벽체 기준선 도면 마킹',
-        assigneeName: '임승주 선임',
-        roleName: '조적',
-        dueDate: '2026-09-22',
-        status: '완료'
-      },
-      {
-        id: 'act-202',
-        title: '창호 입면 리스트와 수량 검토 시트 동기화',
+        id: 'act-101',
+        title: '세대 내부 조적 및 건식벽체 기준선 도면 검증',
         assigneeName: '김재헌 수석',
-        roleName: '창호',
-        dueDate: '2026-09-25',
+        roleName: '조적',
+        dueDate: '2026-09-23',
         status: '진행중'
       }
     ],
     status: 'FINAL',
     version: 1,
-    updatedAt: '2026-09-15 11:30'
-  },
-  {
-    id: 'meet-03',
-    projectId: 'TK-2026068',
-    projectName: '[과천 지식정보타운 8BL] 지하주차장 골조구조',
-    projectCode: 'TK-2026068',
-    type: '도면질의협의',
-    title: '과천 8BL 구조팀 슬라브/보 철근 배근 변경에 따른 긴급 회의',
-    meetingDate: '2026-09-12T15:30',
-    location: '구조팀 디자인룸',
-    department: '구조팀',
-    author: '장범선 실장',
-    attendeesInternal: ['장범선 실장', '신동헌 팀장', '김채원 수석', '이정철 수석'],
-    attendeesExternal: [],
-    rawTranscript: `구조계산서 변경으로 인한 지하주차장 기둥 드롭패널 및 슬라브 HD16 철근 간격 수정사항 긴급 반영.
-VIET 골조팀에 변경된 단면도 긴급 전달 및 산출표 갱신 요청.`,
-    summary: '드롭패널 두께 증가 및 HD16 철근 간격 조정으로 인한 철근 물량 증가분 재집계.',
-    decisions: ['B2F 슬라브 철근 규격 변경분 우선 재산출 후 본사 승인'],
-    actionItems: [
-      {
-        id: 'act-301',
-        title: 'B2F 주차장 슬라브 철근 물량 재집계',
-        assigneeName: '김채원 수석',
-        roleName: '슬라브',
-        dueDate: '2026-09-18',
-        status: '진행중'
-      }
-    ],
-    status: 'DRAFT',
-    version: 2,
-    updatedAt: '2026-09-12 17:00'
+    updatedAt: '2026-09-16 12:00',
+    authorSigned: true,
+    pmApproved: true,
+    directorApproved: false
   }
 ];
 
-const MINUTES_STORAGE_KEY = 'concost_minutes_records_v1';
+const MINUTES_STORAGE_KEY = 'concost_minutes_records_v2';
 
 const loadStoredMeetings = (): MeetingRecord[] => {
   try {
@@ -329,14 +301,8 @@ export const MinutesView: React.FC = () => {
   const { projects } = useProjectStore();
 
   const [meetings, setMeetings] = useState<MeetingRecord[]>(loadStoredMeetings);
-  const [selectedMeetingId, setSelectedMeetingId] = useState<string>(() => {
-    const initial = loadStoredMeetings();
-    return initial[0]?.id || 'meet-01';
-  });
-  const [searchTerm, setSearchTerm] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'ALL' | MeetingType>('ALL');
 
-  // 고유 프로젝트 목록 (마감·구조 중복 제거)
+  // 고유 프로젝트 목록 (코드 기준 중복 제거)
   const uniqueProjects = useMemo(() => {
     const map = new Map<string, typeof projects[0]>();
     projects.forEach((p) => {
@@ -348,181 +314,218 @@ export const MinutesView: React.FC = () => {
     return Array.from(map.values());
   }, [projects]);
 
-  // 회의록 변경 시 localStorage 자동 동기화
-  React.useEffect(() => {
+  // 상단 프로젝트 선택 드롭다운 상태
+  const [selectedProjectCode, setSelectedProjectCode] = useState<string>(() => {
+    return uniqueProjects[0]?.code || 'TK-2026087';
+  });
+
+  // 선택된 프로젝트의 회의록 목록
+  const projectMeetings = useMemo(() => {
+    return meetings.filter((m) => m.projectCode === selectedProjectCode || m.projectId === selectedProjectCode);
+  }, [meetings, selectedProjectCode]);
+
+  // 현재 편집/미리보기 대상 회의록 ID
+  const [currentMeetingId, setCurrentMeetingId] = useState<string>(() => {
+    return projectMeetings[0]?.id || meetings[0]?.id || 'meet-01';
+  });
+
+  // 프로젝트 변경 시 해당 프로젝트의 첫 번째 회의록 자동 선택 (없으면 신규 템플릿 준비)
+  useEffect(() => {
+    const matched = meetings.find((m) => m.projectCode === selectedProjectCode || m.projectId === selectedProjectCode);
+    if (matched) {
+      setCurrentMeetingId(matched.id);
+    } else {
+      // 해당 프로젝트에 회의록이 없으면 새 회의록 생성 모드로 세팅
+      const proj = uniqueProjects.find((p) => (p.code || p.id) === selectedProjectCode);
+      if (proj) {
+        const newTemp: MeetingRecord = {
+          id: `meet-${Date.now()}`,
+          projectId: proj.id,
+          projectName: proj.name,
+          projectCode: proj.code || proj.id,
+          type: '착수회의',
+          title: `${proj.name} 착수회의 및 공종별 물량산출 기준 확정`,
+          meetingDate: new Date().toISOString().slice(0, 16),
+          location: '기술본부 대회의실 / 화상연결',
+          department: proj.department || '마감팀',
+          author: currentUser ? `${currentUser.name} (${currentUser.position || '실장'})` : '조한빈 실장',
+          attendeesInternal: ['조한빈 실장(PM)', '원종수 수석', '성대용 수석'],
+          attendeesExternal: ['발주처 담당자'],
+          rawTranscript: '',
+          summary: '',
+          decisions: [],
+          actionItems: [],
+          status: 'DRAFT',
+          version: 1,
+          updatedAt: new Date().toLocaleString('ko-KR'),
+          authorSigned: false,
+          pmApproved: false,
+          directorApproved: false
+        };
+        setMeetings((prev) => [newTemp, ...prev]);
+        setCurrentMeetingId(newTemp.id);
+      }
+    }
+  }, [selectedProjectCode, uniqueProjects]);
+
+  // 로컬스토리지 저장
+  useEffect(() => {
     try {
       localStorage.setItem(MINUTES_STORAGE_KEY, JSON.stringify(meetings));
     } catch (e) {
-      console.error('Failed to save meetings to localStorage', e);
+      console.error(e);
     }
   }, [meetings]);
 
-  // 신규 회의록 모달 상태
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  // 현재 활성 회의록
+  const currentMeeting = useMemo(() => {
+    return meetings.find((m) => m.id === currentMeetingId) || meetings[0];
+  }, [meetings, currentMeetingId]);
 
-  // 현재 선택된 회의록
-  const selectedMeeting = useMemo(() => {
-    return meetings.find((m) => m.id === selectedMeetingId) || meetings[0];
-  }, [meetings, selectedMeetingId]);
+  // 좌측 폼 편집 상태
+  const [formTitle, setFormTitle] = useState(currentMeeting?.title || '');
+  const [formType, setFormType] = useState<MeetingType>(currentMeeting?.type || '착수회의');
+  const [formDate, setFormDate] = useState(currentMeeting?.meetingDate || '');
+  const [formLocation, setFormLocation] = useState(currentMeeting?.location || '');
+  const [formAttendeesInternal, setFormAttendeesInternal] = useState(currentMeeting?.attendeesInternal.join(', ') || '');
+  const [formAttendeesExternal, setFormAttendeesExternal] = useState(currentMeeting?.attendeesExternal.join(', ') || '');
+  const [formTranscript, setFormTranscript] = useState(currentMeeting?.rawTranscript || '');
+  const [formSummary, setFormSummary] = useState(currentMeeting?.summary || '');
+  const [formDecisions, setFormDecisions] = useState(currentMeeting?.decisions.join('\n') || '');
+  const [formAttachedFile, setFormAttachedFile] = useState(currentMeeting?.attachedFileName || '');
 
-  // 편집용 상태
-  const [editSummary, setEditSummary] = useState(selectedMeeting?.summary || '');
-  const [editDecisions, setEditDecisions] = useState(selectedMeeting?.decisions.join('\n') || '');
-  const [editTranscript, setEditTranscript] = useState(selectedMeeting?.rawTranscript || '');
-  const [showTranscript, setShowTranscript] = useState(true);
-
-  // 할 일 추가 인라인 폼
+  // Action Items 추가 인라인 폼
   const [newActionTitle, setNewActionTitle] = useState('');
   const [newActionAssignee, setNewActionAssignee] = useState('');
   const [newActionRole, setNewActionRole] = useState('조적');
-  const [newActionDueDate, setNewActionDueDate] = useState('2026-09-30');
+  const [newActionDueDate, setNewActionDueDate] = useState('2026-09-28');
 
-  // 선택 회의 변경 시 편집 필드 동기화
-  React.useEffect(() => {
-    if (selectedMeeting) {
-      setEditSummary(selectedMeeting.summary);
-      setEditDecisions(selectedMeeting.decisions.join('\n'));
-      setEditTranscript(selectedMeeting.rawTranscript);
+  // 회의록 변경 시 폼 동기화
+  useEffect(() => {
+    if (currentMeeting) {
+      setFormTitle(currentMeeting.title);
+      setFormType(currentMeeting.type);
+      setFormDate(currentMeeting.meetingDate);
+      setFormLocation(currentMeeting.location);
+      setFormAttendeesInternal(currentMeeting.attendeesInternal.join(', '));
+      setFormAttendeesExternal(currentMeeting.attendeesExternal.join(', '));
+      setFormTranscript(currentMeeting.rawTranscript);
+      setFormSummary(currentMeeting.summary);
+      setFormDecisions(currentMeeting.decisions.join('\n'));
+      setFormAttachedFile(currentMeeting.attachedFileName || '');
     }
-  }, [selectedMeeting]);
+  }, [currentMeeting]);
 
-  // AI 스마트 자동 요약 상태
-  const [isAiSummarizing, setIsAiSummarizing] = useState(false);
-  const [isModalAiSummarizing, setIsModalAiSummarizing] = useState(false);
-  const [aiToastMsg, setAiToastMsg] = useState<string | null>(null);
+  // 파일 업로드 ref
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const excelImportRef = useRef<HTMLInputElement>(null);
 
-  // 현재 상세 회의록 대화록 원문 기반 AI 스마트 요약 실행
-  const handleRunAiSummarize = async () => {
-    if (!editTranscript.trim()) {
-      alert('보존된 회의 원문 대화록이 비어 있습니다. 회의 텍스트를 입력하거나 붙여넣어 주세요.');
+  // AI 자동 요약 실행 상태
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [aiToast, setAiToast] = useState<string | null>(null);
+
+  // 자료 파일(텍스트 등) 첨부 핸들러
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFormAttachedFile(file.name);
+
+    // 텍스트 파일인 경우 내용 자동 읽어 원문 대화록에 채움
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (text) {
+        setFormTranscript(text);
+        setAiToast(`📎 파일 '${file.name}' 첨부 완료: 대화록 원문이 자동 로드되었습니다. [AI 자동 정리]를 실행하세요.`);
+        setTimeout(() => setAiToast(null), 4000);
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  };
+
+  // ✨ AI 자동 정리 및 작성 실행
+  const handleRunAiAutoGenerate = async () => {
+    if (!formTranscript.trim()) {
+      alert('회의 자료를 첨부하거나 회의 원문 대화록을 먼저 입력해 주세요.');
       return;
     }
-    setIsAiSummarizing(true);
-    await new Promise((r) => setTimeout(r, 400)); // 자연스러운 분석 딜레이
 
-    const result = extractAiMeetingSummary(editTranscript, selectedMeeting?.projectName || '');
-    setEditSummary(result.summary);
-    setEditDecisions(result.decisions.join('\n'));
+    setIsAiProcessing(true);
+    await new Promise((r) => setTimeout(r, 600)); // AI 추론 시뮬레이션
 
-    if (result.actionItems.length > 0 && selectedMeeting) {
+    const result = extractAiMeetingSummary(formTranscript, currentMeeting?.projectName || '');
+    setFormSummary(result.summary);
+    setFormDecisions(result.decisions.join('\n'));
+
+    // Action Items도 자동 반영
+    if (result.actionItems.length > 0 && currentMeeting) {
       setMeetings((prev) =>
         prev.map((m) =>
-          m.id === selectedMeeting.id
+          m.id === currentMeeting.id
             ? {
                 ...m,
+                summary: result.summary,
+                decisions: result.decisions,
                 actionItems: [
                   ...m.actionItems,
                   ...result.actionItems.filter(
                     (newAi) => !m.actionItems.some((existing) => existing.title === newAi.title)
                   )
-                ]
+                ],
+                updatedAt: new Date().toLocaleString('ko-KR')
               }
             : m
         )
       );
     }
 
-    setIsAiSummarizing(false);
-    setAiToastMsg('✨ AI 분석 완료: 대화록 원문에서 핵심 요약, 주요 결정사항, 공종별 Action Items를 자동 추출하여 서식에 반영했습니다.');
-    setTimeout(() => setAiToastMsg(null), 4000);
+    setIsAiProcessing(false);
+    setAiToast('✨ AI 자동 정리 완료! 핵심 요약, 주요 결정사항, 공종별 실행과제가 우측 서식에 반영되었습니다.');
+    setTimeout(() => setAiToast(null), 4500);
   };
 
-  // 신규 등록 모달용 AI 스마트 요약 실행
-  const handleModalAiSummarize = async () => {
-    if (!createForm.rawTranscript.trim()) {
-      alert('보존용 회의 원문 텍스트를 먼저 입력하거나 붙여넣어 주세요.');
-      return;
-    }
-    setIsModalAiSummarizing(true);
-    await new Promise((r) => setTimeout(r, 400));
+  // 폼 내용 실시간 회의록에 저장
+  const handleSaveCurrentMeeting = () => {
+    if (!currentMeeting) return;
 
-    const result = extractAiMeetingSummary(createForm.rawTranscript, '');
-    setCreateForm((prev) => ({
-      ...prev,
-      summary: result.summary,
-      decisions: result.decisions.join('\n')
-    }));
-    setIsModalAiSummarizing(false);
-    alert('✨ AI 분석 완료: 원문 대화록에서 회의 요약 및 주요 결정사항을 자동 추출하여 입력창에 채웠습니다.');
+    const updated: MeetingRecord = {
+      ...currentMeeting,
+      title: formTitle,
+      type: formType,
+      meetingDate: formDate,
+      location: formLocation,
+      attendeesInternal: formAttendeesInternal.split(',').map((s) => s.trim()).filter(Boolean),
+      attendeesExternal: formAttendeesExternal.split(',').map((s) => s.trim()).filter(Boolean),
+      rawTranscript: formTranscript,
+      attachedFileName: formAttachedFile,
+      summary: formSummary,
+      decisions: formDecisions.split('\n').map((s) => s.trim()).filter(Boolean),
+      updatedAt: new Date().toLocaleString('ko-KR')
+    };
+
+    setMeetings((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+    alert('회의록이 성공적으로 저장되었습니다.');
   };
 
-  // 신규 회의 등록 폼 상태
-  const [createForm, setCreateForm] = useState({
-    projectId: projects[0]?.id || '',
-    type: '착수회의' as MeetingType,
-    title: '',
-    meetingDate: new Date().toISOString().slice(0, 16),
-    location: '컨코스트 본사 회의실',
-    author: currentUser?.name || '조한빈 실장',
-    attendeesInternal: '조한빈 실장, 성대용 수석, 원종수 수석',
-    attendeesExternal: '발주처 담당자',
-    rawTranscript: '',
-    summary: '',
-    decisions: '1. 최신 도면 Rev.1 기준 산출 확정\n2. 공종별 납품 기한 확정'
-  });
-
-  // 회의록 저장 (DRAFT 저장)
-  const handleSaveDraft = () => {
-    if (!selectedMeeting) return;
-    const updatedDecisions = editDecisions.split('\n').map((s) => s.trim()).filter(Boolean);
-
-    setMeetings((prev) =>
-      prev.map((m) =>
-        m.id === selectedMeeting.id
-          ? {
-              ...m,
-              summary: editSummary,
-              decisions: updatedDecisions,
-              rawTranscript: editTranscript,
-              version: m.version + 1,
-              updatedAt: new Date().toLocaleString('ko-KR')
-            }
-          : m
-      )
-    );
-    alert('회의록 내용이 정상 저장되었습니다.');
-  };
-
-  // 회의록 확정 (FINAL 토글)
-  const handleToggleFinalize = () => {
-    if (!selectedMeeting) return;
-    const nextStatus: MeetingStatus = selectedMeeting.status === 'FINAL' ? 'DRAFT' : 'FINAL';
-    setMeetings((prev) =>
-      prev.map((m) =>
-        m.id === selectedMeeting.id
-          ? {
-              ...m,
-              status: nextStatus,
-              updatedAt: new Date().toLocaleString('ko-KR')
-            }
-          : m
-      )
-    );
-    alert(
-      nextStatus === 'FINAL'
-        ? '회의록이 [FINAL 확정]되었습니다. 정식 서식으로 보존되며 직인/서명이 날인됩니다.'
-        : '회의록이 [DRAFT 수정모드]로 전환되었습니다.'
-    );
-  };
-
-  // 할 일 추가
+  // Action Item 추가
   const handleAddActionItem = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newActionTitle.trim() || !selectedMeeting) return;
+    if (!newActionTitle.trim() || !currentMeeting) return;
 
     const newItem: ActionItem = {
       id: `act-${Date.now()}`,
       title: newActionTitle.trim(),
-      assigneeName: newActionAssignee.trim() || '담당 미지정',
+      assigneeName: newActionAssignee.trim() || (currentUser?.name ? `${currentUser.name} (${currentUser.position})` : '담당자'),
       roleName: newActionRole,
       dueDate: newActionDueDate,
-      status: '대기'
+      status: '진행중'
     };
 
     setMeetings((prev) =>
       prev.map((m) =>
-        m.id === selectedMeeting.id
-          ? { ...m, actionItems: [...m.actionItems, newItem] }
+        m.id === currentMeeting.id
+          ? { ...m, actionItems: [...m.actionItems, newItem], updatedAt: new Date().toLocaleString('ko-KR') }
           : m
       )
     );
@@ -531,829 +534,791 @@ export const MinutesView: React.FC = () => {
     setNewActionAssignee('');
   };
 
-  // 할 일 상태 토글
-  const handleToggleActionStatus = (actionId: string) => {
-    if (!selectedMeeting) return;
-    setMeetings((prev) =>
-      prev.map((m) => {
-        if (m.id !== selectedMeeting.id) return m;
-        return {
-          ...m,
-          actionItems: m.actionItems.map((ai) => {
-            if (ai.id !== actionId) return ai;
-            const nextStatus: ActionItem['status'] =
-              ai.status === '대기' ? '진행중' : ai.status === '진행중' ? '완료' : '대기';
-            return { ...ai, status: nextStatus };
-          })
-        };
-      })
-    );
-  };
-
-  // 할 일 삭제
-  const handleDeleteActionItem = (actionId: string) => {
-    if (!selectedMeeting) return;
+  // Action Item 삭제
+  const handleDeleteActionItem = (id: string) => {
+    if (!currentMeeting) return;
     setMeetings((prev) =>
       prev.map((m) =>
-        m.id === selectedMeeting.id
-          ? { ...m, actionItems: m.actionItems.filter((ai) => ai.id !== actionId) }
+        m.id === currentMeeting.id
+          ? { ...m, actionItems: m.actionItems.filter((item) => item.id !== id) }
           : m
       )
     );
   };
 
-  // 신규 회의록 등록 제출
-  const handleCreateSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!createForm.title.trim()) {
-      alert('회의 제목을 입력해 주세요.');
-      return;
-    }
+  // Action Item 상태 토글
+  const handleToggleActionStatus = (id: string) => {
+    if (!currentMeeting) return;
+    setMeetings((prev) =>
+      prev.map((m) =>
+        m.id === currentMeeting.id
+          ? {
+              ...m,
+              actionItems: m.actionItems.map((item) => {
+                if (item.id === id) {
+                  const nextStatus = item.status === '진행중' ? '완료' : item.status === '완료' ? '대기' : '진행중';
+                  return { ...item, status: nextStatus };
+                }
+                return item;
+              })
+            }
+          : m
+      )
+    );
+  };
 
-    const targetProject = projects.find((p) => p.id === createForm.projectId) || projects[0];
-    const newRecord: MeetingRecord = {
+  // 결재라인 서명/승인 토글
+  const handleToggleSignature = (role: 'author' | 'pm' | 'director') => {
+    if (!currentMeeting) return;
+
+    setMeetings((prev) =>
+      prev.map((m) => {
+        if (m.id === currentMeeting.id) {
+          if (role === 'author') {
+            return { ...m, authorSigned: !m.authorSigned };
+          }
+          if (role === 'pm') {
+            return { ...m, pmApproved: !m.pmApproved };
+          }
+          if (role === 'director') {
+            return { ...m, directorApproved: !m.directorApproved, status: !m.directorApproved ? 'FINAL' : 'DRAFT' };
+          }
+        }
+        return m;
+      })
+    );
+  };
+
+  // 신규 회의록 등록
+  const handleCreateNewMeeting = () => {
+    const proj = uniqueProjects.find((p) => (p.code || p.id) === selectedProjectCode) || uniqueProjects[0];
+    const newMeeting: MeetingRecord = {
       id: `meet-${Date.now()}`,
-      projectId: targetProject.id,
-      projectName: targetProject.name,
-      projectCode: targetProject.code || targetProject.id,
-      type: createForm.type,
-      title: createForm.title.trim(),
-      meetingDate: createForm.meetingDate,
-      location: createForm.location.trim(),
-      department: targetProject.department || '마감팀',
-      author: createForm.author.trim(),
-      attendeesInternal: createForm.attendeesInternal.split(',').map((s) => s.trim()).filter(Boolean),
-      attendeesExternal: createForm.attendeesExternal.split(',').map((s) => s.trim()).filter(Boolean),
-      rawTranscript: createForm.rawTranscript.trim(),
-      summary: createForm.summary.trim(),
-      decisions: createForm.decisions.split('\n').map((s) => s.trim()).filter(Boolean),
+      projectId: proj.id,
+      projectName: proj.name,
+      projectCode: proj.code || proj.id,
+      type: '착수회의',
+      title: `${proj.name} 착수회의 및 공종별 기준 협의`,
+      meetingDate: new Date().toISOString().slice(0, 16),
+      location: '기술본부 대회의실',
+      department: proj.department || '마감팀',
+      author: currentUser ? `${currentUser.name} (${currentUser.position || '실장'})` : '조한빈 실장',
+      attendeesInternal: ['조한빈 실장(PM)', '원종수 수석', '성대용 수석'],
+      attendeesExternal: ['삼성물산 견적팀'],
+      rawTranscript: '',
+      summary: '',
+      decisions: [],
       actionItems: [],
       status: 'DRAFT',
       version: 1,
-      updatedAt: new Date().toLocaleString('ko-KR')
+      updatedAt: new Date().toLocaleString('ko-KR'),
+      authorSigned: false,
+      pmApproved: false,
+      directorApproved: false
     };
 
-    setMeetings([newRecord, ...meetings]);
-    setSelectedMeetingId(newRecord.id);
-    setIsCreateOpen(false);
-    alert('새로운 회의록이 성공적으로 등록되었습니다.');
+    setMeetings((prev) => [newMeeting, ...prev]);
+    setCurrentMeetingId(newMeeting.id);
   };
 
-  // 회의록 목록 필터링
-  const filteredMeetings = useMemo(() => {
-    return meetings.filter((m) => {
-      const matchType = typeFilter === 'ALL' || m.type === typeFilter;
-      const matchSearch =
-        m.title.includes(searchTerm) ||
-        m.projectName.includes(searchTerm) ||
-        m.author.includes(searchTerm) ||
-        m.summary.includes(searchTerm);
-      return matchType && matchSearch;
-    });
-  }, [meetings, typeFilter, searchTerm]);
+  // 엑셀 내보내기 (.xlsx)
+  const handleExportExcel = () => {
+    if (!currentMeeting) return;
 
-  // 샘플 회의록 복원
-  const handleResetSampleMeetings = () => {
-    if (confirm('회의록을 초기 샘플 3건으로 복원하시겠습니까? (로컬스토리지에 저장된 사용자 회의록이 초기화됩니다)')) {
-      localStorage.removeItem(MINUTES_STORAGE_KEY);
-      setMeetings(INITIAL_MEETINGS);
-      setSelectedMeetingId(INITIAL_MEETINGS[0].id);
-      alert('초기 샘플 회의록으로 복원되었습니다.');
-    }
+    // 시트 1: 회의 기본정보 및 요약
+    const summaryData = [
+      { 구분: '문서번호', 내용: `CC-MIN-${currentMeeting.projectCode}` },
+      { 구분: '프로젝트 코드', 내용: currentMeeting.projectCode },
+      { 구분: '프로젝트명', 내용: currentMeeting.projectName },
+      { 구분: '회의명', 내용: currentMeeting.title },
+      { 구분: '회의유형', 내용: currentMeeting.type },
+      { 구분: '회의일시', 내용: currentMeeting.meetingDate },
+      { 구분: '회의장소', 내용: currentMeeting.location },
+      { 구분: '작성자', 내용: currentMeeting.author },
+      { 구분: '내부 참석자', 내용: currentMeeting.attendeesInternal.join(', ') },
+      { 구분: '외부 참석자', 내용: currentMeeting.attendeesExternal.join(', ') },
+      { 구분: '핵심 요약 (Summary)', 내용: currentMeeting.summary },
+      { 구분: '주요 결정사항 (Decisions)', 내용: currentMeeting.decisions.join(' | ') },
+      { 구분: '결재상태', 내용: currentMeeting.directorApproved ? '기술본부장 최종승인' : currentMeeting.pmApproved ? 'PM승인' : '작성중' }
+    ];
+
+    // 시트 2: 공종별 실행 과제 (Action Items)
+    const actionRows = currentMeeting.actionItems.map((item, idx) => ({
+      No: idx + 1,
+      상태: item.status,
+      공종: item.roleName,
+      '실행 과제 (Action Item)': item.title,
+      담당자: item.assigneeName,
+      완료기한: item.dueDate
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+    const wsActions = XLSX.utils.json_to_sheet(actionRows);
+
+    XLSX.utils.book_append_sheet(wb, wsSummary, '회의개요');
+    XLSX.utils.book_append_sheet(wb, wsActions, '공종별실행과제');
+
+    XLSX.writeFile(wb, `CONCOST_회의록_${currentMeeting.projectCode}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  // 엑셀 가져오기 (.xlsx)
+  const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentMeeting) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = new Uint8Array(event.target?.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: 'array' });
+
+        // Action Items 시트 탐색
+        const actionSheetName = wb.SheetNames.find((name) => name.includes('실행') || name.includes('과제') || name.includes('Action')) || wb.SheetNames[1];
+        if (actionSheetName) {
+          const actionRows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[actionSheetName]);
+          const newActions: ActionItem[] = actionRows.map((r, idx) => ({
+            id: `act-imported-${Date.now()}-${idx}`,
+            title: r['실행 과제 (Action Item)'] || r['과제명'] || r['내용'] || '가져온 실행 과제',
+            assigneeName: r['담당자'] || '담당자',
+            roleName: r['공종'] || '조적',
+            dueDate: r['완료기한'] || r['기한'] || '2026-09-30',
+            status: r['상태'] === '완료' ? '완료' : r['상태'] === '대기' ? '대기' : '진행중'
+          }));
+
+          setMeetings((prev) =>
+            prev.map((m) =>
+              m.id === currentMeeting.id
+                ? { ...m, actionItems: [...m.actionItems, ...newActions], updatedAt: new Date().toLocaleString('ko-KR') }
+                : m
+            )
+          );
+          alert(`엑셀 파일에서 ${newActions.length}건의 실행 과제(Action Items)를 성공적으로 가져왔습니다.`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert('엑셀 파일을 읽는 중 오류가 발생했습니다.');
+      }
+    };
+    reader.readAsArrayBuffer(file);
   };
 
   return (
     <div className="space-y-5 animate-fadeIn">
-      {/* 1. 상단 타이틀 & 클레임센터 스튜디오 연계 액션 헤더 */}
-      <div className="bg-white dark:bg-slate-850 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-[#00338d] text-white flex items-center justify-center font-black shadow-2xs">
-              <FileSignature size={18} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
-                  기술본부 프로젝트 회의록 스튜디오
-                </h2>
-                <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-blue-100 text-[#00338d] dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                  클레임센터 표준 서식 연동
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                착수회의 및 공정회의 원문 대화록 보존 · 핵심 요약 및 결정사항 도출 · 공종별 Action Items 체크리스트 자동 연계
-              </p>
-            </div>
+      
+      {/* 1. 최상단 헤더: 프로젝트 선택 드롭다운 & 핵심 도구 모음 */}
+      <div className="bg-slate-900 border-2 border-slate-700 p-4 sm:p-5 rounded-2xl shadow-xl text-white flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        
+        {/* 좌측: 프로젝트 선택 드롭다운 */}
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black shadow-md shrink-0">
+            <FileSignature size={20} />
           </div>
-        </div>
-
-        {/* 헤더 우측: 검색 및 신규 회의록 작성 버튼 */}
-        <div className="flex items-center gap-2.5">
-          <div className="relative w-64">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="회의 제목, 프로젝트, 작성자 검색..."
-              className="w-full text-xs pl-9 pr-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#00338d]"
-            />
-          </div>
-
-          <button
-            type="button"
-            onClick={handleResetSampleMeetings}
-            title="초기 샘플 3건으로 복원"
-            className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold transition shrink-0"
-          >
-            샘플 복원
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsCreateOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#00338d] hover:bg-[#002266] text-white text-xs font-black shadow-2xs transition active:scale-95 shrink-0"
-          >
-            <Plus size={14} />
-            <span>+ 새 회의록 작성</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 2. 메인 2열 그리드 (좌측: 회의 목록 4열 / 우측: 클레임센터 착수회의록 정식 서식 8열) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* ===================== 좌측 회의 목록 패널 (4 cols) ===================== */}
-        <div className="lg:col-span-4 space-y-3 print:hidden">
-          {/* 회의 유형 필터 탭 */}
-          <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            {(['ALL', '착수회의', '공정회의', '도면질의협의', '내역검토회'] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setTypeFilter(tab)}
-                className={`px-2.5 py-1 text-xs font-bold rounded-lg transition whitespace-nowrap ${
-                  typeFilter === tab
-                    ? 'bg-white dark:bg-slate-700 text-[#00338d] dark:text-blue-300 shadow-2xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                }`}
+          <div className="flex-1 min-w-0">
+            <span className="text-[10px] font-black text-blue-400 tracking-wider uppercase block mb-0.5">
+              QUANTITY TAKEOFF MEETING STUDIO · 클레임센터 표준 연동
+            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <label htmlFor="project-select" className="text-xs font-bold text-slate-300 shrink-0">
+                프로젝트 선택:
+              </label>
+              <select
+                id="project-select"
+                value={selectedProjectCode}
+                onChange={(e) => setSelectedProjectCode(e.target.value)}
+                className="bg-slate-950 border border-blue-500/60 text-white text-xs font-bold px-3 py-1.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-md truncate cursor-pointer shadow-inner"
               >
-                {tab === 'ALL' ? '전체' : tab}
-              </button>
-            ))}
-          </div>
+                {uniqueProjects.map((p) => (
+                  <option key={p.code || p.id} value={p.code || p.id}>
+                    [{p.code || p.id}] {p.name}
+                  </option>
+                ))}
+              </select>
 
-          {/* 회의록 카드 리스트 */}
-          <div className="space-y-2.5">
-            {filteredMeetings.map((m) => {
-              const isSelected = selectedMeeting?.id === m.id;
-              return (
-                <div
-                  key={m.id}
-                  onClick={() => setSelectedMeetingId(m.id)}
-                  className={`p-4 rounded-2xl border cursor-pointer transition-all ${
-                    isSelected
-                      ? 'bg-blue-50/60 dark:bg-blue-950/40 border-[#00338d] dark:border-blue-500 shadow-md ring-2 ring-[#00338d]/20'
-                      : 'bg-white dark:bg-slate-850 border-slate-200 dark:border-slate-800 hover:border-slate-300 hover:shadow-2xs'
-                  }`}
+              {/* 해당 프로젝트 내 회의록 선택 (복수 건일 경우) */}
+              {projectMeetings.length > 1 && (
+                <select
+                  value={currentMeetingId}
+                  onChange={(e) => setCurrentMeetingId(e.target.value)}
+                  className="bg-slate-800 border border-slate-600 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg cursor-pointer"
                 >
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span
-                        className={`text-[10px] font-black px-2 py-0.5 rounded-full shrink-0 ${
-                          m.type === '착수회의'
-                            ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border border-purple-200'
-                            : m.type === '내역검토회'
-                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-200'
-                            : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200'
-                        }`}
-                      >
-                        {m.type}
-                      </span>
-                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 truncate">
-                        {m.department}
-                      </span>
-                    </div>
-
-                    <span
-                      className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${
-                        m.status === 'FINAL'
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300'
-                          : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300'
-                      }`}
-                    >
-                      {m.status === 'FINAL' ? '✓ FINAL 확정' : '✎ DRAFT 초안'}
-                    </span>
-                  </div>
-
-                  <h3 className="font-extrabold text-slate-900 dark:text-white text-sm line-clamp-2 mb-1.5 leading-snug">
-                    {m.title}
-                  </h3>
-
-                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate mb-2.5 flex items-center gap-1">
-                    <FolderKanban size={13} className="text-[#00338d] dark:text-blue-400 shrink-0" />
-                    <span className="truncate">{m.projectName}</span>
-                  </p>
-
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 pt-2 border-t border-slate-100 dark:border-slate-800">
-                    <span className="flex items-center gap-1 font-medium">
-                      <Calendar size={12} />
-                      {m.meetingDate.slice(0, 10)}
-                    </span>
-                    <span className="flex items-center gap-1 font-bold text-slate-600 dark:text-slate-300">
-                      <Users size={12} />
-                      참석 {m.attendeesInternal.length + m.attendeesExternal.length}명
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+                  {projectMeetings.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.type}: {m.title.slice(0, 25)}...
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* ===================== 우측: 클레임센터 착수회의록 정식 서식 (8 cols) ===================== */}
-        <div className="lg:col-span-8 bg-white dark:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6 print:col-span-12 print:border-none print:shadow-none print:p-0">
-          {selectedMeeting ? (
-            <>
-              {/* 회의록 탑 바: 제목, 상태, 인쇄/저장/확정 액션 버튼 */}
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-5 border-b border-slate-200 dark:border-slate-800">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span
-                      className={`text-xs font-black px-2.5 py-0.5 rounded-full ${
-                        selectedMeeting.status === 'FINAL'
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                          : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                      }`}
-                    >
-                      {selectedMeeting.status === 'FINAL' ? '✓ 정식 확정본 (FINAL)' : '✎ 작성중 초안 (DRAFT)'}
-                    </span>
-                    <span className="text-xs text-slate-400 font-mono">
-                      Rev.{selectedMeeting.version} · 최종수정: {selectedMeeting.updatedAt}
-                    </span>
-                  </div>
-                  <h1 className="text-lg md:text-xl font-black text-slate-900 dark:text-white leading-tight">
-                    {selectedMeeting.title}
-                  </h1>
-                </div>
+        {/* 우측: 엑셀 내보내기/가져오기, 새 회의록, 저장 버튼 */}
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-600 transition cursor-pointer shadow-xs"
+            title="현재 회의록 엑셀 다운로드 (.xlsx)"
+          >
+            <FileSpreadsheet size={14} className="text-emerald-400" />
+            <span>엑셀 내보내기</span>
+          </button>
 
-                {/* 컨트롤 버튼 그룹 */}
-                <div className="flex items-center gap-2 shrink-0 print:hidden">
-                  <button
-                    type="button"
-                    onClick={() => window.print()}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold transition shadow-2xs"
-                  >
-                    <Printer size={13} />
-                    <span>A4 인쇄</span>
-                  </button>
+          <button
+            type="button"
+            onClick={() => excelImportRef.current?.click()}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-600 transition cursor-pointer shadow-xs"
+            title="엑셀 파일에서 실행 과제 가져오기"
+          >
+            <Upload size={14} className="text-blue-400" />
+            <span>엑셀 가져오기</span>
+          </button>
 
-                  <button
-                    type="button"
-                    onClick={handleSaveDraft}
-                    className="flex items-center gap-1 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-2xs"
-                  >
-                    <Save size={13} />
-                    <span>저장</span>
-                  </button>
+          <button
+            type="button"
+            onClick={handleCreateNewMeeting}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-600 transition cursor-pointer shadow-xs"
+          >
+            <Plus size={14} className="text-amber-400" />
+            <span>새 회의록 작성</span>
+          </button>
 
-                  <button
-                    type="button"
-                    onClick={handleToggleFinalize}
-                    className={`flex items-center gap-1 px-3.5 py-1.5 rounded-lg text-xs font-black transition shadow-2xs ${
-                      selectedMeeting.status === 'FINAL'
-                        ? 'bg-slate-700 hover:bg-slate-800 text-white'
-                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                    }`}
-                  >
-                    <Lock size={13} />
-                    <span>{selectedMeeting.status === 'FINAL' ? '수정모드 전환' : '회의록 확정 (FINAL)'}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* 회의 개요 공식 테이블 (클레임센터 회의록 표준 서식) */}
-              <div className="rounded-xl border border-slate-200 dark:border-slate-750 overflow-hidden bg-slate-50/50 dark:bg-slate-800/40">
-                <div className="bg-[#00338d] text-white px-4 py-2 text-xs font-black flex items-center justify-between">
-                  <span>[양식] 기술본부 회의록 개요 (KICK-OFF MEETING RECORD)</span>
-                  <span className="font-mono">문서번호: CONCOST-MEET-{selectedMeeting.id.toUpperCase()}</span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 text-xs divide-y md:divide-y-0 md:divide-x divide-slate-200 dark:divide-slate-700">
-                  <div className="p-3 space-y-2">
-                    <div className="flex items-start">
-                      <span className="w-20 font-bold text-slate-500 dark:text-slate-400 shrink-0">프로젝트명</span>
-                      <span className="font-extrabold text-slate-900 dark:text-white">
-                        {selectedMeeting.projectName} ({selectedMeeting.projectCode})
-                      </span>
-                    </div>
-                    <div className="flex items-center">
-                      <span className="w-20 font-bold text-slate-500 dark:text-slate-400 shrink-0">회의 일시</span>
-                      <span className="font-medium text-slate-800 dark:text-slate-200 font-mono">
-                        {selectedMeeting.meetingDate.replace('T', ' ')}
-                      </span>
-                    </div>
-                    <div className="flex items-center">
-                      <span className="w-20 font-bold text-slate-500 dark:text-slate-400 shrink-0">회의 장소</span>
-                      <span className="font-medium text-slate-800 dark:text-slate-200">
-                        {selectedMeeting.location}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="p-3 space-y-2">
-                    <div className="flex items-center">
-                      <span className="w-20 font-bold text-slate-500 dark:text-slate-400 shrink-0">주관 부서</span>
-                      <span className="font-bold text-[#00338d] dark:text-blue-400">
-                        {selectedMeeting.department} (주관: {selectedMeeting.author})
-                      </span>
-                    </div>
-                    <div className="flex items-start">
-                      <span className="w-20 font-bold text-slate-500 dark:text-slate-400 shrink-0">내부 참석자</span>
-                      <span className="font-medium text-slate-800 dark:text-slate-200 leading-relaxed">
-                        {selectedMeeting.attendeesInternal.join(', ')}
-                      </span>
-                    </div>
-                    <div className="flex items-start">
-                      <span className="w-20 font-bold text-slate-500 dark:text-slate-400 shrink-0">외부 참석자</span>
-                      <span className="font-medium text-slate-800 dark:text-slate-200 leading-relaxed">
-                        {selectedMeeting.attendeesExternal.length > 0
-                          ? selectedMeeting.attendeesExternal.join(', ')
-                          : '외부 참석자 없음'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* AI 요약 완료 토스트 배너 */}
-              {aiToastMsg && (
-                <div className="p-3 bg-gradient-to-r from-purple-950/70 via-indigo-950/60 to-blue-950/70 border border-purple-400/50 text-purple-200 text-xs rounded-xl flex items-center justify-between gap-2 shadow-sm animate-fadeIn">
-                  <div className="flex items-center gap-2">
-                    <Sparkles size={15} className="text-amber-300 shrink-0 animate-pulse" />
-                    <span className="font-semibold">{aiToastMsg}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setAiToastMsg(null)}
-                    className="text-slate-400 hover:text-white text-xs font-bold px-1.5 py-0.5"
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-
-              {/* 보존된 회의 원문 텍스트 (Raw Kick-off Transcript) */}
-              <div className="space-y-2">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-1">
-                  <div
-                    onClick={() => setShowTranscript(!showTranscript)}
-                    className="flex items-center gap-1.5 cursor-pointer text-xs font-black text-slate-700 dark:text-slate-300 hover:text-[#00338d]"
-                  >
-                    <FileText size={14} className="text-[#00338d] dark:text-blue-400" />
-                    <span>보존된 회의 원문 및 대화록 (Raw Kick-off Transcript)</span>
-                    <span className="text-[10px] font-normal text-slate-400">
-                      (회의 시 오간 실제 협의 텍스트 원본)
-                    </span>
-                    {showTranscript ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                  </div>
-
-                  {/* AI 원문 스마트 요약 그라디언트 버튼 */}
-                  <button
-                    type="button"
-                    onClick={handleRunAiSummarize}
-                    disabled={isAiSummarizing || selectedMeeting.status === 'FINAL'}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-[#00338d] hover:from-purple-700 hover:to-[#002266] text-white text-xs font-black shadow-md transition active:scale-95 disabled:opacity-50 shrink-0"
-                    title="대화록 원문에서 요약, 결정사항, Action Items를 AI로 자동 추출"
-                  >
-                    {isAiSummarizing ? (
-                      <Loader2 size={13} className="animate-spin text-amber-300" />
-                    ) : (
-                      <Sparkles size={13} className="text-amber-300 animate-pulse" />
-                    )}
-                    <span>{isAiSummarizing ? 'AI 분석 및 요약 중...' : '✨ AI 원문 자동 요약 (AI Summarize)'}</span>
-                  </button>
-                </div>
-
-                {showTranscript && (
-                  <textarea
-                    rows={6}
-                    value={editTranscript}
-                    onChange={(e) => setEditTranscript(e.target.value)}
-                    disabled={selectedMeeting.status === 'FINAL'}
-                    placeholder="회의 원문 텍스트를 기록 또는 붙여넣기 하세요."
-                    className="w-full text-xs font-mono p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 leading-relaxed focus:outline-none focus:ring-2 focus:ring-[#00338d] disabled:opacity-85"
-                  />
-                )}
-              </div>
-
-              {/* 핵심 요약 (Summary) */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 dark:text-slate-200">
-                  <span className="w-2 h-2 rounded-full bg-[#00338d]" />
-                  <span>회의 핵심 요약 (Executive Summary)</span>
-                </div>
-                <textarea
-                  rows={4}
-                  value={editSummary}
-                  onChange={(e) => setEditSummary(e.target.value)}
-                  disabled={selectedMeeting.status === 'FINAL'}
-                  placeholder="착수회의 핵심 쟁점 및 일정, 공종별 특이사항 요약을 입력하세요."
-                  className="w-full text-xs p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 leading-relaxed focus:outline-none focus:ring-2 focus:ring-[#00338d] disabled:opacity-85"
-                />
-              </div>
-
-              {/* 주요 결정사항 (Decisions) */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 dark:text-slate-200">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span>주요 결정사항 (Decisions & Agreements)</span>
-                </div>
-                <textarea
-                  rows={4}
-                  value={editDecisions}
-                  onChange={(e) => setEditDecisions(e.target.value)}
-                  disabled={selectedMeeting.status === 'FINAL'}
-                  placeholder="줄바꿈으로 구분하여 결정사항을 입력하세요."
-                  className="w-full text-xs p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 leading-relaxed font-sans focus:outline-none focus:ring-2 focus:ring-[#00338d] disabled:opacity-85"
-                />
-              </div>
-
-              {/* 공종별 조치사항 & 할 일 목록 (Action Items Table) */}
-              <div className="space-y-3 pt-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 dark:text-slate-200">
-                    <CheckCircle2 size={15} className="text-emerald-600" />
-                    <span>공종별 실행 과제 및 조치사항 (Action Items Table)</span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                      총 {selectedMeeting.actionItems.length}건
-                    </span>
-                  </div>
-                </div>
-
-                {/* 할 일 테이블 */}
-                <div className="rounded-xl border border-slate-200 dark:border-slate-750 overflow-hidden shadow-2xs">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-extrabold border-b border-slate-200 dark:border-slate-700">
-                      <tr>
-                        <th className="p-2.5 text-center w-12">상태</th>
-                        <th className="p-2.5 w-20">공종</th>
-                        <th className="p-2.5">실행 과제 (Action Item)</th>
-                        <th className="p-2.5 w-32">담당자</th>
-                        <th className="p-2.5 w-24 text-center">기한</th>
-                        {selectedMeeting.status !== 'FINAL' && (
-                          <th className="p-2.5 w-12 text-center">삭제</th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {selectedMeeting.actionItems.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="p-4 text-center text-slate-400 italic">
-                            등록된 조치사항(Action Item)이 없습니다. 아래 폼에서 추가해 주세요.
-                          </td>
-                        </tr>
-                      ) : (
-                        selectedMeeting.actionItems.map((item) => (
-                          <tr
-                            key={item.id}
-                            className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition"
-                          >
-                            <td className="p-2.5 text-center">
-                              <button
-                                type="button"
-                                onClick={() => handleToggleActionStatus(item.id)}
-                                disabled={selectedMeeting.status === 'FINAL'}
-                                className={`text-[10px] font-black px-2 py-0.5 rounded-md transition ${
-                                  item.status === '완료'
-                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                                    : item.status === '진행중'
-                                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
-                                    : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
-                                }`}
-                              >
-                                {item.status}
-                              </button>
-                            </td>
-                            <td className="p-2.5 font-bold text-slate-700 dark:text-slate-300">
-                              <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-[11px]">
-                                {item.roleName}
-                              </span>
-                            </td>
-                            <td className="p-2.5 font-medium text-slate-900 dark:text-white">
-                              {item.title}
-                            </td>
-                            <td className="p-2.5 font-bold text-slate-700 dark:text-slate-300">
-                              {item.assigneeName}
-                            </td>
-                            <td className="p-2.5 text-center font-mono text-slate-500 dark:text-slate-400">
-                              {item.dueDate}
-                            </td>
-                            {selectedMeeting.status !== 'FINAL' && (
-                              <td className="p-2.5 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteActionItem(item.id)}
-                                  className="text-slate-400 hover:text-rose-600 transition"
-                                  title="할 일 삭제"
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              </td>
-                            )}
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* 신규 할 일 인라인 추가 바 (DRAFT 모드에서만 활성화) */}
-                {selectedMeeting.status !== 'FINAL' && (
-                  <form
-                    onSubmit={handleAddActionItem}
-                    className="p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 flex flex-wrap items-center gap-2"
-                  >
-                    <select
-                      value={newActionRole}
-                      onChange={(e) => setNewActionRole(e.target.value)}
-                      className="text-xs p-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 font-bold"
-                    >
-                      <option value="조적">조적</option>
-                      <option value="창호">창호</option>
-                      <option value="외부">외부</option>
-                      <option value="내부">내부</option>
-                      <option value="세대">세대</option>
-                      <option value="내역">내역</option>
-                      <option value="가설">가설</option>
-                      <option value="PM">PM</option>
-                      <option value="골조">골조</option>
-                      <option value="토목">토목</option>
-                    </select>
-
-                    <input
-                      type="text"
-                      value={newActionTitle}
-                      onChange={(e) => setNewActionTitle(e.target.value)}
-                      placeholder="신규 실행 과제 내용 입력..."
-                      className="flex-1 min-w-[200px] text-xs p-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
-                    />
-
-                    <input
-                      type="text"
-                      value={newActionAssignee}
-                      onChange={(e) => setNewActionAssignee(e.target.value)}
-                      placeholder="담당자 (예: 원종수 수석)"
-                      className="w-36 text-xs p-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700"
-                    />
-
-                    <input
-                      type="date"
-                      value={newActionDueDate}
-                      onChange={(e) => setNewActionDueDate(e.target.value)}
-                      className="w-32 text-xs p-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 font-mono"
-                    />
-
-                    <button
-                      type="submit"
-                      className="px-3 py-1.5 rounded-lg bg-[#00338d] hover:bg-[#002266] text-white text-xs font-bold transition shadow-2xs shrink-0"
-                    >
-                      + 과제 추가
-                    </button>
-                  </form>
-                )}
-              </div>
-
-              {/* 문서 하단 승인/서명 날인란 (A4 공식 출력 서식 룩앤필) */}
-              <div className="pt-4 border-t border-slate-200 dark:border-slate-800 grid grid-cols-3 gap-3 text-center">
-                <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-750 bg-slate-50 dark:bg-slate-800">
-                  <span className="block text-[11px] text-slate-400 font-bold mb-1">작성자</span>
-                  <span className="font-extrabold text-xs text-slate-800 dark:text-slate-100">
-                    {selectedMeeting.author}
-                  </span>
-                  <span className="block text-[10px] text-emerald-600 font-bold mt-1">✓ 서명완료</span>
-                </div>
-                <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-750 bg-slate-50 dark:bg-slate-800">
-                  <span className="block text-[11px] text-slate-400 font-bold mb-1">주관 PM</span>
-                  <span className="font-extrabold text-xs text-slate-800 dark:text-slate-100">
-                    조한빈 실장
-                  </span>
-                  <span className="block text-[10px] text-emerald-600 font-bold mt-1">✓ 결재완료</span>
-                </div>
-                <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-750 bg-slate-50 dark:bg-slate-800">
-                  <span className="block text-[11px] text-slate-400 font-bold mb-1">기술본부장</span>
-                  <span className="font-extrabold text-xs text-slate-800 dark:text-slate-100">
-                    (주)컨코스트 기술본부
-                  </span>
-                  <span className="block text-[10px] text-blue-600 font-bold mt-1">공식 회의록 날인</span>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="p-12 text-center text-slate-400 text-xs">
-              선택된 회의록이 없습니다.
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={handleSaveCurrentMeeting}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-md transition cursor-pointer active:scale-95"
+          >
+            <Save size={14} />
+            <span>저장 완료</span>
+          </button>
         </div>
       </div>
 
-      {/* 3. 신규 프로젝트 회의록 작성 모달 */}
-      {isCreateOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fadeIn">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-[#00338d] text-white flex items-center justify-center font-bold">
-                  <FileSignature size={16} />
-                </div>
-                <h3 className="text-base font-black text-slate-900 dark:text-white">
-                  신규 프로젝트 회의록 등록 (클레임센터 표준 서식)
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsCreateOpen(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold"
-              >
-                ✕
-              </button>
+      {/* AI 알림 토스트 */}
+      {aiToast && (
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg animate-fadeIn flex items-center justify-between">
+          <span>{aiToast}</span>
+          <button onClick={() => setAiToast(null)} className="text-white/80 hover:text-white text-sm">✕</button>
+        </div>
+      )}
+
+      {/* 2. 대화형 2단 메인 레이아웃 */}
+      {/* 좌측 (6열): 회의록 수동작성 & 자료 첨부시 AI 자동 정리 기능 */}
+      {/* 우측 (6열): 클레임센터 표준 정식 서식 미리보기 & 결재라인 */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        
+        {/* ======================= 좌측 패널 (lg:col-span-6) ======================= */}
+        <div className="lg:col-span-6 space-y-4">
+          
+          {/* 카드 A: 회의 기본 정보 및 메타데이터 */}
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 text-white space-y-3 shadow-md">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <span className="text-xs font-black text-blue-400 flex items-center gap-1.5">
+                <Building2 size={14} />
+                <span>1. 회의 기본 스펙 설정</span>
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono">
+                {currentMeeting?.projectCode}
+              </span>
             </div>
 
-            <form onSubmit={handleCreateSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    대상 프로젝트
-                  </label>
-                  <select
-                    value={createForm.projectId}
-                    onChange={(e) => setCreateForm({ ...createForm, projectId: e.target.value })}
-                    className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-medium"
-                  >
-                    {uniqueProjects.map((p) => (
-                      <option key={p.code} value={p.id}>
-                        [{p.code}] {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 mb-1">회의 제목</label>
+              <input
+                type="text"
+                value={formTitle}
+                onChange={(e) => setFormTitle(e.target.value)}
+                placeholder="예: [삼성물산 P5] 착수회의 및 공종별 물량산출 기준 확정"
+                className="w-full text-xs font-bold p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+            </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    회의 유형
-                  </label>
-                  <select
-                    value={createForm.type}
-                    onChange={(e) => setCreateForm({ ...createForm, type: e.target.value as MeetingType })}
-                    className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold"
-                  >
-                    <option value="착수회의">착수회의 (Kick-off)</option>
-                    <option value="공정회의">공정/진도회의 (Progress)</option>
-                    <option value="도면질의협의">도면질의협의 (Drawing & Query)</option>
-                    <option value="내역검토회">내역/산출 검토회 (Estimate & Takeoff)</option>
-                    <option value="긴급이슈">긴급이슈 회의</option>
-                  </select>
-                </div>
-              </div>
-
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  회의 제목
-                </label>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">회의 유형</label>
+                <select
+                  value={formType}
+                  onChange={(e) => setFormType(e.target.value as MeetingType)}
+                  className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold"
+                >
+                  <option value="착수회의">착수회의 (Kick-off)</option>
+                  <option value="공정회의">공정/진도회의</option>
+                  <option value="도면질의협의">도면질의협의</option>
+                  <option value="내역검토회">내역/산출 검토회</option>
+                  <option value="긴급이슈">긴급이슈 회의</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">회의 일시</label>
+                <input
+                  type="datetime-local"
+                  value={formDate}
+                  onChange={(e) => setFormDate(e.target.value)}
+                  className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">회의 장소</label>
                 <input
                   type="text"
-                  value={createForm.title}
-                  onChange={(e) => setCreateForm({ ...createForm, title: e.target.value })}
-                  placeholder="예: [삼성물산 P5] 견적용역 착수회의 및 공종별 기준 확정"
-                  className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
-                  required
+                  value={formLocation}
+                  onChange={(e) => setFormLocation(e.target.value)}
+                  placeholder="대회의실 / 화상연결"
+                  className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white"
                 />
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    회의 일시
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={createForm.meetingDate}
-                    onChange={(e) => setCreateForm({ ...createForm, meetingDate: e.target.value })}
-                    className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    회의 장소
-                  </label>
-                  <input
-                    type="text"
-                    value={createForm.location}
-                    onChange={(e) => setCreateForm({ ...createForm, location: e.target.value })}
-                    placeholder="예: 대회의실 또는 화상회의"
-                    className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    내부 참석자 (쉼표 구분)
-                  </label>
-                  <input
-                    type="text"
-                    value={createForm.attendeesInternal}
-                    onChange={(e) => setCreateForm({ ...createForm, attendeesInternal: e.target.value })}
-                    className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    외부 참석자 (쉼표 구분)
-                  </label>
-                  <input
-                    type="text"
-                    value={createForm.attendeesExternal}
-                    onChange={(e) => setCreateForm({ ...createForm, attendeesExternal: e.target.value })}
-                    className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
-                  />
-                </div>
-              </div>
-
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                    보존용 회의 원문 텍스트 (Raw Transcript)
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleModalAiSummarize}
-                    disabled={isModalAiSummarizing}
-                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gradient-to-r from-purple-600 via-indigo-600 to-[#00338d] hover:from-purple-700 hover:to-[#002266] text-white text-[11px] font-extrabold shadow-2xs transition active:scale-95 disabled:opacity-50"
-                    title="대화록 원문에서 요약과 결정사항을 AI로 자동 추출"
-                  >
-                    {isModalAiSummarizing ? (
-                      <Loader2 size={12} className="animate-spin text-amber-300" />
-                    ) : (
-                      <Sparkles size={12} className="text-amber-300 animate-pulse" />
-                    )}
-                    <span>{isModalAiSummarizing ? 'AI 분석 중...' : '✨ AI 원문 자동 요약 (AI Summarize)'}</span>
-                  </button>
-                </div>
-                <textarea
-                  rows={4}
-                  value={createForm.rawTranscript}
-                  onChange={(e) => setCreateForm({ ...createForm, rawTranscript: e.target.value })}
-                  placeholder="회의 시 오간 대화록 원문을 자유롭게 입력하거나 붙여넣으세요. 입력 후 우측 상단의 [✨ AI 원문 자동 요약] 버튼을 누르면 요약과 주요 결정사항이 자동 채워집니다."
-                  className="w-full text-xs font-mono p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">작성자</label>
+                <input
+                  type="text"
+                  value={currentMeeting?.author || '조한빈 실장'}
+                  disabled
+                  className="w-full text-xs p-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-300"
                 />
               </div>
+            </div>
 
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  회의 핵심 요약 (Summary)
-                </label>
-                <textarea
-                  rows={3}
-                  value={createForm.summary}
-                  onChange={(e) => setCreateForm({ ...createForm, summary: e.target.value })}
-                  placeholder="착수회의 주요 쟁점 및 핵심 일정을 요약하세요."
-                  className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
-                  required
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">사내 참석자 (쉼표 구분)</label>
+                <input
+                  type="text"
+                  value={formAttendeesInternal}
+                  onChange={(e) => setFormAttendeesInternal(e.target.value)}
+                  placeholder="조한빈, 성대용, 원종수"
+                  className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white"
                 />
               </div>
-
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  주요 결정사항 (Key Decisions - 줄바꿈 구분)
-                </label>
-                <textarea
-                  rows={3}
-                  value={createForm.decisions}
-                  onChange={(e) => setCreateForm({ ...createForm, decisions: e.target.value })}
-                  placeholder="1. 도면 기준선 확정&#10;2. 공종별 납품 기한 확정"
-                  className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-medium"
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">발주처 참석자 (쉼표 구분)</label>
+                <input
+                  type="text"
+                  value={formAttendeesExternal}
+                  onChange={(e) => setFormAttendeesExternal(e.target.value)}
+                  placeholder="삼성물산 박상우 부장"
+                  className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white"
                 />
               </div>
+            </div>
+          </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+          {/* 카드 B: 회의 자료 첨부 & 원문 대화록 + ✨ AI 자동 정리 기능 */}
+          <div className="bg-gradient-to-br from-slate-900 via-indigo-950/40 to-slate-900 border-2 border-indigo-500/50 rounded-2xl p-4 text-white space-y-3 shadow-xl">
+            <div className="flex items-center justify-between pb-2 border-b border-indigo-900/60">
+              <span className="text-xs font-black text-indigo-300 flex items-center gap-1.5">
+                <Sparkles size={14} className="text-amber-400 animate-pulse" />
+                <span>2. 회의 자료 첨부 & AI 자동 정리 작성</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-[11px] font-bold text-indigo-300 hover:text-white flex items-center gap-1 bg-indigo-950 px-2.5 py-1 rounded-lg border border-indigo-800 transition cursor-pointer"
+              >
+                <Paperclip size={12} />
+                <span>파일 첨부 (.txt, .docx 등)</span>
+              </button>
+            </div>
+
+            {formAttachedFile && (
+              <div className="bg-indigo-950/80 border border-indigo-800 px-3 py-1.5 rounded-xl text-xs text-indigo-200 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 truncate">
+                  <Paperclip size={12} className="text-amber-400" />
+                  <strong>첨부된 자료:</strong> {formAttachedFile}
+                </span>
                 <button
                   type="button"
-                  onClick={() => setIsCreateOpen(false)}
-                  className="px-4 py-2 text-xs text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-lg font-bold"
+                  onClick={() => setFormAttachedFile('')}
+                  className="text-xs text-rose-400 hover:text-rose-300 font-bold ml-2"
                 >
-                  취소
+                  제거
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-xs text-white bg-[#00338d] hover:bg-[#002266] font-extrabold rounded-lg shadow-2xs"
-                >
-                  회의록 등록 완료
-                </button>
+              </div>
+            )}
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-bold text-slate-300">
+                  회의 원문 대화록 / 녹음 녹취록 텍스트
+                </label>
+                <span className="text-[10px] text-slate-400">텍스트 입력 또는 파일 첨부</span>
+              </div>
+              <textarea
+                rows={5}
+                value={formTranscript}
+                onChange={(e) => setFormTranscript(e.target.value)}
+                placeholder="회의에서 오간 대화 내용이나 회의 자료 텍스트를 자유롭게 붙여넣으세요. 입력 후 아래 [✨ AI 자동 정리] 버튼을 누르면 핵심 요약, 주요 결정사항, 공종별 실행과제가 1초 만에 자동 생성됩니다."
+                className="w-full text-xs font-mono p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none leading-relaxed"
+              />
+            </div>
+
+            {/* AI 자동 정리 실행 버튼 (대형 하이라이트) */}
+            <button
+              type="button"
+              onClick={handleRunAiAutoGenerate}
+              disabled={isAiProcessing}
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-900/50 transition cursor-pointer active:scale-98 disabled:opacity-50"
+            >
+              {isAiProcessing ? (
+                <>
+                  <Loader2 size={16} className="animate-spin text-amber-300" />
+                  <span>AI 스마트 엔진이 대화록을 분석 및 요약 중입니다...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles size={16} className="text-amber-300 animate-pulse" />
+                  <span>✨ 회의 자료 기반 AI 자동 정리 및 서식 반영 (AI Summarize)</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* 카드 C: 수동 편집 (핵심 요약 & 주요 결정사항) */}
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 text-white space-y-3 shadow-md">
+            <span className="text-xs font-black text-blue-400 flex items-center gap-1.5 pb-2 border-b border-slate-800">
+              <FileText size={14} />
+              <span>3. 핵심 요약 & 주요 결정사항 수동 보정</span>
+            </span>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 mb-1">회의 핵심 요약 (Summary)</label>
+              <textarea
+                rows={3}
+                value={formSummary}
+                onChange={(e) => setFormSummary(e.target.value)}
+                placeholder="착수회의 핵심 요약 내용..."
+                className="w-full text-xs p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white leading-relaxed"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 mb-1">주요 결정사항 (Decisions - 줄바꿈 구분)</label>
+              <textarea
+                rows={3}
+                value={formDecisions}
+                onChange={(e) => setFormDecisions(e.target.value)}
+                placeholder="1. 도면 기준선 확정&#10;2. 조적 공종 2인 투입"
+                className="w-full text-xs p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white leading-relaxed font-medium"
+              />
+            </div>
+          </div>
+
+          {/* 카드 D: 공종별 실행 과제 (Action Item) 신규 추가 */}
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 text-white space-y-3 shadow-md">
+            <span className="text-xs font-black text-emerald-400 flex items-center gap-1.5 pb-2 border-b border-slate-800">
+              <CheckCircle2 size={14} />
+              <span>4. 공종별 실행 과제 (Action Item) 추가</span>
+            </span>
+
+            <form onSubmit={handleAddActionItem} className="space-y-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div>
+                  <label className="block text-[10px] text-slate-400 mb-1">공종</label>
+                  <select
+                    value={newActionRole}
+                    onChange={(e) => setNewActionRole(e.target.value)}
+                    className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold"
+                  >
+                    <option value="조적">조적</option>
+                    <option value="창호">창호</option>
+                    <option value="외부">외부</option>
+                    <option value="내부">내부</option>
+                    <option value="세대">세대</option>
+                    <option value="내역">내역</option>
+                    <option value="가설">가설</option>
+                    <option value="보">보 (구조)</option>
+                    <option value="슬라브">슬라브 (구조)</option>
+                    <option value="기둥">기둥 (구조)</option>
+                    <option value="기초">기초 (구조)</option>
+                    <option value="PM">PM 총괄</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-400 mb-1">담당자</label>
+                  <input
+                    type="text"
+                    value={newActionAssignee}
+                    onChange={(e) => setNewActionAssignee(e.target.value)}
+                    placeholder="원종수 수석"
+                    className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-[10px] text-slate-400 mb-1">완료 기한</label>
+                  <input
+                    type="date"
+                    value={newActionDueDate}
+                    onChange={(e) => setNewActionDueDate(e.target.value)}
+                    className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-1">실행 과제 내용</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newActionTitle}
+                    onChange={(e) => setNewActionTitle(e.target.value)}
+                    placeholder="예: Rev.3 조적벽체 기준선 분할 및 작업 착수"
+                    className="flex-1 text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white"
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shrink-0 transition cursor-pointer"
+                  >
+                    + 추가
+                  </button>
+                </div>
               </div>
             </form>
           </div>
+
         </div>
-      )}
+
+        {/* ======================= 우측 패널 (lg:col-span-6): 클레임센터 표준 정식 회의록 미리보기 ======================= */}
+        <div className="lg:col-span-6 sticky top-4">
+          <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-750 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-6 text-slate-900 dark:text-slate-100">
+            
+            {/* 회의록 A4 헤더 */}
+            <div className="border-b-2 border-slate-900 dark:border-white pb-4 flex items-start justify-between">
+              <div>
+                <span className="text-[10px] font-mono font-black text-blue-600 dark:text-blue-400 block mb-0.5">
+                  CC-MIN-{currentMeeting?.projectCode || 'TK-2026087'} · 공식 착수회의록
+                </span>
+                <h3 className="text-lg md:text-xl font-black text-slate-900 dark:text-white leading-tight">
+                  {formTitle || '프로젝트 착수회의록'}
+                </h3>
+              </div>
+              <span className={`text-[10px] font-black px-2.5 py-1 rounded-full shrink-0 border ${
+                currentMeeting?.directorApproved
+                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300'
+                  : 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300'
+              }`}>
+                {currentMeeting?.directorApproved ? '✓ FINAL 최종승인' : '✎ DRAFT 작성중'}
+              </span>
+            </div>
+
+            {/* 회의 개요 기본 테이블 */}
+            <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-750 text-xs">
+              <table className="w-full border-collapse">
+                <tbody>
+                  <tr className="border-b border-slate-200 dark:border-slate-750">
+                    <td className="w-24 p-2 bg-slate-100 dark:bg-slate-800 font-bold text-slate-600 dark:text-slate-300">프로젝트명</td>
+                    <td className="p-2 font-bold">{currentMeeting?.projectName}</td>
+                  </tr>
+                  <tr className="border-b border-slate-200 dark:border-slate-750">
+                    <td className="p-2 bg-slate-100 dark:bg-slate-800 font-bold text-slate-600 dark:text-slate-300">회의일시/장소</td>
+                    <td className="p-2 font-mono">{formDate.replace('T', ' ')} · {formLocation}</td>
+                  </tr>
+                  <tr className="border-b border-slate-200 dark:border-slate-750">
+                    <td className="p-2 bg-slate-100 dark:bg-slate-800 font-bold text-slate-600 dark:text-slate-300">사내 참석자</td>
+                    <td className="p-2">{formAttendeesInternal}</td>
+                  </tr>
+                  <tr>
+                    <td className="p-2 bg-slate-100 dark:bg-slate-800 font-bold text-slate-600 dark:text-slate-300">발주처 참석자</td>
+                    <td className="p-2">{formAttendeesExternal}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* 1. 회의 핵심 요약 */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-blue-600" />
+                <span>1. 회의 핵심 요약 (Summary)</span>
+              </h4>
+              <div className="bg-slate-50 dark:bg-slate-800/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs leading-relaxed whitespace-pre-line">
+                {formSummary || '대화록 원문을 입력하고 [AI 자동 정리]를 누르면 요약이 반영됩니다.'}
+              </div>
+            </div>
+
+            {/* 2. 주요 결정사항 */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-purple-600" />
+                <span>2. 주요 결정사항 (Key Decisions)</span>
+              </h4>
+              <div className="bg-slate-50 dark:bg-slate-800/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs space-y-1.5">
+                {formDecisions ? (
+                  formDecisions.split('\n').filter(Boolean).map((d, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <span className="text-purple-600 dark:text-purple-400 font-bold">✓</span>
+                      <span>{d}</span>
+                    </div>
+                  ))
+                ) : (
+                  <span className="text-slate-400 italic">결정사항이 없습니다.</span>
+                )}
+              </div>
+            </div>
+
+            {/* 3. 공종별 실행 과제 및 조치사항 (Action Items Table) - 첨부 스크린샷과 1:1 완벽 일치! */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                  <CheckCircle2 size={14} className="text-emerald-500" />
+                  <span>공종별 실행 과제 및 조치사항 (Action Items Table)</span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] font-black">
+                    총 {currentMeeting?.actionItems.length || 0}건
+                  </span>
+                </h4>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-750">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-100 dark:bg-slate-800 text-[11px] text-slate-600 dark:text-slate-300 font-extrabold border-b border-slate-200 dark:border-slate-700">
+                    <tr>
+                      <th className="p-2.5 w-16 text-center">상태</th>
+                      <th className="p-2.5 w-16 text-center">공종</th>
+                      <th className="p-2.5">실행 과제 (Action Item)</th>
+                      <th className="p-2.5 w-32">담당자</th>
+                      <th className="p-2.5 w-24 text-center">기한</th>
+                      <th className="p-2.5 w-10 text-center">삭제</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {!currentMeeting?.actionItems || currentMeeting.actionItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="p-4 text-center text-slate-400 italic">
+                          등록된 공종별 실행 과제가 없습니다. 좌측 패널에서 추가해 주세요.
+                        </td>
+                      </tr>
+                    ) : (
+                      currentMeeting.actionItems.map((item) => (
+                        <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60 transition">
+                          <td className="p-2.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleActionStatus(item.id)}
+                              className={`text-[10px] font-black px-2 py-0.5 rounded-md transition cursor-pointer ${
+                                item.status === '완료'
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300'
+                                  : item.status === '진행중'
+                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-300'
+                                  : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                              }`}
+                              title="클릭하여 상태 변경"
+                            >
+                              {item.status}
+                            </button>
+                          </td>
+                          <td className="p-2.5 text-center">
+                            <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-bold text-[11px] text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+                              {item.roleName}
+                            </span>
+                          </td>
+                          <td className="p-2.5 font-medium text-slate-900 dark:text-white">
+                            {item.title}
+                          </td>
+                          <td className="p-2.5 font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                            {item.assigneeName}
+                          </td>
+                          <td className="p-2.5 text-center font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                            {item.dueDate}
+                          </td>
+                          <td className="p-2.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteActionItem(item.id)}
+                              className="text-slate-400 hover:text-rose-500 transition cursor-pointer"
+                              title="삭제"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* 4. 하단 결재라인 (첨부 스크린샷 1:1 완벽 일치!) */}
+            <div className="pt-4 border-t-2 border-slate-200 dark:border-slate-750">
+              <div className="grid grid-cols-3 gap-3 text-center">
+                
+                {/* 1) 작성자 */}
+                <div
+                  onClick={() => handleToggleSignature('author')}
+                  className="p-3 rounded-2xl border border-slate-200 dark:border-slate-750 bg-slate-50 dark:bg-slate-800/80 hover:bg-blue-50/50 dark:hover:bg-slate-750 transition cursor-pointer"
+                  title="클릭하여 서명 전환"
+                >
+                  <span className="block text-[11px] text-slate-400 font-bold mb-1">작성자</span>
+                  <span className="font-black text-xs text-slate-900 dark:text-white block">
+                    {currentMeeting?.author || '조한빈 실장'}
+                  </span>
+                  <span className={`block text-[10px] font-bold mt-1.5 ${
+                    currentMeeting?.authorSigned ? 'text-emerald-600' : 'text-slate-400'
+                  }`}>
+                    {currentMeeting?.authorSigned ? '✓ 서명완료' : '서명 대기'}
+                  </span>
+                </div>
+
+                {/* 2) 주관 PM */}
+                <div
+                  onClick={() => handleToggleSignature('pm')}
+                  className="p-3 rounded-2xl border border-slate-200 dark:border-slate-750 bg-slate-50 dark:bg-slate-800/80 hover:bg-blue-50/50 dark:hover:bg-slate-750 transition cursor-pointer"
+                  title="클릭하여 결재 승인 전환"
+                >
+                  <span className="block text-[11px] text-slate-400 font-bold mb-1">주관 PM</span>
+                  <span className="font-black text-xs text-slate-900 dark:text-white block">
+                    조한빈 실장
+                  </span>
+                  <span className={`block text-[10px] font-bold mt-1.5 ${
+                    currentMeeting?.pmApproved ? 'text-emerald-600' : 'text-slate-400'
+                  }`}>
+                    {currentMeeting?.pmApproved ? '✓ 결재완료' : '결재 대기'}
+                  </span>
+                </div>
+
+                {/* 3) 기술본부장 */}
+                <div
+                  onClick={() => handleToggleSignature('director')}
+                  className="p-3 rounded-2xl border border-slate-200 dark:border-slate-750 bg-slate-50 dark:bg-slate-800/80 hover:bg-blue-50/50 dark:hover:bg-slate-750 transition cursor-pointer"
+                  title="클릭하여 공식 날인 전환"
+                >
+                  <span className="block text-[11px] text-slate-400 font-bold mb-1">기술본부장</span>
+                  <span className="font-black text-xs text-slate-900 dark:text-white block">
+                    (주)컨코스트 기술본부
+                  </span>
+                  <span className={`block text-[10px] font-bold mt-1.5 ${
+                    currentMeeting?.directorApproved ? 'text-blue-600 font-black' : 'text-slate-400'
+                  }`}>
+                    {currentMeeting?.directorApproved ? '공식 회의록 날인' : '날인 대기'}
+                  </span>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      {/* 숨김 파일 업로드 input들 */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".txt, .docx, .pdf, .csv"
+        onChange={handleFileUpload}
+        className="hidden"
+      />
+      <input
+        ref={excelImportRef}
+        type="file"
+        accept=".xlsx, .xls"
+        onChange={handleImportExcel}
+        className="hidden"
+      />
+
     </div>
   );
 };
