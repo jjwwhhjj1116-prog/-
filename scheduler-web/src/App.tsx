@@ -33,7 +33,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { IntakeListView } from './components/IntakeListView';
 import { PrintScheduleModal } from './components/PrintScheduleModal';
 import { useProjectStore, type Department } from './store/useProjectStore';
-import { useAuthStore } from './store/useAuthStore';
+import { useAuthStore, isUserAdmin } from './store/useAuthStore';
 import { exportProjectsToExcel, importProjectsFromExcel } from './services/excelService';
 import realProjectsData from './data/realProjects.json';
 
@@ -158,6 +158,9 @@ export default function App() {
     }
   };
 
+  // 관리자 권한 여부 (오직 yjw@con-cost.com, yjpark@con-cost.com 2개 계정만 관리자)
+  const isAdmin = isUserAdmin(currentUser);
+
   // 다국어 텍스트 사전
   const t = {
     appTitle: lang === 'vi' ? 'STUDIO KHỐI KỸ THUẬT' : '기술본부 스튜디오',
@@ -170,7 +173,9 @@ export default function App() {
     minutes: lang === 'vi' ? 'Biên bản họp' : '회의록',
     drive: lang === 'vi' ? 'Kho tài liệu (Google Drive)' : '자료실(google드라이브)',
     qcLink: lang === 'vi' ? 'Hệ thống liên kết (Kiểm tra QC)' : '검토 (QC Studio 연계)',
-    settings: lang === 'vi' ? 'Cài đặt hệ thống' : '설정 (Google/회원)',
+    settings: isAdmin
+      ? (lang === 'vi' ? 'Cài đặt hệ thống' : '설정 (Google/회원)')
+      : (lang === 'vi' ? 'Cài đặt cá nhân' : '개인 설정 (비밀번호)'),
     exportExcel: lang === 'vi' ? 'Xuất Excel' : '엑셀 내보내기',
     importExcel: lang === 'vi' ? 'Nhập Excel' : '엑셀 가져오기',
     printSchedule: lang === 'vi' ? 'In lịch trình (A4)' : '일정표 출력 (A4)',
@@ -249,7 +254,7 @@ export default function App() {
                 : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-600 dark:text-slate-300'
             }`}
           >
-            <Settings size={14} /> 설정
+            <Settings size={14} /> {isAdmin ? '설정' : '개인 설정'}
           </button>
 
           <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-0.5" />
@@ -515,10 +520,10 @@ export default function App() {
             </div>
           </div>
 
-          {/* 4) 시스템 환경설정 섹션 */}
+          {/* 4) 시스템 환경설정 섹션 (관리자/일반회원 명확한 분기) */}
           <div>
             <div className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-3 mb-2">
-              시스템 환경설정
+              {isAdmin ? '시스템 환경설정' : '계정 보안 설정'}
             </div>
             <div className="space-y-1">
               <button
@@ -534,7 +539,7 @@ export default function App() {
                   <span>{t.settings}</span>
                 </div>
                 <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.2 rounded font-semibold">
-                  관리
+                  {isAdmin ? '관리' : '내 설정'}
                 </span>
               </button>
             </div>

@@ -12,7 +12,7 @@
     "email": "ybchoi@con-cost.com",
     "idPrefix": "ybchoi",
     "password": "1705",
-    "role": "ADMIN"
+    "role": "MEMBER"
   },
   {
     "id": "u_10",
@@ -57,7 +57,7 @@
     "email": "hbjo@con-cost.com",
     "idPrefix": "hbjo",
     "password": "1141",
-    "role": "ADMIN"
+    "role": "MEMBER"
   },
   {
     "id": "u_13",
@@ -237,7 +237,7 @@
     "email": "bsjang@con-cost.com",
     "idPrefix": "bsjang",
     "password": "1137",
-    "role": "ADMIN"
+    "role": "MEMBER"
   },
   {
     "id": "u_25",

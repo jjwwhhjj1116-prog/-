@@ -49,32 +49,69 @@ interface AuthState {
   testGoogleDriveConnection: () => Promise<boolean>;
 }
 
+export const ADMIN_EMAILS = ['yjw@con-cost.com', 'yjpark@con-cost.com'];
+
+export const isUserAdmin = (user: ConcostUser | null | undefined): boolean => {
+  if (!user) return false;
+  const email = (user.email || '').toLowerCase().trim();
+  const idPrefix = (user.idPrefix || '').toLowerCase().trim();
+  return (
+    ADMIN_EMAILS.includes(email) ||
+    idPrefix === 'yjw' ||
+    idPrefix === 'yjpark' ||
+    idPrefix === 'pyj' ||
+    user.name === '유종욱' ||
+    user.name === '박용진'
+  );
+};
+
+export const sanitizeUser = (user: ConcostUser): ConcostUser => {
+  const isAdmin = isUserAdmin(user);
+  return {
+    ...user,
+    role: isAdmin ? 'ADMIN' : 'MEMBER',
+  };
+};
+
 const STORAGE_KEY = 'concost_auth_user_v1';
 const USERS_STORAGE_KEY = 'concost_all_users_v1';
 const GDRIVE_STORAGE_KEY = 'concost_gdrive_config_v1';
 
-// 초기 사용자 목록 로드 (로컬스토리지 우선, 없으면 JSON)
+// 초기 사용자 목록 로드 (로컬스토리지 우선, 없으면 JSON, 단 role은 2개 관리자 계정만 엄격하게 강제)
 const loadInitialUsers = (): ConcostUser[] => {
+  let list: ConcostUser[] = [];
   try {
     const saved = localStorage.getItem(USERS_STORAGE_KEY);
     if (saved) {
-      return JSON.parse(saved);
+      list = JSON.parse(saved);
     }
   } catch (e) {
     console.error('Failed to load users from localStorage', e);
   }
-  return concostUsersData as ConcostUser[];
+  if (!list || list.length === 0) {
+    list = concostUsersData as ConcostUser[];
+  }
+  const sanitized = list.map(sanitizeUser);
+  try {
+    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(sanitized));
+  } catch {
+    // ignore
+  }
+  return sanitized;
 };
 
-// 로컬스토리지에서 이전 로그인 정보 복구
-// 로컬스토리지에서 이전 로그인 정보 복구 (없으면 null 반환하여 로그인 화면 유도)
+// 로컬스토리지에서 이전 로그인 정보 복구 (반드시 sanitizeUser로 관리자 여부 재검증)
 const loadInitialUser = (usersList: ConcostUser[]): ConcostUser | null => {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      const exists = usersList.some((u) => u.id === parsed.id);
-      if (exists) return parsed;
+      const matched = usersList.find((u) => u.id === parsed.id);
+      if (matched) {
+        const sanitized = sanitizeUser(matched);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+        return sanitized;
+      }
     }
   } catch (e) {
     console.error('Failed to load user from localStorage', e);
@@ -167,16 +204,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return false;
     }
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-    set({ currentUser: user, isAuthenticated: true, loginError: null });
+    const sanitized = sanitizeUser(user);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+    set({ currentUser: sanitized, isAuthenticated: true, loginError: null });
     return true;
   },
 
   quickLogin: (userId: string) => {
     const user = get().users.find((u) => u.id === userId);
     if (user) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-      set({ currentUser: user, isAuthenticated: true, loginError: null });
+      const sanitized = sanitizeUser(user);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+      set({ currentUser: sanitized, isAuthenticated: true, loginError: null });
     }
   },
 

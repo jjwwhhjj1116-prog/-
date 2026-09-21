@@ -17,7 +17,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import { useAuthStore } from '../store/useAuthStore';
+import { useAuthStore, isUserAdmin } from '../store/useAuthStore';
 
 type SettingsTab = 'GDRIVE' | 'MEMBERS' | 'MY_PROFILE';
 
@@ -34,22 +34,17 @@ export const SettingsView: React.FC = () => {
     adminDeleteUser,
   } = useAuthStore();
 
-  // 관리자 권한 여부 판별 (유종욱, 박용진 또는 ADMIN 역할)
-  const isAdmin =
-    currentUser?.role === 'ADMIN' ||
-    currentUser?.idPrefix === 'yjw' ||
-    currentUser?.idPrefix === 'pyj' ||
-    currentUser?.name === '유종욱' ||
-    currentUser?.name === '박용진';
+  // 관리자 권한 여부 판별 (오직 yjw@con-cost.com, yjpark@con-cost.com 2개 계정만 관리자)
+  const isAdmin = isUserAdmin(currentUser);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(isAdmin ? 'GDRIVE' : 'MY_PROFILE');
 
   // 비관리자 접근 시 개인 설정 탭으로 안전 리다이렉트
   useEffect(() => {
-    if (!isAdmin && activeTab !== 'MY_PROFILE') {
+    if (!isAdmin) {
       setActiveTab('MY_PROFILE');
     }
-  }, [isAdmin, activeTab]);
+  }, [isAdmin]);
 
   // 1. Google Drive 설정 폼 상태 (사용자 실제 OAuth 2.0 Credentials 연동)
   const [clientIdInput, setClientIdInput] = useState(googleDriveConfig.clientId);
@@ -221,8 +216,8 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* 1. Google Drive 연동 설정 탭 (클레임센터 스튜디오 동일 구현) */}
-      {activeTab === 'GDRIVE' && (
+      {/* 1. Google Drive 연동 설정 탭 (오직 관리자 계정만 접근 및 표시) */}
+      {isAdmin && activeTab === 'GDRIVE' && (
         <div className="space-y-6">
           {driveToast && (
             <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2">
@@ -561,8 +556,8 @@ export const SettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* 2. 관리자 회원 관리 탭 */}
-      {activeTab === 'MEMBERS' && (
+      {/* 2. 관리자 회원 관리 탭 (오직 관리자 계정만 접근 및 표시) */}
+      {isAdmin && activeTab === 'MEMBERS' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden space-y-4 p-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-200 pb-4">
             <div>
@@ -832,8 +827,8 @@ export const SettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* 신규 회원 등록 모달 */}
-      {isAddUserOpen && (
+      {/* 신규 회원 등록 모달 (관리자 전용) */}
+      {isAdmin && isAddUserOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
