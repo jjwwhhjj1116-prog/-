@@ -31,13 +31,12 @@ export const PrintScheduleModal: React.FC<Props> = ({
   const [colorMode, setColorMode] = useState<'color' | 'mono'>('color');
   const [currentLang, setCurrentLang] = useState<'ko' | 'vi'>(lang);
 
-  if (!isOpen) return null;
-
-  const personMap = new Map(personnel.map((p) => [p.id, p.name]));
-  const filteredProjects =
-    departmentFilter === 'ALL'
+  const personMap = useMemo(() => new Map(personnel.map((p) => [p.id, p.name])), [personnel]);
+  const filteredProjects = useMemo(() => {
+    return departmentFilter === 'ALL'
       ? projects
       : projects.filter((p) => p.department === departmentFilter);
+  }, [projects, departmentFilter]);
 
   // 1. 프로젝트 코드 기준 통합 그룹핑 (메인 캘린더와 100% 동일한 통합 양식)
   const groupedProjects = useMemo(() => {
@@ -130,6 +129,8 @@ export const PrintScheduleModal: React.FC<Props> = ({
     hour: 'numeric',
     minute: 'numeric',
   });
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-sm flex flex-col items-center justify-start py-6 px-4 print:p-0 print:bg-white print:static print:overflow-visible">
