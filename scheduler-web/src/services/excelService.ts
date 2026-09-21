@@ -7,7 +7,85 @@ import type { Project, Person, Department } from '../store/useProjectStore';
 export const exportProjectsToExcel = (projects: Project[], personnel: Person[]) => {
   const personMap = new Map(personnel.map((p) => [p.id, p.name]));
 
-  // 1. 메인 프로젝트 목록 시트
+  // 1. 화면 일치형 마감·구조·토목 통합 프로젝트 목록 (중복 제거)
+  const groupMap: Record<string, {
+    code: string;
+    name: string;
+    client: string;
+    area: string;
+    usage: string;
+    finishPm: string;
+    finishPeriod: string;
+    finishProgress: string;
+    structPm: string;
+    structPeriod: string;
+    structProgress: string;
+    civilPm: string;
+    civilPeriod: string;
+    civilProgress: string;
+    status: string;
+  }> = {};
+
+  projects.forEach((p) => {
+    const code = p.code || p.id;
+    if (!groupMap[code]) {
+      groupMap[code] = {
+        code: p.code,
+        name: p.name.replace(/^\[.*?\]\s*/, '').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim() || p.name,
+        client: (p as any).client || '',
+        area: (p as any).area || '',
+        usage: (p as any).usage || '',
+        finishPm: '-',
+        finishPeriod: '-',
+        finishProgress: '-',
+        structPm: '-',
+        structPeriod: '-',
+        structProgress: '-',
+        civilPm: '-',
+        civilPeriod: '-',
+        civilProgress: '-',
+        status: p.status,
+      };
+    }
+
+    const pm = personMap.get(p.pmId) || p.pmId || '-';
+    const period = `${p.startDate} ~ ${p.endDate}`;
+    const progress = `${p.progress}%`;
+
+    if (p.department === '마감팀') {
+      groupMap[code].finishPm = pm;
+      groupMap[code].finishPeriod = period;
+      groupMap[code].finishProgress = progress;
+    } else if (p.department === '구조팀') {
+      groupMap[code].structPm = pm;
+      groupMap[code].structPeriod = period;
+      groupMap[code].structProgress = progress;
+    } else if (p.department === '토목&조경팀') {
+      groupMap[code].civilPm = pm;
+      groupMap[code].civilPeriod = period;
+      groupMap[code].civilProgress = progress;
+    }
+  });
+
+  const integratedRows = Object.values(groupMap).map((grp, idx) => ({
+    'No': idx + 1,
+    '프로젝트 코드': grp.code,
+    '프로젝트명': grp.name,
+    '발주처': grp.client,
+    '연면적/용도': `${grp.area} ${grp.usage ? `(${grp.usage})` : ''}`.trim(),
+    '마감팀 PM': grp.finishPm,
+    '마감팀 일정': grp.finishPeriod,
+    '마감팀 진척률': grp.finishProgress,
+    '구조팀 PM': grp.structPm,
+    '구조팀 일정': grp.structPeriod,
+    '구조팀 진척률': grp.structProgress,
+    '토목팀 PM': grp.civilPm,
+    '토목팀 일정': grp.civilPeriod,
+    '토목팀 진척률': grp.civilProgress,
+    '종합 상태': grp.status,
+  }));
+
+  // 2. 부서별 개별 프로젝트 목록 시트
   const projectRows = projects.map((p, idx) => ({
     'No': idx + 1,
     '프로젝트 코드': p.code,
@@ -20,7 +98,7 @@ export const exportProjectsToExcel = (projects: Project[], personnel: Person[]) 
     '상태': p.status,
   }));
 
-  // 2. 세부 공종별 일정 시트
+  // 3. 세부 공종별 일정 시트
   const subTaskRows: any[] = [];
   projects.forEach((p) => {
     Object.entries(p.subTasks || {}).forEach(([roleName, sub]) => {
@@ -40,14 +118,16 @@ export const exportProjectsToExcel = (projects: Project[], personnel: Person[]) 
   });
 
   const wb = XLSX.utils.book_new();
+  const wsIntegrated = XLSX.utils.json_to_sheet(integratedRows);
   const wsProjects = XLSX.utils.json_to_sheet(projectRows);
   const wsSubTasks = XLSX.utils.json_to_sheet(subTaskRows);
 
-  XLSX.utils.book_append_sheet(wb, wsProjects, '프로젝트목록');
+  XLSX.utils.book_append_sheet(wb, wsIntegrated, '프로젝트통합일정표');
+  XLSX.utils.book_append_sheet(wb, wsProjects, '부서별상세목록');
   XLSX.utils.book_append_sheet(wb, wsSubTasks, '세부공종일정');
 
   const today = new Date().toISOString().split('T')[0];
-  XLSX.writeFile(wb, `CONCOST_기술본부_프로젝트일정표_${today}.xlsx`);
+  XLSX.writeFile(wb, `CONCOST_기술본부_프로젝트통합일정표_${today}.xlsx`);
 };
 
 /**

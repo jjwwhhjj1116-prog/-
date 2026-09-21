@@ -75,6 +75,8 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
   // 달력 범위 계산 (선택된 월)
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
+  const monthStartStr = format(monthStart, 'yyyy-MM-dd');
+  const monthEndStr = format(monthEnd, 'yyyy-MM-dd');
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
   // 오늘 날짜 구하기 (2026-09-21 등 실제 현재 날짜 실시간 연동)
   const today = useMemo(() => {
@@ -550,6 +552,24 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
               <div className="divide-y divide-slate-200">
                 {scheduleRowUnits.map((unit) => {
                   const { tasks, maxLane } = unitTasksMap[unit.id] || { tasks: [], maxLane: 0 };
+
+                  // 당월(조회 중인 월)에 실제 진행되는 작업만 필터링
+                  const monthTasks = tasks.filter(
+                    (t) => !(t.endDate < monthStartStr || t.startDate > monthEndStr)
+                  );
+
+                  // 당월 실제 일정 겹침(충돌) 계산: 두 작업의 날짜 구간이 겹치는 경우
+                  let overlapCount = 0;
+                  for (let i = 0; i < monthTasks.length; i++) {
+                    for (let j = i + 1; j < monthTasks.length; j++) {
+                      const a = monthTasks[i];
+                      const b = monthTasks[j];
+                      if (a.startDate <= b.endDate && b.startDate <= a.endDate) {
+                        overlapCount++;
+                      }
+                    }
+                  }
+
                   const rowHeight = Math.max(52, (maxLane + 1) * 32 + 12);
 
                   return (
@@ -612,14 +632,25 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                           ) : (
                             <span
                               className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                                tasks.length > 1
-                                  ? 'bg-orange-100 text-orange-700 border border-orange-200'
-                                  : tasks.length === 1
-                                  ? 'bg-blue-100 text-blue-700'
+                                overlapCount > 0
+                                  ? 'bg-rose-100 text-rose-700 border border-rose-300'
+                                  : monthTasks.length > 0
+                                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
                                   : 'bg-slate-100 text-slate-400'
                               }`}
+                              title={
+                                overlapCount > 0
+                                  ? `당월 ${monthTasks.length}건 배정 중 ${overlapCount}개 일정이 동시 중복 진행 중입니다.`
+                                  : monthTasks.length > 0
+                                  ? `당월 ${monthTasks.length}건 정상 배정 진행 중`
+                                  : '당월 배정된 일정 없음'
+                              }
                             >
-                              {tasks.length > 1 ? `중복 ${tasks.length}건` : `${tasks.length}건`}
+                              {overlapCount > 0
+                                ? `중복 ${overlapCount}건`
+                                : monthTasks.length > 0
+                                ? `${monthTasks.length}건 배정`
+                                : '일정없음'}
                             </span>
                           )}
                         </div>
