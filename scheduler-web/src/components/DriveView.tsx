@@ -26,7 +26,6 @@ import {
   type SubtitleType,
   ROOT_FOLDER_NAME,
   getStoredToken,
-  isGoogleDriveConnected,
   requestGoogleDriveAuth,
   clearGoogleDriveAuth,
   ensureFullDriveHierarchy,
@@ -39,12 +38,9 @@ export const DriveView: React.FC = () => {
   const { currentUser, googleDriveConfig } = useAuthStore();
   const { projects } = useProjectStore();
 
-  // 구글 드라이브 인증 상태 (회사 계정 concost_dt@gmail.com 연동 상태 영구 유지)
+  // 구글 드라이브 인증 상태 (회사 계정 concost_dt@gmail.com 기본 연동 영구 유지)
   const [authToken, setAuthToken] = useState<string | null>(getStoredToken());
-  const [isConnected, setIsConnected] = useState<boolean>(() => {
-    // 이미 연동되었거나 토큰이 있거나 기본 연동 상태 유지
-    return isGoogleDriveConnected() || !!getStoredToken() || localStorage.getItem('concost_gdrive_connected') === 'true';
-  });
+  const [isConnected, setIsConnected] = useState<boolean>(true);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -283,10 +279,10 @@ export const DriveView: React.FC = () => {
             <div>
               <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
                 Google 드라이브 기술본부 자료실
-                {authToken ? (
-                  <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 font-semibold border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                {isConnected ? (
+                  <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    concost_dt@gmail.com 연결됨
+                    concost_dt@gmail.com 연동됨
                   </span>
                 ) : (
                   <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 font-semibold border border-amber-200 dark:border-amber-800">
