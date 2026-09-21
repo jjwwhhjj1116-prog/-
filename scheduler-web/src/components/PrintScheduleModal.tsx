@@ -60,11 +60,11 @@ export const PrintScheduleModal: React.FC<Props> = ({
     }> = {};
 
     filteredProjects.forEach((p) => {
-      const code = p.code || p.id;
+      const code = p.code || p.id || 'NO_CODE';
       if (!groupMap[code]) {
         groupMap[code] = {
-          code: p.code,
-          name: p.name,
+          code: p.code || p.id || '',
+          name: p.name || '미정 프로젝트',
           client: (p as any).client || '',
           area: (p as any).area || '',
           usage: (p as any).usage || '',
@@ -73,34 +73,34 @@ export const PrintScheduleModal: React.FC<Props> = ({
         };
       }
 
-      if (!groupMap[code].departments.includes(p.department)) {
+      if (p.department && !groupMap[code].departments.includes(p.department)) {
         groupMap[code].departments.push(p.department);
       }
 
-      const pmName = personMap.get(p.pmId) || p.pmId;
+      const pmName = (personMap.get(p.pmId) || p.pmId || '-');
 
       groupMap[code].lanes.push({
         projectId: p.id,
-        department: p.department,
+        department: p.department || '마감팀',
         pmName,
-        startDate: p.startDate,
-        endDate: p.endDate,
-        progress: p.progress,
-        status: p.status,
+        startDate: p.startDate || '2026-09-01',
+        endDate: p.endDate || '2026-09-30',
+        progress: p.progress ?? 0,
+        status: p.status || '진행중',
       });
     });
 
-    const deptOrder: Record<Department, number> = {
+    const deptOrder: Record<string, number> = {
       '마감팀': 1,
       '구조팀': 2,
       '토목&조경팀': 3,
     };
 
     return Object.values(groupMap).map((grp) => {
-      grp.lanes.sort((a, b) => (deptOrder[a.department] || 99) - (deptOrder[b.department] || 99));
+      grp.lanes.sort((a, b) => ((deptOrder[a.department] ?? 99) - (deptOrder[b.department] ?? 99)));
       return grp;
     });
-  }, [filteredProjects, personMap]);
+  }, [filteredProjects, personnel]);
 
   // 출력 대상 월 목록 (2026년 9월, 10월, 11월 3개월 자동 계산)
   const months = [
@@ -379,9 +379,9 @@ export const PrintScheduleModal: React.FC<Props> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
-                      {monthProjects.map((group) => {
+                      {monthProjects.map((group, gIdx) => {
                         return (
-                          <tr key={group.code} className="hover:bg-slate-50/50">
+                          <tr key={`${group.code || 'grp'}-${gIdx}`} className="hover:bg-slate-50/50">
                             {/* 프로젝트 정보 (단일 행 통합) */}
                             <td className="py-1 px-2.5 border-r border-slate-300 align-middle">
                               <div className="flex items-center gap-1 mb-0.5 flex-wrap">
@@ -404,7 +404,7 @@ export const PrintScheduleModal: React.FC<Props> = ({
                                 ))}
                               </div>
                               <div className="font-black text-slate-900 line-clamp-1 leading-snug" title={group.name}>
-                                {group.name.replace(/^\[.*?\]\s*/, '').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim()}
+                                {((group.name || '').replace(/^\[.*?\]\s*/, '').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim()) || group.name || '프로젝트'}
                               </div>
                               {group.area && (
                                 <div className="text-[8px] text-slate-500 truncate">
@@ -416,14 +416,14 @@ export const PrintScheduleModal: React.FC<Props> = ({
                             {/* 담당 PM 및 공정률 (마감/구조/토목 상하 분할) */}
                             <td className="py-1 px-1.5 border-r border-slate-300 text-center align-middle">
                               <div className="flex flex-col gap-1">
-                                {group.lanes.map((lane) => (
+                                {group.lanes.map((lane, lIdx) => (
                                   <div
-                                    key={lane.projectId}
+                                    key={lane.projectId || lIdx}
                                     className="flex items-center justify-between text-[9px] font-bold leading-tight"
                                   >
-                                    <span className="text-slate-500 font-semibold">{lane.department.slice(0, 2)}</span>
-                                    <span className="text-slate-900">{lane.pmName.split(' ')[0]}</span>
-                                    <span className="text-blue-700 font-mono text-[8px]">{lane.progress}%</span>
+                                    <span className="text-slate-500 font-semibold">{(lane.department || '마감').slice(0, 2)}</span>
+                                    <span className="text-slate-900">{(lane.pmName || '-').split(' ')[0]}</span>
+                                    <span className="text-blue-700 font-mono text-[8px]">{lane.progress ?? 0}%</span>
                                   </div>
                                 ))}
                               </div>
@@ -448,8 +448,8 @@ export const PrintScheduleModal: React.FC<Props> = ({
                                   }`}
                                 >
                                   <div className="flex flex-col gap-1 w-full justify-center">
-                                    {group.lanes.map((lane) => {
-                                      const isWithin = cellDateStr >= lane.startDate && cellDateStr <= lane.endDate;
+                                    {group.lanes.map((lane, lIdx) => {
+                                      const isWithin = Boolean(lane.startDate && lane.endDate && cellDateStr >= lane.startDate && cellDateStr <= lane.endDate);
                                       const isStartDay = cellDateStr === lane.startDate;
                                       const isEndDay = cellDateStr === lane.endDate;
 
@@ -462,7 +462,7 @@ export const PrintScheduleModal: React.FC<Props> = ({
 
                                       return (
                                         <div
-                                          key={lane.projectId}
+                                          key={lane.projectId || lIdx}
                                           className={`h-4 w-full flex items-center justify-center text-[7px] font-bold ${
                                             isWithin ? barBg : 'bg-transparent'
                                           } ${isStartDay ? 'rounded-l-xs' : ''} ${
@@ -471,7 +471,7 @@ export const PrintScheduleModal: React.FC<Props> = ({
                                         >
                                           {isWithin && isStartDay && (
                                             <span className="scale-75 whitespace-nowrap leading-none">
-                                              {lane.department.slice(0, 2)}
+                                              {(lane.department || '마감').slice(0, 2)}
                                             </span>
                                           )}
                                         </div>
