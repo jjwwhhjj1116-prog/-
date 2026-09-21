@@ -24,9 +24,9 @@ import {
   Clock,
   User,
   AlertCircle,
-  FolderTree,
   Building2,
   Users,
+  HardDrive,
 } from 'lucide-react';
 
 export const DriveView: React.FC = () => {
@@ -58,11 +58,11 @@ export const DriveView: React.FC = () => {
   const [selectedProjectCode, setSelectedProjectCode] = useState<string>(() => uniqueProjects[0]?.code || '');
   const currentProject = uniqueProjects.find((p) => p.code === selectedProjectCode) || uniqueProjects[0];
 
-  // 2. 소속팀 선택 상태 (프로젝트에 속한 팀 우선)
+  // 2. 소속팀 선택 상태
   const availableTeams: Department[] = currentProject?.departments?.length ? currentProject.departments : ['마감팀', '구조팀'];
   const [selectedTeam, setSelectedTeam] = useState<Department>(() => availableTeams[0] || '마감팀');
 
-  // 3. 공종 선택 상태 (팀에 속한 공종)
+  // 3. 공종 선택 상태
   const availableRoles = useMemo(() => {
     return TEAM_ROLES[selectedTeam] || ['공종'];
   }, [selectedTeam]);
@@ -72,7 +72,7 @@ export const DriveView: React.FC = () => {
     return roles.find((r) => r !== 'PM') || roles[0] || '조적';
   });
 
-  // 4. 서브타이틀 선택 상태 (기존 4대 서브타이틀: 1.프로그램파일(FIN) 기본)
+  // 4. 서브타이틀 선택 상태 (기본: 1.프로그램파일(FIN))
   const [selectedSubtitle, setSelectedSubtitle] = useState<SubtitleType>('1.프로그램파일(FIN)');
 
   // 파일 목록 상태
@@ -125,7 +125,7 @@ export const DriveView: React.FC = () => {
     }
   }, [selectedProjectCode]);
 
-  // 서브타이틀별 파일 카운트 계산 (현재 프로젝트 기준)
+  // 서브타이틀별 파일 카운트 계산
   const subtitleCounts = useMemo(() => {
     const counts: Record<string, number> = {
       '1.프로그램파일(FIN)': 0,
@@ -141,7 +141,7 @@ export const DriveView: React.FC = () => {
     return counts;
   }, [allFiles]);
 
-  // 현재 필터된 파일 목록 (선택된 서브타이틀 + 검색어)
+  // 현재 필터된 파일 목록
   const currentSubtitleFiles = useMemo(() => {
     return allFiles.filter((f) => {
       const matchSub = f.subtitle === selectedSubtitle;
@@ -153,7 +153,7 @@ export const DriveView: React.FC = () => {
     });
   }, [allFiles, selectedSubtitle, searchQuery]);
 
-  // 파일 업로드 처리 (클레임센터 무팝업 웹 로그인 방식)
+  // 파일 업로드 처리
   const handleUploadFiles = async (fileList: FileList | File[]) => {
     const filesToUpload = Array.from(fileList);
     if (!filesToUpload.length || !selectedProjectCode) return;
@@ -215,97 +215,72 @@ export const DriveView: React.FC = () => {
   const activeMeta = SUBTITLE_METAS[selectedSubtitle];
 
   return (
-    <div className="space-y-6 animate-fadeIn pb-12">
-      {/* 1. 최상단 히어로 배너 (클레임센터 스튜디오 1:1 레퍼런스 레이아웃) */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 lg:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6 shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
-        
-        <div className="space-y-2 max-w-3xl z-10">
-          <span className="inline-block text-xs font-bold tracking-wider text-blue-400 uppercase bg-blue-500/10 px-2.5 py-1 rounded-md border border-blue-500/20">
-            COMPANY STORAGE · GOOGLE DRIVE
-          </span>
-          <h2 className="text-2xl lg:text-3xl font-bold text-white tracking-tight leading-snug">
-            기술본부 성과물 & 작업도서<br />
-            모든 자료를 클라우드에 안전 보관합니다.
-          </h2>
-          <p className="text-sm text-slate-400 leading-relaxed pt-1">
-            프로그램파일(FIN), CAD작업도면, 질의사항&견적조건, 기타 성과물을 프로젝트·팀·공종별 5단계 계층 폴더로 자동 분류합니다.
-            파일명·업로드 시각·담당자·SHA-256 무결성을 영구 기록합니다.
-          </p>
-        </div>
-
-        {/* 우측 클라우드 스토리지 상태 카드 */}
-        <div className="bg-slate-800/80 backdrop-blur-md border border-slate-700/80 rounded-xl p-5 min-w-[320px] shadow-lg flex flex-col justify-between z-10">
+    <div className="space-y-5 animate-fadeIn pb-12">
+      {/* 1. 상단 컴팩트 헤더 바 (쓸모없는 거대 배너 완전 삭제, 핵심 정보만 고대비로 표시) */}
+      <div className="bg-slate-900 border-2 border-slate-800 rounded-xl px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm font-bold">
+            <HardDrive className="w-5 h-5" />
+          </div>
           <div>
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <span className="text-[11px] font-semibold text-slate-400 tracking-wider">
-                COMPANY STORAGE · TECH STUDIO ONLY
-              </span>
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-black text-white tracking-tight">
+                기술본부 Google Drive 자료실
+              </h2>
+              <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/40">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                연동됨
+                회사 계정 연동됨
               </span>
             </div>
-            <strong className="block text-base font-bold text-white mb-1">
-              기술본부 전용 Google Drive
-            </strong>
-            <p className="text-xs text-slate-400 leading-normal">
-              기술본부 자료실 / 프로젝트 / 팀 / 공종 / 서브타이틀 · 파일당 최대 50MB
+            <p className="text-xs font-semibold text-slate-300">
+              기술본부 자료실 &gt; [{currentProject?.code}] &gt; <span className="text-blue-400 font-bold">{selectedTeam}</span> &gt; <span className="text-emerald-400 font-bold">{selectedRole}</span> &gt; <span className="text-white font-bold underline">{selectedSubtitle}</span>
             </p>
           </div>
+        </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-700/60 flex items-center justify-between">
-            <span className="text-xs text-slate-400">회사 계정: concost_dt@gmail.com</span>
-            <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              보안 인증 완료
-            </span>
-          </div>
+        <div className="flex items-center gap-3 self-end sm:self-center">
+          <span className="text-xs font-medium text-slate-400">
+            회사 저장소: <strong className="text-slate-200">concost_dt@gmail.com</strong>
+          </span>
+          <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/30 flex items-center gap-1">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            보안 인증
+          </span>
         </div>
       </div>
 
-      {/* 2. 대상 프로젝트 및 팀/공종 계층 선택 바 */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-            <FolderTree className="w-4 h-4 text-blue-400" />
-            <span>자료실 대상 프로젝트 및 계층 선택</span>
-          </h3>
-          <span className="text-xs text-slate-400">
-            경로: 기술본부 자료실 &gt; [{currentProject?.code}] &gt; {selectedTeam} &gt; {selectedRole} &gt; {selectedSubtitle}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {/* 1) 프로젝트 선택 */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <Building2 className="w-3.5 h-3.5 text-slate-400" />
-              1. 대상 프로젝트
+      {/* 2. 대상 프로젝트 및 팀/공종 선택 바 (고대비: 화이트/블루/에메랄드/블랙) */}
+      <div className="bg-slate-900 border-2 border-slate-700/80 rounded-xl p-4 shadow-md space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+          {/* 1) 프로젝트 선택 (5칸) */}
+          <div className="md:col-span-5">
+            <label className="block text-xs font-black text-white mb-1.5 flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5 text-blue-400" />
+              1. 대상 프로젝트 선택
             </label>
             <div className="relative">
               <select
                 value={selectedProjectCode}
                 onChange={(e) => handleProjectSelect(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 appearance-none font-medium cursor-pointer"
+                className="w-full bg-slate-950 border-2 border-slate-600 rounded-lg px-3.5 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-blue-400 appearance-none cursor-pointer shadow-inner"
               >
                 {uniqueProjects.map((p) => (
-                  <option key={p.code} value={p.code}>
+                  <option key={p.code} value={p.code} className="bg-slate-900 text-white font-bold">
                     [{p.code}] {p.name}
                   </option>
                 ))}
               </select>
-              <div className="absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none text-slate-400 text-xs">
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-blue-400 font-bold text-xs">
                 ▼
               </div>
             </div>
           </div>
 
-          {/* 2) 소속팀 선택 */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5 text-slate-400" />
-              2. 소속 부서(팀)
+          {/* 2) 소속팀 선택 (4칸) */}
+          <div className="md:col-span-4">
+            <label className="block text-xs font-black text-white mb-1.5 flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5 text-emerald-400" />
+              2. 소속 부서(팀) 선택
             </label>
             <div className="grid grid-cols-3 gap-1.5">
               {(['마감팀', '구조팀', '토목&조경팀'] as Department[]).map((team) => {
@@ -315,10 +290,10 @@ export const DriveView: React.FC = () => {
                     key={team}
                     type="button"
                     onClick={() => handleTeamSelect(team)}
-                    className={`py-2 px-2 text-xs font-semibold rounded-lg border transition-all text-center ${
+                    className={`py-2 px-1 text-xs font-black rounded-lg border-2 transition-all text-center ${
                       isSelected
-                        ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                        : 'bg-slate-950 text-slate-400 border-slate-700 hover:border-slate-600'
+                        ? 'bg-blue-600 text-white border-blue-400 shadow-md shadow-blue-500/20 scale-[1.02]'
+                        : 'bg-slate-950 text-slate-300 border-slate-700 hover:border-slate-500 hover:text-white'
                     }`}
                   >
                     {team}
@@ -328,25 +303,25 @@ export const DriveView: React.FC = () => {
             </div>
           </div>
 
-          {/* 3) 공종(Role) 선택 */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <FolderOpen className="w-3.5 h-3.5 text-slate-400" />
-              3. 담당 공종
+          {/* 3) 공종 선택 (3칸) */}
+          <div className="md:col-span-3">
+            <label className="block text-xs font-black text-white mb-1.5 flex items-center gap-1.5">
+              <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+              3. 담당 공종 선택
             </label>
             <div className="relative">
               <select
                 value={selectedRole}
                 onChange={(e) => setSelectedRole(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 appearance-none font-medium cursor-pointer"
+                className="w-full bg-slate-950 border-2 border-slate-600 rounded-lg px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-blue-400 appearance-none cursor-pointer shadow-inner"
               >
                 {availableRoles.map((role) => (
-                  <option key={role} value={role}>
+                  <option key={role} value={role} className="bg-slate-900 text-white font-bold">
                     {role} {role === 'PM' ? '(총괄)' : '공종'}
                   </option>
                 ))}
               </select>
-              <div className="absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none text-slate-400 text-xs">
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-amber-400 font-bold text-xs">
                 ▼
               </div>
             </div>
@@ -354,87 +329,124 @@ export const DriveView: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. 4대 서브타이틀 카드 그리드 (클레임센터 스튜디오 레퍼런스 스타일 1:1) */}
-      <div className="space-y-3">
+      {/* 3. 4대 서브타이틀 카드에셋 선택창 (★흰색, 초록, 검은색, 파랑색 초고대비 명품 UI★) */}
+      <div className="space-y-2.5">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
-            <span>4대 필수 서브타이틀 선택</span>
-            <span className="text-xs font-normal text-slate-400">
-              (업로드할 폴더를 선택하세요)
+          <h3 className="text-sm font-black text-white flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-blue-500" />
+            <span>4대 필수 서브타이틀 폴더 선택</span>
+            <span className="text-xs font-medium text-emerald-400">
+              (선택한 폴더로 자동 분류 저장됩니다)
             </span>
           </h3>
-          <span className="text-xs text-slate-400">
-            총 {allFiles.length}개 파일 보관 중
+          <span className="text-xs font-bold text-white bg-slate-800 px-2.5 py-1 rounded-md border border-slate-700">
+            총 <strong className="text-blue-400">{allFiles.length}</strong>개 파일 보관 중
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {SUBTITLES.map((subKey) => {
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          {SUBTITLES.map((subKey, idx) => {
             const meta = SUBTITLE_METAS[subKey];
             const isSelected = selectedSubtitle === subKey;
             const count = subtitleCounts[subKey] || 0;
+
+            // 각 서브타이틀 고유 테마 (초록, 파랑, 화이트, 블랙 기준)
+            const themeConfig = [
+              // 1. FIN: 블루 & 화이트
+              {
+                activeBorder: 'border-blue-500 bg-blue-950/70 shadow-lg shadow-blue-500/20 ring-2 ring-blue-400',
+                inactiveBorder: 'border-slate-700 bg-slate-900 hover:border-blue-500/60',
+                badgeBg: isSelected ? 'bg-blue-600 text-white' : 'bg-blue-950 text-blue-300 border border-blue-800',
+                tagColor: 'text-blue-400',
+              },
+              // 2. CAD: 에메랄드 초록 & 화이트
+              {
+                activeBorder: 'border-emerald-500 bg-emerald-950/70 shadow-lg shadow-emerald-500/20 ring-2 ring-emerald-400',
+                inactiveBorder: 'border-slate-700 bg-slate-900 hover:border-emerald-500/60',
+                badgeBg: isSelected ? 'bg-emerald-600 text-white' : 'bg-emerald-950 text-emerald-300 border border-emerald-800',
+                tagColor: 'text-emerald-400',
+              },
+              // 3. Q&A: 사이언/스카이블루 & 화이트
+              {
+                activeBorder: 'border-sky-500 bg-sky-950/70 shadow-lg shadow-sky-500/20 ring-2 ring-sky-400',
+                inactiveBorder: 'border-slate-700 bg-slate-900 hover:border-sky-500/60',
+                badgeBg: isSelected ? 'bg-sky-600 text-white' : 'bg-sky-950 text-sky-300 border border-sky-800',
+                tagColor: 'text-sky-400',
+              },
+              // 4. 기타: 화이트 & 다크블랙
+              {
+                activeBorder: 'border-purple-500 bg-purple-950/70 shadow-lg shadow-purple-500/20 ring-2 ring-purple-400',
+                inactiveBorder: 'border-slate-700 bg-slate-900 hover:border-purple-500/60',
+                badgeBg: isSelected ? 'bg-purple-600 text-white' : 'bg-purple-950 text-purple-300 border border-purple-800',
+                tagColor: 'text-purple-400',
+              },
+            ][idx];
 
             return (
               <button
                 key={subKey}
                 type="button"
                 onClick={() => setSelectedSubtitle(subKey)}
-                className={`relative flex items-center gap-3.5 p-4 rounded-xl border text-left transition-all group ${
-                  isSelected
-                    ? 'bg-blue-600/15 border-blue-500 shadow-md shadow-blue-500/10 scale-[1.01]'
-                    : 'bg-slate-900 border-slate-800 hover:border-slate-700 hover:bg-slate-850'
+                className={`relative flex items-center gap-3.5 p-4 rounded-xl border-2 text-left transition-all group cursor-pointer ${
+                  isSelected ? themeConfig.activeBorder : themeConfig.inactiveBorder
                 }`}
               >
-                {/* 서브타이틀 뱃지 */}
+                {/* 왼쪽 고대비 아이콘 뱃지 */}
                 <div
-                  className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 transition-colors ${
-                    isSelected
-                      ? 'bg-blue-500 text-white shadow-sm'
-                      : 'bg-slate-800 text-slate-300 group-hover:bg-slate-700'
+                  className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm shrink-0 shadow-md transition-all ${
+                    themeConfig.badgeBg
                   }`}
                 >
                   {meta.icon}
                 </div>
 
+                {/* 오른쪽 텍스트 & 카운트 (선명한 화이트 & 고대비) */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-1 mb-0.5">
-                    <span className="text-[10px] text-slate-400 uppercase font-semibold">
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <span className={`text-[11px] font-black uppercase tracking-wider ${themeConfig.tagColor}`}>
                       SUBTITLE {meta.code}
                     </span>
                     <span
-                      className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                      className={`text-xs font-black px-2 py-0.5 rounded-full border ${
                         count > 0
-                          ? 'bg-blue-500/20 text-blue-400'
-                          : 'text-slate-500'
+                          ? 'bg-emerald-500 text-black border-emerald-400 shadow-sm'
+                          : 'bg-slate-800 text-slate-400 border-slate-700'
                       }`}
                     >
-                      {count}개
+                      {count}건
                     </span>
                   </div>
-                  <strong className={`block text-sm font-bold truncate ${
-                    isSelected ? 'text-white' : 'text-slate-200'
-                  }`}>
+
+                  <strong className="block text-sm font-black text-white truncate leading-snug">
                     {meta.title}
                   </strong>
-                  <p className="text-[11px] text-slate-400 truncate mt-0.5">
+
+                  <p className="text-[11px] font-medium text-slate-300 truncate mt-0.5">
                     {meta.description}
                   </p>
                 </div>
+
+                {/* 선택 완료 체크 표시 */}
+                {isSelected && (
+                  <div className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-emerald-500 text-black flex items-center justify-center font-black text-xs shadow-md border-2 border-slate-950">
+                    ✓
+                  </div>
+                )}
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* 4. 드래그 앤 드롭 & 파일 선택 업로드 존 (클레임센터 1:1 방식, 팝업 없음) */}
+      {/* 4. 드래그 앤 드롭 & 파일 선택 업로드 존 (고대비: 화이트 텍스트 & 블루/그린 액션) */}
       <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`border-2 border-dashed rounded-2xl p-8 transition-all text-center flex flex-col items-center justify-center gap-3 relative ${
+        className={`border-2 border-dashed rounded-2xl p-7 transition-all text-center flex flex-col items-center justify-center gap-3 relative ${
           isDragging
-            ? 'border-blue-400 bg-blue-500/10 scale-[1.005]'
-            : 'border-slate-700/80 bg-slate-900/60 hover:border-slate-600'
+            ? 'border-emerald-400 bg-emerald-950/30 scale-[1.005]'
+            : 'border-blue-500/50 bg-slate-900/90 hover:border-blue-400'
         }`}
       >
         <input
@@ -446,18 +458,19 @@ export const DriveView: React.FC = () => {
           onChange={(e) => e.target.files && handleUploadFiles(e.target.files)}
         />
 
-        <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shadow-sm">
-          <UploadCloud className="w-7 h-7 animate-bounce" />
+        <div className="w-13 h-13 rounded-2xl bg-blue-600/20 border-2 border-blue-500 flex items-center justify-center text-blue-400 shadow-md">
+          <UploadCloud className="w-7 h-7 text-blue-400 animate-bounce" />
         </div>
 
         <div className="space-y-1">
-          <strong className="block text-base font-bold text-white">
+          <strong className="block text-base font-black text-white">
             {isUploading
               ? '파일을 Google Drive에 안전 저장 중입니다...'
-              : `${selectedSubtitle} → 회사 Google Drive에 업로드하세요`}
+              : `[${selectedSubtitle}] → 회사 Google Drive에 바로 업로드`}
           </strong>
-          <p className="text-xs text-slate-400 max-w-xl leading-relaxed">
-            파일을 끌어다 놓거나 선택하세요 · FIN, DWG, PDF, Excel, 압축파일 지원 · 기술본부 자료실/{currentProject?.name}/{selectedTeam}/{selectedRole}/{selectedSubtitle}에 자동 분류 저장됩니다.
+          <p className="text-xs font-semibold text-slate-300 max-w-xl leading-relaxed">
+            파일을 끌어다 놓거나 아래 버튼을 누르세요 · FIN, DWG, PDF, Excel, 압축파일 지원<br />
+            저장 경로: <span className="text-emerald-400 font-bold">기술본부 자료실/{currentProject?.name}/{selectedTeam}/{selectedRole}/{selectedSubtitle}</span>
           </p>
         </div>
 
@@ -465,123 +478,114 @@ export const DriveView: React.FC = () => {
           type="button"
           disabled={isUploading}
           onClick={() => fileInputRef.current?.click()}
-          className="mt-2 px-6 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          className="mt-1 px-7 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-black shadow-lg shadow-blue-600/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
         >
           {isUploading ? (
             <>
               <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              업로드 중...
+              안전 저장 중...
             </>
           ) : (
             <>
               <FolderOpen className="w-4 h-4" />
-              파일 선택
+              업로드 파일 선택
             </>
           )}
         </button>
 
         {uploadNotice && (
-          <div className="mt-3 px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2 animate-fadeIn">
-            <CheckCircle2 className="w-4 h-4" />
+          <div className="mt-2 px-4 py-2 rounded-lg bg-emerald-950 border-2 border-emerald-500 text-emerald-300 text-xs font-black flex items-center gap-2 animate-fadeIn shadow-md">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
             {uploadNotice}
           </div>
         )}
 
         {uploadError && (
-          <div className="mt-3 px-4 py-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold flex items-center gap-2 animate-fadeIn">
-            <AlertCircle className="w-4 h-4" />
+          <div className="mt-2 px-4 py-2 rounded-lg bg-rose-950 border-2 border-rose-500 text-rose-300 text-xs font-black flex items-center gap-2 animate-fadeIn shadow-md">
+            <AlertCircle className="w-4 h-4 text-rose-400" />
             {uploadError}
           </div>
         )}
       </div>
 
-      {/* 5. 안내 문구 배너 바 (클레임센터 1:1 레퍼런스 스타일) */}
-      <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-5 py-3 flex items-center justify-between text-xs text-amber-300">
-        <span className="flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 shrink-0 text-amber-400" />
-          <span>
-            <strong>회사 Google Drive 저장:</strong> 회사 계정 연결 완료 · 개인 Google 계정 공유 없이 기술본부(마감팀·구조팀), 관리자 또는 해당 프로젝트에 배정된 회원의 스튜디오 로그인으로 이행합니다.
-          </span>
-        </span>
-      </div>
-
-      {/* 6. 하단 파일 뷰어 및 다운로드 목록 */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+      {/* 5. 하단 파일 뷰어 및 다운로드 목록 (고대비: 선명한 화이트, 블루, 에메랄드) */}
+      <div className="bg-slate-900 border-2 border-slate-800 rounded-2xl p-5 shadow-md space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b-2 border-slate-800">
           <div>
-            <h4 className="text-base font-bold text-white flex items-center gap-2">
-              <span>{selectedSubtitle} - 폴더별 자료</span>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                파일 {currentSubtitleFiles.length}개
+            <h4 className="text-base font-black text-white flex items-center gap-2">
+              <span className="text-blue-400">[{selectedSubtitle}]</span>
+              <span>폴더별 보관 자료</span>
+              <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-emerald-500 text-black shadow-sm">
+                {currentSubtitleFiles.length}개 파일
               </span>
             </h4>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs font-medium text-slate-300 mt-0.5">
               {activeMeta.description}
             </p>
           </div>
 
           <div className="flex items-center gap-2">
             <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 placeholder="파일명 / 작성자 / 공종 검색..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 w-52"
+                className="bg-slate-950 border-2 border-slate-700 rounded-lg pl-9 pr-3 py-1.5 text-xs font-bold text-white placeholder-slate-500 focus:outline-none focus:border-blue-400 w-56"
               />
             </div>
           </div>
         </div>
 
         {isLoading ? (
-          <div className="text-center py-12 text-slate-400 text-sm flex items-center justify-center gap-2">
+          <div className="text-center py-12 text-slate-300 text-sm font-bold flex items-center justify-center gap-2">
             <span className="w-4 h-4 border-2 border-slate-400/30 border-t-blue-400 rounded-full animate-spin" />
             자료 목록을 불러오는 중입니다...
           </div>
         ) : currentSubtitleFiles.length === 0 ? (
-          <div className="text-center py-14 text-slate-400 text-sm">
-            <FileText className="w-10 h-10 text-slate-600 mx-auto mb-2 opacity-60" />
-            <p className="font-medium text-slate-300">아직 저장된 자료가 없습니다.</p>
-            <p className="text-xs text-slate-500 mt-1">위 영역에 첫 자료를 올려 주세요.</p>
+          <div className="text-center py-12 text-slate-300 text-sm">
+            <FileText className="w-10 h-10 text-slate-500 mx-auto mb-2 opacity-80" />
+            <p className="font-bold text-white text-base">아직 저장된 자료가 없습니다.</p>
+            <p className="text-xs font-medium text-slate-400 mt-1">위 파란색 업로드 영역에 첫 파일을 올려주세요.</p>
           </div>
         ) : (
-          <div className="divide-y divide-slate-800/80">
+          <div className="divide-y-2 divide-slate-800">
             {currentSubtitleFiles.map((file) => (
               <div
                 key={file.id}
-                className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-850/50 px-2 rounded-lg transition-colors group"
+                className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-850 px-3 rounded-lg transition-colors group"
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center font-bold text-xs text-blue-400 shrink-0">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-10 h-10 rounded-lg bg-blue-600/20 border-2 border-blue-500 flex items-center justify-center font-black text-xs text-blue-300 shrink-0">
                     {activeMeta.icon}
                   </div>
                   <div className="min-w-0">
-                    <strong className="block text-sm font-semibold text-white truncate max-w-md" title={file.originalName}>
+                    <strong className="block text-sm font-black text-white truncate max-w-lg" title={file.originalName}>
                       {file.originalName}
                     </strong>
-                    <div className="flex items-center gap-3 text-xs text-slate-400 mt-0.5">
-                      <span className="text-blue-400 font-medium">
+                    <div className="flex items-center gap-2.5 text-xs text-slate-300 font-semibold mt-0.5">
+                      <span className="text-emerald-400 font-bold">
                         [{file.teamName} / {file.roleName}]
                       </span>
                       <span>·</span>
-                      <span className="flex items-center gap-1">
-                        <User className="w-3 h-3 text-slate-500" />
+                      <span className="flex items-center gap-1 text-white">
+                        <User className="w-3.5 h-3.5 text-blue-400" />
                         {file.uploadedBy}
                       </span>
                       <span>·</span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-slate-500" />
+                      <span className="flex items-center gap-1 text-slate-300">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" />
                         {new Date(file.uploadedAt).toLocaleString('ko-KR')}
                       </span>
                       <span>·</span>
-                      <span>{formatBytes(file.byteSize)}</span>
+                      <span className="text-amber-300 font-bold">{formatBytes(file.byteSize)}</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                  <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                <div className="flex items-center gap-2.5 self-end sm:self-center shrink-0">
+                  <span className="text-[11px] font-black text-emerald-400 bg-emerald-950 px-2.5 py-1 rounded border border-emerald-500/50">
                     GOOGLE DRIVE
                   </span>
 
@@ -590,19 +594,19 @@ export const DriveView: React.FC = () => {
                       href={file.driveUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1 transition-colors border border-slate-700"
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-black flex items-center gap-1 transition-colors border border-slate-600"
                     >
-                      <ExternalLink className="w-3 h-3 text-slate-400" />
-                      Drive에서 열기
+                      <ExternalLink className="w-3 h-3 text-slate-300" />
+                      Drive 열기
                     </a>
                   )}
 
                   <button
                     type="button"
                     onClick={() => downloadVaultFile(file)}
-                    className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1 transition-colors shadow-sm"
+                    className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1 transition-all shadow-md shadow-emerald-600/20 cursor-pointer"
                   >
-                    <Download className="w-3 h-3" />
+                    <Download className="w-3.5 h-3.5" />
                     다운로드
                   </button>
                 </div>
