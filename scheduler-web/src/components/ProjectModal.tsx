@@ -149,7 +149,12 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
       };
     });
 
-    const isRemovedAction = (localSubTasks[targetRole]?.personIds || []).includes(unitId);
+    const currentSub = localSubTasks[targetRole];
+    const currentIds = currentSub?.personIds && currentSub.personIds.length > 0
+      ? currentSub.personIds
+      : (currentSub?.personId ? [currentSub.personId] : []);
+    const isRemovedAction = currentIds.includes(unitId);
+
     setAssignToast({
       role: targetRole,
       name: isRemovedAction ? `${unitName} (배정 해제)` : `${unitName} (투입 배정)`
@@ -197,9 +202,14 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
     otherProjects.forEach((op) => {
       if (op.subTasks) {
         Object.values(op.subTasks).forEach((st) => {
+          const stAssignedIds = st.personIds && st.personIds.length > 0
+            ? st.personIds
+            : (st.personId ? [st.personId] : []);
+
+          const koreaUserNo = String(deptKoreaUsers.find(k => k.id === unitId)?.no || '');
           const isMatched = isViet
-            ? (st.personId === unitId || st.roleName.includes(unitName) || (unitId === 'IN1' && (st.roleName === '내부' || st.roleName === '세대')))
-            : (st.personId === unitId || st.personId === unitName || st.personId === String(deptKoreaUsers.find(k => k.id === unitId)?.no));
+            ? (stAssignedIds.includes(unitId) || st.roleName.includes(unitName) || (unitId === 'IN1' && (st.roleName === '내부' || st.roleName === '세대')))
+            : (stAssignedIds.includes(unitId) || stAssignedIds.includes(unitName) || (koreaUserNo && stAssignedIds.includes(koreaUserNo)));
 
           if (isMatched && st.startDate && st.endDate) {
             // 날짜 겹침 조건: !(endA < startB || startA > endB)

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   FolderKanban,
   Building2,
@@ -98,8 +98,11 @@ export default function App() {
     }
   }, [projects, setProjects]);
 
-  // KPI 지표 계산
-  const totalCount = projects.length;
+  // KPI 지표 계산 (고유 프로젝트 기준)
+  const uniqueProjectCount = useMemo(() => {
+    return new Set(projects.map((p) => p.code || p.id)).size;
+  }, [projects]);
+  const totalCount = uniqueProjectCount;
   const inProgressCount = projects.filter((p) => p.status === '진행중').length;
   const revCount = projects.filter((p) => p.status === '수정').length;
   const scheduledCount = projects.filter((p) => p.status === '착수예정').length;
@@ -382,7 +385,7 @@ export default function App() {
                       : 'bg-slate-100 dark:bg-slate-700 text-slate-500'
                   }`}
                 >
-                  {projects.length}
+                  {uniqueProjectCount}
                 </span>
               </button>
 

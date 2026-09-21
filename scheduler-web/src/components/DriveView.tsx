@@ -49,13 +49,55 @@ export const DriveView: React.FC = () => {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [selectedSubtitleFilter, setSelectedSubtitleFilter] = useState<string>('전체');
 
-  // 업로드 폼 상태
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(projects[0]?.id || '');
+  // 고유 프로젝트 목록 (마감팀·구조팀 합동 프로젝트 중복 제거)
+  const uniqueProjects = React.useMemo(() => {
+    const map = new Map<string, {
+      code: string;
+      name: string;
+      departments: Department[];
+    }>();
+
+    projects.forEach((p) => {
+      const code = p.code || p.id;
+      if (!map.has(code)) {
+        map.set(code, {
+          code: p.code,
+          name: p.name,
+          departments: [p.department],
+        });
+      } else {
+        const item = map.get(code)!;
+        if (!item.departments.includes(p.department)) {
+          item.departments.push(p.department);
+        }
+      }
+    });
+
+    return Array.from(map.values());
+  }, [projects]);
+
+  // 업로드 폼 상태 (고유 프로젝트 코드 기준 선택)
+  const [selectedProjectCode, setSelectedProjectCode] = useState<string>(() => uniqueProjects[0]?.code || projects[0]?.code || '');
   const [selectedTeam, setSelectedTeam] = useState<Department>('마감팀');
   const [selectedRole, setSelectedRole] = useState<string>(TEAM_ROLES.마감팀[1] || '조적');
   const [selectedSubtitle, setSelectedSubtitle] = useState<SubtitleType>('1.프로그램파일(FIN)');
   const [authorNameInput, setAuthorNameInput] = useState(currentUser?.name || '조한빈');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  // 현재 선택된 고유 프로젝트 및 수행 부서
+  const currentUniqueProject = uniqueProjects.find((p) => p.code === selectedProjectCode) || uniqueProjects[0];
+  const availableTeams: Department[] = currentUniqueProject?.departments || ['마감팀', '구조팀'];
+
+  // 프로젝트 변경 시 해당 프로젝트의 소속팀 자동 맞춤
+  const handleProjectSelect = (code: string) => {
+    setSelectedProjectCode(code);
+    const target = uniqueProjects.find((p) => p.code === code);
+    if (target && target.departments.length > 0) {
+      if (!target.departments.includes(selectedTeam)) {
+        handleTeamChange(target.departments[0]);
+      }
+    }
+  };
 
   // 업로드 진행 상태
   const [isUploading, setIsUploading] = useState(false);
@@ -139,8 +181,9 @@ export const DriveView: React.FC = () => {
       return;
     }
 
-    const currentProject = projects.find((p) => p.id === selectedProjectId) || projects[0];
-    const projectFolderName = `[${currentProject.code}] ${currentProject.name}`;
+    const projectFolderName = currentUniqueProject
+      ? `[${currentUniqueProject.code}] ${currentUniqueProject.name}`
+      : `[${projects[0]?.code || 'TK'}] ${projects[0]?.name || ''}`;
 
     setIsUploading(true);
     setUploadError(null);
@@ -196,7 +239,7 @@ export const DriveView: React.FC = () => {
   };
 
   // 선택된 프로젝트 정보
-  const selectedProject = projects.find((p) => p.id === selectedProjectId) || projects[0];
+  const selectedProject = projects.find((p) => p.code === selectedProjectCode) || projects[0];
 
   // 필터링된 파일 목록
   const filteredFiles = vaultFiles.filter((f) => {
@@ -255,15 +298,6 @@ export const DriveView: React.FC = () => {
                 <RefreshCw size={13} className={isLoadingFiles ? 'animate-spin' : ''} />
                 새로고침
               </button>
-              <a
-                href="https://drive.google.com/drive/my-drive"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 dark:bg-blue-950 hover:bg-blue-100 dark:hover:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs font-bold rounded-lg transition border border-blue-200 dark:border-blue-800"
-              >
-                <ExternalLink size={13} />
-                Google Drive 바로가기
-              </a>
               <button
                 type="button"
                 onClick={handleDisconnectGoogle}
@@ -344,25 +378,25 @@ export const DriveView: React.FC = () => {
 
         <form onSubmit={handleUploadFile} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* 1. 대상 프로젝트 선택 */}
+            {/* 1. 대상 프로젝트 선택 (마감·구조 통합 단일 프로젝트) */}
             <div>
               <label className="block text-[11px] font-bold text-slate-300 mb-1">
                 1. 대상 프로젝트
               </label>
               <select
-                value={selectedProjectId}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
+                value={selectedProjectCode}
+                onChange={(e) => handleProjectSelect(e.target.value)}
                 className="w-full text-xs p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white outline-none focus:border-orange-500 font-medium"
               >
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
+                {uniqueProjects.map((p) => (
+                  <option key={p.code} value={p.code}>
                     [{p.code}] {p.name}
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* 2. 소속 팀 선택 */}
+            {/* 2. 소속 팀 선택 (해당 프로젝트의 실제 수행 부서만 노출) */}
             <div>
               <label className="block text-[11px] font-bold text-slate-300 mb-1">
                 2. 소속 팀
@@ -372,9 +406,11 @@ export const DriveView: React.FC = () => {
                 onChange={(e) => handleTeamChange(e.target.value as Department)}
                 className="w-full text-xs p-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white outline-none focus:border-orange-500 font-medium"
               >
-                <option value="마감팀">마감팀</option>
-                <option value="구조팀">구조팀</option>
-                <option value="토목&조경팀">토목&조경팀</option>
+                {availableTeams.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
               </select>
             </div>
 

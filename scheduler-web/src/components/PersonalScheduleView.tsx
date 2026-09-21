@@ -177,13 +177,15 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
 
       if (p.subTasks) {
         Object.values(p.subTasks).forEach((st) => {
-          // 1. 한국 개인 매칭 (다중 인원 personIds 및 단일 personId 모두 지원)
+          // 1. 한국 개인 매칭 (다중 인원 personIds 우선, 없으면 단일 personId fallback)
+          const assignedIds = (st.personIds && st.personIds.length > 0)
+            ? st.personIds
+            : (st.personId ? [st.personId] : []);
+
           koreaUsers.forEach((ku) => {
-            const isAssigned =
-              (st.personIds && (st.personIds.includes(ku.id) || st.personIds.includes(String(ku.no)) || st.personIds.includes(ku.name))) ||
-              st.personId === ku.id ||
-              st.personId === String(ku.no) ||
-              st.personId === ku.name;
+            const isAssigned = assignedIds.some(
+              (id) => id === ku.id || id === String(ku.no) || id === ku.name
+            );
 
             if (isAssigned && rawMap[ku.id]) {
               const alreadyExists = rawMap[ku.id].some(
@@ -206,18 +208,11 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
             }
           });
 
-          // 2. 베트남 팀 매칭 (공종명 또는 베트남 인원 번호로 해당 팀 매핑)
+          // 2. 베트남 팀 매칭 (다중 인원 personIds 우선 매칭)
           vietTeams.forEach((vt) => {
-            const isMemberInTeam = vt.members.some(
-              (m) =>
-                (st.personIds && (st.personIds.includes(m.id) || st.personIds.includes(String(m.no)) || st.personIds.includes(m.name))) ||
-                m.id === st.personId ||
-                String(m.no) === st.personId ||
-                m.name === st.personId ||
-                (st.personIds && (st.personIds.includes(vt.id) || st.personIds.includes(vt.code))) ||
-                st.personId === vt.id ||
-                st.personId === vt.code
-            );
+            const isMemberInTeam = vt.members.some((m) =>
+              assignedIds.some((id) => id === m.id || id === String(m.no) || id === m.name)
+            ) || assignedIds.some((id) => id === vt.id || id === vt.code);
             // 공종명 기반 매핑 (예: 내부 -> 내부팀, 창호 -> 창호팀, 조적 -> 조적팀, 외부 -> 외부팀, 슬라브/보 -> 수평팀, 기둥/옹벽 -> 수직팀)
             const isRoleMapped =
               (vt.code === 'IN1' && (st.roleName === '내부' || st.roleName === '세대')) ||

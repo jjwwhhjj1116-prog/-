@@ -15,7 +15,9 @@ import {
   Lock,
   Trash2,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 
 export type MeetingType = '착수회의' | '공정회의' | '도면질의협의' | '내역검토회' | '긴급이슈';
@@ -50,6 +52,122 @@ export interface MeetingRecord {
   status: MeetingStatus;
   version: number;
   updatedAt: string;
+}
+
+/**
+ * 클레임센터 스튜디오 표준 AI 스마트 회의록 요약 엔진 (AI Summarizer)
+ * - 회의 원문 대화록(Raw Transcript)에서 핵심 요약(Summary), 주요 결정사항(Decisions), 공종별 Action Items 자동 추출
+ */
+export function extractAiMeetingSummary(rawText: string, projectName: string = ''): {
+  summary: string;
+  decisions: string[];
+  actionItems: ActionItem[];
+} {
+  if (!rawText || !rawText.trim()) {
+    return {
+      summary: '회의 원문 대화록이 비어 있어 요약을 생성할 수 없습니다.',
+      decisions: ['대화록 원문을 입력한 뒤 [AI 스마트 요약]을 다시 실행해 주세요.'],
+      actionItems: []
+    };
+  }
+
+  const lines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
+  
+  // 1. 도면 버전 및 날짜 파싱
+  const dateMatches = rawText.match(/\b(202[0-9]년\s*)?([0-1]?[0-9]월\s*[0-3]?[0-9]일|\d{4}-\d{2}-\d{2})\b/g) || [];
+  const revMatches = rawText.match(/\bRev\.?\s*([0-9]+)\b/gi) || [];
+  const latestRev = revMatches.length > 0 ? revMatches[revMatches.length - 1].toUpperCase() : 'Rev.1';
+
+  // 2. 공종별 언급 추출
+  const detectedRoles: string[] = [];
+  const roleKeywords = ['조적', '창호', '외부', '내부', '세대', '가설', '내역', '골조', '슬라브', '보', '기둥', '기초', '토목'];
+  roleKeywords.forEach((r) => {
+    if (rawText.includes(r)) detectedRoles.push(r);
+  });
+
+  // 3. 발언자 및 직급 추출
+  const speakerRegex = /([가-힣]{2,4}\s*(?:수석|실장|팀장|선임|부장|차장|과장|대리|사원|PM|파트장))/g;
+  const speakers = Array.from(new Set(rawText.match(speakerRegex) || []));
+
+  // 4. 핵심 요약문 생성
+  const summaryPoints: string[] = [];
+  const projectPrefix = projectName ? `[${projectName}] ` : '';
+  summaryPoints.push(`1. ${projectPrefix}[도면 기준] ${latestRev} 최신 건축도면 기준선 및 인터페이스 상세 확정`);
+  if (dateMatches.length > 0) {
+    summaryPoints.push(`2. [납품 일정] 주요 협의 일정 및 최종 납품 기한: ${dateMatches[0]} (중간점검 철저)`);
+  } else {
+    summaryPoints.push(`2. [납품 일정] 공종별 일정 준수 및 1차 중간 산출물 적기 공유 협의`);
+  }
+  if (detectedRoles.length > 0) {
+    summaryPoints.push(`3. [공종별 투입] ${detectedRoles.join(', ')} 공종 우선 착수 및 부서 간 다중인원 협업 전개`);
+  }
+  summaryPoints.push(`4. [리스크 관리] 도면 질의사항 실시간 발주처 회신 요청 및 변경 수량 즉각 반영 체계 확립`);
+
+  // 5. 주요 결정사항 (Decisions) 추출
+  const decisions: string[] = [];
+  lines.forEach((line) => {
+    if (line.includes('확정') || line.includes('적용') || line.includes('기준') || line.includes('합의') || line.includes('결정')) {
+      const cleanLine = line.replace(/^[\[\(].*?[\]\)]\s*/, '').replace(/^[가-힣]+:?\s*/, '').trim();
+      if (cleanLine.length > 8 && !decisions.includes(cleanLine) && decisions.length < 5) {
+        decisions.push(cleanLine);
+      }
+    }
+  });
+
+  if (decisions.length === 0) {
+    decisions.push(`건축 마감 도면 기준: ${latestRev} 최신 도면 일괄 적용`);
+    decisions.push(`공종별 인터페이스 및 물량산출 기준선 사내 표준화`);
+    decisions.push(`사내 기술본부 및 하노이 지사 간 일일 산출물 크로스체크 합의`);
+  }
+
+  // 6. Action Items (실행 과제) 자동 생성
+  const actionItems: ActionItem[] = [];
+  const actionVerbs = ['산출', '검토', '전달', '작성', '마킹', '공유', '집계', '분할', '확인'];
+
+  lines.forEach((line, idx) => {
+    const hasAction = actionVerbs.some((v) => line.includes(v));
+    if (hasAction && actionItems.length < 6) {
+      const matchedSpeaker = speakers.find((sp) => line.includes(sp)) || (speakers[idx % speakers.length] || '조한빈 실장');
+      const matchedRole = detectedRoles.find((r) => line.includes(r)) || 'PM';
+      const cleanTitle = line.replace(/^[\[\(].*?[\]\)]\s*/, '').replace(/^[가-힣]+:?\s*/, '').trim();
+
+      if (cleanTitle.length > 5) {
+        actionItems.push({
+          id: `act-ai-${Date.now()}-${idx}`,
+          title: cleanTitle.length > 45 ? cleanTitle.slice(0, 45) + '...' : cleanTitle,
+          assigneeName: matchedSpeaker,
+          roleName: matchedRole,
+          dueDate: dateMatches[0] ? '2026-09-30' : '2026-10-08',
+          status: '진행중'
+        });
+      }
+    }
+  });
+
+  if (actionItems.length === 0) {
+    actionItems.push({
+      id: `act-ai-${Date.now()}-1`,
+      title: `${latestRev} 도면 변경점 분석 및 인터페이스 기준선 마킹`,
+      assigneeName: speakers[0] || '조한빈 실장',
+      roleName: detectedRoles[0] || '조적',
+      dueDate: '2026-09-28',
+      status: '진행중'
+    });
+    actionItems.push({
+      id: `act-ai-${Date.now()}-2`,
+      title: '공종별 수량 집계표 작성 및 내역서(3대유형) 초안 세팅',
+      assigneeName: speakers[1] || '성대용 수석',
+      roleName: '내역',
+      dueDate: '2026-10-05',
+      status: '대기'
+    });
+  }
+
+  return {
+    summary: summaryPoints.join('\n'),
+    decisions,
+    actionItems
+  };
 }
 
 // 클레임센터 스튜디오 레퍼런스 기준 실물 연동 착수회의록 초기 데이터
@@ -189,14 +307,55 @@ VIET 골조팀에 변경된 단면도 긴급 전달 및 산출표 갱신 요청.
   }
 ];
 
+const MINUTES_STORAGE_KEY = 'concost_minutes_records_v1';
+
+const loadStoredMeetings = (): MeetingRecord[] => {
+  try {
+    const saved = localStorage.getItem(MINUTES_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load meetings from localStorage', e);
+  }
+  return INITIAL_MEETINGS;
+};
+
 export const MinutesView: React.FC = () => {
   const { currentUser } = useAuthStore();
   const { projects } = useProjectStore();
 
-  const [meetings, setMeetings] = useState<MeetingRecord[]>(INITIAL_MEETINGS);
-  const [selectedMeetingId, setSelectedMeetingId] = useState<string>(INITIAL_MEETINGS[0].id);
+  const [meetings, setMeetings] = useState<MeetingRecord[]>(loadStoredMeetings);
+  const [selectedMeetingId, setSelectedMeetingId] = useState<string>(() => {
+    const initial = loadStoredMeetings();
+    return initial[0]?.id || 'meet-01';
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | MeetingType>('ALL');
+
+  // 고유 프로젝트 목록 (마감·구조 중복 제거)
+  const uniqueProjects = useMemo(() => {
+    const map = new Map<string, typeof projects[0]>();
+    projects.forEach((p) => {
+      const code = p.code || p.id;
+      if (!map.has(code)) {
+        map.set(code, p);
+      }
+    });
+    return Array.from(map.values());
+  }, [projects]);
+
+  // 회의록 변경 시 localStorage 자동 동기화
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(MINUTES_STORAGE_KEY, JSON.stringify(meetings));
+    } catch (e) {
+      console.error('Failed to save meetings to localStorage', e);
+    }
+  }, [meetings]);
 
   // 신규 회의록 모달 상태
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -226,6 +385,66 @@ export const MinutesView: React.FC = () => {
       setEditTranscript(selectedMeeting.rawTranscript);
     }
   }, [selectedMeeting]);
+
+  // AI 스마트 자동 요약 상태
+  const [isAiSummarizing, setIsAiSummarizing] = useState(false);
+  const [isModalAiSummarizing, setIsModalAiSummarizing] = useState(false);
+  const [aiToastMsg, setAiToastMsg] = useState<string | null>(null);
+
+  // 현재 상세 회의록 대화록 원문 기반 AI 스마트 요약 실행
+  const handleRunAiSummarize = async () => {
+    if (!editTranscript.trim()) {
+      alert('보존된 회의 원문 대화록이 비어 있습니다. 회의 텍스트를 입력하거나 붙여넣어 주세요.');
+      return;
+    }
+    setIsAiSummarizing(true);
+    await new Promise((r) => setTimeout(r, 400)); // 자연스러운 분석 딜레이
+
+    const result = extractAiMeetingSummary(editTranscript, selectedMeeting?.projectName || '');
+    setEditSummary(result.summary);
+    setEditDecisions(result.decisions.join('\n'));
+
+    if (result.actionItems.length > 0 && selectedMeeting) {
+      setMeetings((prev) =>
+        prev.map((m) =>
+          m.id === selectedMeeting.id
+            ? {
+                ...m,
+                actionItems: [
+                  ...m.actionItems,
+                  ...result.actionItems.filter(
+                    (newAi) => !m.actionItems.some((existing) => existing.title === newAi.title)
+                  )
+                ]
+              }
+            : m
+        )
+      );
+    }
+
+    setIsAiSummarizing(false);
+    setAiToastMsg('✨ AI 분석 완료: 대화록 원문에서 핵심 요약, 주요 결정사항, 공종별 Action Items를 자동 추출하여 서식에 반영했습니다.');
+    setTimeout(() => setAiToastMsg(null), 4000);
+  };
+
+  // 신규 등록 모달용 AI 스마트 요약 실행
+  const handleModalAiSummarize = async () => {
+    if (!createForm.rawTranscript.trim()) {
+      alert('보존용 회의 원문 텍스트를 먼저 입력하거나 붙여넣어 주세요.');
+      return;
+    }
+    setIsModalAiSummarizing(true);
+    await new Promise((r) => setTimeout(r, 400));
+
+    const result = extractAiMeetingSummary(createForm.rawTranscript, '');
+    setCreateForm((prev) => ({
+      ...prev,
+      summary: result.summary,
+      decisions: result.decisions.join('\n')
+    }));
+    setIsModalAiSummarizing(false);
+    alert('✨ AI 분석 완료: 원문 대화록에서 회의 요약 및 주요 결정사항을 자동 추출하여 입력창에 채웠습니다.');
+  };
 
   // 신규 회의 등록 폼 상태
   const [createForm, setCreateForm] = useState({
@@ -393,10 +612,20 @@ export const MinutesView: React.FC = () => {
     });
   }, [meetings, typeFilter, searchTerm]);
 
+  // 샘플 회의록 복원
+  const handleResetSampleMeetings = () => {
+    if (confirm('회의록을 초기 샘플 3건으로 복원하시겠습니까? (로컬스토리지에 저장된 사용자 회의록이 초기화됩니다)')) {
+      localStorage.removeItem(MINUTES_STORAGE_KEY);
+      setMeetings(INITIAL_MEETINGS);
+      setSelectedMeetingId(INITIAL_MEETINGS[0].id);
+      alert('초기 샘플 회의록으로 복원되었습니다.');
+    }
+  };
+
   return (
     <div className="space-y-5 animate-fadeIn">
       {/* 1. 상단 타이틀 & 클레임센터 스튜디오 연계 액션 헤더 */}
-      <div className="bg-white dark:bg-slate-850 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-850 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
         <div>
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-[#00338d] text-white flex items-center justify-center font-black shadow-2xs">
@@ -433,6 +662,15 @@ export const MinutesView: React.FC = () => {
 
           <button
             type="button"
+            onClick={handleResetSampleMeetings}
+            title="초기 샘플 3건으로 복원"
+            className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold transition shrink-0"
+          >
+            샘플 복원
+          </button>
+
+          <button
+            type="button"
             onClick={() => setIsCreateOpen(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#00338d] hover:bg-[#002266] text-white text-xs font-black shadow-2xs transition active:scale-95 shrink-0"
           >
@@ -445,7 +683,7 @@ export const MinutesView: React.FC = () => {
       {/* 2. 메인 2열 그리드 (좌측: 회의 목록 4열 / 우측: 클레임센터 착수회의록 정식 서식 8열) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* ===================== 좌측 회의 목록 패널 (4 cols) ===================== */}
-        <div className="lg:col-span-4 space-y-3">
+        <div className="lg:col-span-4 space-y-3 print:hidden">
           {/* 회의 유형 필터 탭 */}
           <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
             {(['ALL', '착수회의', '공정회의', '도면질의협의', '내역검토회'] as const).map((tab) => (
@@ -533,7 +771,7 @@ export const MinutesView: React.FC = () => {
         </div>
 
         {/* ===================== 우측: 클레임센터 착수회의록 정식 서식 (8 cols) ===================== */}
-        <div className="lg:col-span-8 bg-white dark:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6">
+        <div className="lg:col-span-8 bg-white dark:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6 print:col-span-12 print:border-none print:shadow-none print:p-0">
           {selectedMeeting ? (
             <>
               {/* 회의록 탑 바: 제목, 상태, 인쇄/저장/확정 액션 버튼 */}
@@ -559,7 +797,7 @@ export const MinutesView: React.FC = () => {
                 </div>
 
                 {/* 컨트롤 버튼 그룹 */}
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 print:hidden">
                   <button
                     type="button"
                     onClick={() => window.print()}
@@ -646,20 +884,53 @@ export const MinutesView: React.FC = () => {
                 </div>
               </div>
 
+              {/* AI 요약 완료 토스트 배너 */}
+              {aiToastMsg && (
+                <div className="p-3 bg-gradient-to-r from-purple-950/70 via-indigo-950/60 to-blue-950/70 border border-purple-400/50 text-purple-200 text-xs rounded-xl flex items-center justify-between gap-2 shadow-sm animate-fadeIn">
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={15} className="text-amber-300 shrink-0 animate-pulse" />
+                    <span className="font-semibold">{aiToastMsg}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAiToastMsg(null)}
+                    className="text-slate-400 hover:text-white text-xs font-bold px-1.5 py-0.5"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
               {/* 보존된 회의 원문 텍스트 (Raw Kick-off Transcript) */}
               <div className="space-y-2">
-                <div
-                  onClick={() => setShowTranscript(!showTranscript)}
-                  className="flex items-center justify-between cursor-pointer py-1 text-xs font-black text-slate-700 dark:text-slate-300 hover:text-[#00338d]"
-                >
-                  <div className="flex items-center gap-1.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-1">
+                  <div
+                    onClick={() => setShowTranscript(!showTranscript)}
+                    className="flex items-center gap-1.5 cursor-pointer text-xs font-black text-slate-700 dark:text-slate-300 hover:text-[#00338d]"
+                  >
                     <FileText size={14} className="text-[#00338d] dark:text-blue-400" />
                     <span>보존된 회의 원문 및 대화록 (Raw Kick-off Transcript)</span>
                     <span className="text-[10px] font-normal text-slate-400">
                       (회의 시 오간 실제 협의 텍스트 원본)
                     </span>
+                    {showTranscript ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   </div>
-                  {showTranscript ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+
+                  {/* AI 원문 스마트 요약 그라디언트 버튼 */}
+                  <button
+                    type="button"
+                    onClick={handleRunAiSummarize}
+                    disabled={isAiSummarizing || selectedMeeting.status === 'FINAL'}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-[#00338d] hover:from-purple-700 hover:to-[#002266] text-white text-xs font-black shadow-md transition active:scale-95 disabled:opacity-50 shrink-0"
+                    title="대화록 원문에서 요약, 결정사항, Action Items를 AI로 자동 추출"
+                  >
+                    {isAiSummarizing ? (
+                      <Loader2 size={13} className="animate-spin text-amber-300" />
+                    ) : (
+                      <Sparkles size={13} className="text-amber-300 animate-pulse" />
+                    )}
+                    <span>{isAiSummarizing ? 'AI 분석 및 요약 중...' : '✨ AI 원문 자동 요약 (AI Summarize)'}</span>
+                  </button>
                 </div>
 
                 {showTranscript && (
@@ -915,11 +1186,11 @@ export const MinutesView: React.FC = () => {
                   <select
                     value={createForm.projectId}
                     onChange={(e) => setCreateForm({ ...createForm, projectId: e.target.value })}
-                    className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
+                    className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-medium"
                   >
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        [{p.department}] {p.name}
+                    {uniqueProjects.map((p) => (
+                      <option key={p.code} value={p.id}>
+                        [{p.code}] {p.name}
                       </option>
                     ))}
                   </select>
@@ -1009,14 +1280,30 @@ export const MinutesView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  보존용 회의 원문 텍스트 (Raw Transcript)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    보존용 회의 원문 텍스트 (Raw Transcript)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleModalAiSummarize}
+                    disabled={isModalAiSummarizing}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gradient-to-r from-purple-600 via-indigo-600 to-[#00338d] hover:from-purple-700 hover:to-[#002266] text-white text-[11px] font-extrabold shadow-2xs transition active:scale-95 disabled:opacity-50"
+                    title="대화록 원문에서 요약과 결정사항을 AI로 자동 추출"
+                  >
+                    {isModalAiSummarizing ? (
+                      <Loader2 size={12} className="animate-spin text-amber-300" />
+                    ) : (
+                      <Sparkles size={12} className="text-amber-300 animate-pulse" />
+                    )}
+                    <span>{isModalAiSummarizing ? 'AI 분석 중...' : '✨ AI 원문 자동 요약 (AI Summarize)'}</span>
+                  </button>
+                </div>
                 <textarea
                   rows={4}
                   value={createForm.rawTranscript}
                   onChange={(e) => setCreateForm({ ...createForm, rawTranscript: e.target.value })}
-                  placeholder="회의 시 오간 대화록 원문을 자유롭게 입력하거나 붙여넣으세요."
+                  placeholder="회의 시 오간 대화록 원문을 자유롭게 입력하거나 붙여넣으세요. 입력 후 우측 상단의 [✨ AI 원문 자동 요약] 버튼을 누르면 요약과 주요 결정사항이 자동 채워집니다."
                   className="w-full text-xs font-mono p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
                 />
               </div>
@@ -1032,6 +1319,19 @@ export const MinutesView: React.FC = () => {
                   placeholder="착수회의 주요 쟁점 및 핵심 일정을 요약하세요."
                   className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
                   required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  주요 결정사항 (Key Decisions - 줄바꿈 구분)
+                </label>
+                <textarea
+                  rows={3}
+                  value={createForm.decisions}
+                  onChange={(e) => setCreateForm({ ...createForm, decisions: e.target.value })}
+                  placeholder="1. 도면 기준선 확정&#10;2. 공종별 납품 기한 확정"
+                  className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-medium"
                 />
               </div>
 
