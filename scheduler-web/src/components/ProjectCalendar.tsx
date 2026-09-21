@@ -22,6 +22,7 @@ interface ProjectCalendarProps {
   onOpenPrintModal?: () => void;
   onExportExcel?: () => void;
   onImportExcel?: () => void;
+  onSelectProject?: (projectCode: string) => void;
   lang?: 'ko' | 'vi';
 }
 
@@ -29,6 +30,7 @@ export default function ProjectCalendar({
   onOpenPrintModal,
   onExportExcel,
   onImportExcel,
+  onSelectProject,
   lang = 'ko',
 }: ProjectCalendarProps) {
   const {
@@ -458,16 +460,24 @@ export default function ProjectCalendar({
               const rowHeightClass = isMultiLane ? 'min-h-[76px]' : 'min-h-[50px]';
               const rowBgClass = 'bg-white dark:bg-slate-900';
 
+              const handleRowClick = () => {
+                if (onSelectProject) {
+                  onSelectProject(group.code);
+                } else if (group.lanes[0]?.projectId) {
+                  setSelectedProjectId(group.lanes[0]?.projectId);
+                }
+              };
+
               return (
                 <div
                   key={group.code}
                   className={`flex items-stretch ${rowBgClass} hover:bg-blue-50/30 dark:hover:bg-slate-800/60 transition-colors group cursor-pointer text-xs ${rowHeightClass}`}
                 >
-                  {/* 고정 열 1: 프로젝트 통합 정보 (클릭 시 프로젝트 세부 일정표 팝업 즉시 열림) */}
+                  {/* 고정 열 1: 프로젝트 통합 정보 (클릭 시 프로젝트 통합 공종 투입 현황 팝업 열림) */}
                   <div
-                    onClick={() => setSelectedProjectId(group.lanes[0]?.projectId)}
+                    onClick={handleRowClick}
                     className="w-[230px] flex-shrink-0 p-3 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center cursor-pointer hover:bg-blue-50/50 dark:hover:bg-slate-800/70 transition-colors"
-                    title="클릭하여 프로젝트 세부 일정표 및 공종 배정 열기"
+                    title="클릭하여 프로젝트 통합 공종 투입 현황 열기"
                   >
                     <div className="flex items-center gap-1.5 flex-wrap mb-1">
                       <span className="text-[10px] text-slate-700 dark:text-slate-200 font-mono font-black bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700">
@@ -510,9 +520,9 @@ export default function ProjectCalendar({
 
                   {/* 고정 열 2: 공정률 (2갈래 상하 분할, 클릭 시 세부 모달 열림) */}
                   <div
-                    onClick={() => setSelectedProjectId(group.lanes[0]?.projectId)}
+                    onClick={handleRowClick}
                     className="w-[85px] flex-shrink-0 p-2 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center text-center cursor-pointer hover:bg-slate-100/50 dark:hover:bg-slate-800/50"
-                    title="클릭하여 세부 일정 확인"
+                    title="클릭하여 프로젝트 통합 공종 투입 현황 열기"
                   >
                     {group.lanes.map((lane) => {
                       const colorText =
@@ -547,9 +557,9 @@ export default function ProjectCalendar({
 
                   {/* 고정 열 3: 담당 PM (마감/구조 상하 분할, 클릭 시 세부 모달 열림) */}
                   <div
-                    onClick={() => setSelectedProjectId(group.lanes[0]?.projectId)}
+                    onClick={handleRowClick}
                     className="w-[95px] flex-shrink-0 p-2 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center text-center cursor-pointer hover:bg-slate-100/50 dark:hover:bg-slate-800/50"
-                    title="클릭하여 세부 일정 확인"
+                    title="클릭하여 프로젝트 통합 공종 투입 현황 열기"
                   >
                     {group.lanes.map((lane) => {
                       const badgeColor =
@@ -638,14 +648,14 @@ export default function ProjectCalendar({
                           key={lane.projectId}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedProjectId(lane.projectId);
+                            handleRowClick();
                           }}
                           style={{
                             ...barStyle,
                             top: `${topPos}px`,
                             height: '26px',
                           }}
-                          title={`[${lane.department}] ${group.name}\n기간: ${lane.startDate} ~ ${lane.endDate}\n진척률: ${lane.progress}%\n담당: ${lane.pmPerson?.name || 'PM'}\n상태: ${lane.status}`}
+                          title={`[${lane.department}] ${group.name}\n기간: ${lane.startDate} ~ ${lane.endDate}\n진척률: ${lane.progress}%\n담당: ${lane.pmPerson?.name || 'PM'}\n상태: ${lane.status}\n클릭하여 프로젝트 통합 공종 투입 현황 확인`}
                           className={`absolute rounded-lg border text-white flex items-center px-2.5 text-[11px] font-bold shadow-md hover:scale-[1.01] hover:brightness-110 transition-all z-20 cursor-pointer overflow-hidden ${laneGradient}`}
                         >
                           <span className="text-[9px] font-black bg-white/25 px-1 py-0.2 rounded mr-1.5 shrink-0">

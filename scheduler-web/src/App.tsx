@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import ProjectCalendar from './components/ProjectCalendar';
 import ProjectModal from './components/ProjectModal';
+import { ProjectIntegratedModal } from './components/ProjectIntegratedModal';
 import { MinutesView } from './components/MinutesView';
 import { DriveView } from './components/DriveView';
 import { QCLinkView } from './components/QCLinkView';
@@ -68,6 +69,7 @@ export default function App() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [selectedIntegratedProjectCode, setSelectedIntegratedProjectCode] = useState<string | null>(null);
   const [newProjectName, setNewProjectName] = useState('');
   const [newDept, setNewDept] = useState<Department>('마감팀');
 
@@ -802,6 +804,7 @@ export default function App() {
                 onOpenPrintModal={() => setIsPrintModalOpen(true)}
                 onExportExcel={handleExportExcel}
                 onImportExcel={() => fileInputRef.current?.click()}
+                onSelectProject={(code) => setSelectedIntegratedProjectCode(code)}
                 lang={lang}
               />
             </div>
@@ -888,11 +891,24 @@ export default function App() {
         </div>
       )}
 
-      {/* 세부 공종 및 변경점(REV) 상세 모달 */}
+      {/* 세부 공종 및 변경점(REV) 상세 모달 (팀별 일정표 등에서 직접 열었을 때) */}
       {selectedProjectId && (
         <ProjectModal
           projectId={selectedProjectId}
           onClose={() => setSelectedProjectId(null)}
+        />
+      )}
+
+      {/* 프로젝트 통합 공종 투입 현황 팝업 (전체 일정표에서 마감팀 조적·창호 / 구조팀 보·슬라브 조회) */}
+      {selectedIntegratedProjectCode && (
+        <ProjectIntegratedModal
+          projectCode={selectedIntegratedProjectCode}
+          onClose={() => setSelectedIntegratedProjectCode(null)}
+          onNavigateToTeamSchedule={(team) => {
+            setSelectedIntegratedProjectCode(null);
+            setFilterDepartment(team);
+            setActiveMenu(team === '마감팀' ? '마감팀 일정표' : '구조팀 일정표');
+          }}
         />
       )}
 
