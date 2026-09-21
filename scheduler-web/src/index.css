@@ -12,9 +12,27 @@
 }
 
 @layer components {
-  /* Stitch Nexus Corporate Glass & Card Panel */
+  /* Stitch Nexus Corporate Glass & Card Panel (다크모드 100% 보장) */
   .corporate-card {
-    @apply bg-white border border-[#e2e8f0] rounded-xl shadow-card transition-all;
+    @apply bg-white dark:bg-slate-900 border border-[#e2e8f0] dark:border-slate-800 rounded-xl shadow-card transition-all text-slate-800 dark:text-slate-100;
+  }
+
+  .dark .corporate-card {
+    background-color: #0f172a !important;
+    border-color: #1e293b !important;
+    color: #f8fafc !important;
+  }
+
+  .dark header {
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+    color: #f8fafc !important;
+  }
+
+  .dark aside {
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+    color: #f8fafc !important;
   }
 
   .corporate-card-hover {

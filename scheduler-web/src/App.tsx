@@ -73,18 +73,22 @@ export default function App() {
 
   // 다국어(한국어 / 베트남어) 및 다크모드 상태
   const [lang, setLang] = useState<'ko' | 'vi'>('ko');
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    return localStorage.getItem('concost_dark_mode') === 'true';
+  });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // 엑셀 파일 업로드 ref
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 다크모드 HTML 클래스 반영
+  // 다크모드 HTML 클래스 및 로컬스토리지 반영
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
+      localStorage.setItem('concost_dark_mode', 'true');
     } else {
       document.documentElement.classList.remove('dark');
+      localStorage.setItem('concost_dark_mode', 'false');
     }
   }, [darkMode]);
 
