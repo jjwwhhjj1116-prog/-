@@ -572,13 +572,13 @@ export default function ProjectCalendar({
                     })}
                   </div>
 
-                  {/* 일자별 간트 타임라인 영역 (헤더 날짜와 1:1 너비 고정) */}
+                  {/* 일자별 간트 타임라인 영역 (행 전체 높이에 100% 맞춰 휴일 빗금 끊김 원천 차단) */}
                   <div
-                    className={`flex shrink-0 relative ${isMultiLane ? 'h-[76px]' : 'h-[50px]'} flex items-center`}
+                    className={`flex shrink-0 relative self-stretch ${isMultiLane ? 'min-h-[76px]' : 'min-h-[50px]'}`}
                     style={{ width: `${daysInMonth.length * cellWidth}px` }}
                   >
-                    {/* 배경 그리드 컬럼 (공휴일 최우선 적용, 주말 음영 및 끊김 방지) */}
-                    <div className="absolute inset-0 flex pointer-events-none">
+                    {/* 배경 그리드 컬럼 (행의 위부터 아래 끝까지 100% 완전 채움) */}
+                    <div className="absolute inset-0 flex pointer-events-none h-full">
                       {daysInMonth.map((day) => {
                         const dateKey = format(day, 'yyyy-MM-dd');
                         const holiday = HOLIDAYS_2026[dateKey];
