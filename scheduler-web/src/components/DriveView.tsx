@@ -197,6 +197,11 @@ export const DriveView: React.FC = () => {
     const filesToUpload = Array.from(fileList);
     if (!filesToUpload.length || !selectedProjectCode) return;
 
+    if (!isDriveConnected) {
+      setUploadError('회사 Google Drive 계정이 아직 연동되지 않았습니다. [설정] 메뉴에서 관리자가 회사 계정(concost_dt@gmail.com) 1회 연동을 먼저 완료해야 구글 드라이브에 실제 적재됩니다.');
+      return;
+    }
+
     setIsUploading(true);
     setUploadNotice(null);
     setUploadError(null);

@@ -97,6 +97,43 @@ export default function App() {
     }
   }, [darkMode]);
 
+  // Google OAuth 1회 연동 콜백 자동 감지 및 D1 영구 적재 (클레임센터 스튜디오 방식)
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const code = searchParams.get('code');
+    const error = searchParams.get('error');
+
+    if (error) {
+      alert(`Google OAuth 승인 실패: ${error}`);
+      window.history.replaceState({}, '', window.location.pathname);
+      return;
+    }
+
+    if (code) {
+      window.history.replaceState({}, '', window.location.pathname);
+      fetch('/api/google/oauth/callback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          redirectUri: window.location.origin,
+        }),
+      })
+        .then((res) => res.json())
+        .then((data: any) => {
+          if (data.success) {
+            alert('회사 Google Drive (concost_dt@gmail.com) 1회 영구 연동이 완료되었습니다!\n이제 자료실에서 업로드하는 모든 파일이 회사 구글 드라이브 5단계 폴더로 즉시 실제 적재됩니다.');
+            setActiveMenu('자료실(google드라이브)');
+          } else {
+            alert(`Google Drive 연동 실패: ${data.error || data.message || '알 수 없는 오류'}`);
+          }
+        })
+        .catch((err) => {
+          alert(`Google Drive 연동 통신 실패: ${err.message}`);
+        });
+    }
+  }, []);
+
   // 구버전 가짜 샘플(수택E구역 등) 감지 시 실제 수주 접수목록 프로젝트(58건)로 전면 자동 갱신
   useEffect(() => {
     const hasFakeSample = projects.some(

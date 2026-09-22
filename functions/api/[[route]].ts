@@ -171,13 +171,12 @@ async function serverUploadToDrive(params: {
   accessToken: string;
 }): Promise<{ id: string; name: string; webViewLink?: string }> {
   const { fileName, mimeType, fileBytes, folderId, accessToken } = params;
-  const boundary = '-------concost-boundary-' + Math.random().toString(36).substring(2);
-  const delimiter = `\r\n--${boundary}\r\n`;
-  const closeDelimiter = `\r\n--${boundary}--`;
+  const boundary = '-------concost_boundary_' + Math.random().toString(36).substring(2);
 
   const metadata = { name: fileName, parents: [folderId] };
-  const metaHeader = `${delimiter}Content-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}`;
-  const fileHeader = `${delimiter}Content-Type: ${mimeType}\r\n\r\n`;
+  const metaHeader = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`;
+  const fileHeader = `--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`;
+  const closeDelimiter = `\r\n--${boundary}--`;
 
   const encoder = new TextEncoder();
   const part1 = encoder.encode(metaHeader);
@@ -206,7 +205,7 @@ async function serverUploadToDrive(params: {
 
   if (!res.ok) {
     const err = await res.json<any>().catch(() => ({}));
-    throw new Error(`Google Drive API 업로드 실패: ${err.error?.message || res.statusText}`);
+    throw new Error(`Google Drive API 업로드 실패 (${res.status}): ${err.error?.message || res.statusText}`);
   }
 
   return await res.json<any>();
@@ -243,7 +242,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
       // 0-2. GET /api/google/oauth/start (관리자 1회 회사 구글 드라이브 승인 시작)
       if (path === 'google/oauth/start') {
-        const redirectUri = `${url.origin}/api/google/oauth/callback`;
+        const redirectUri = url.origin;
         const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
           `client_id=${encodeURIComponent(getGoogleClientId(env))}&` +
           `redirect_uri=${encodeURIComponent(redirectUri)}&` +
@@ -255,16 +254,23 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         return Response.redirect(authUrl, 302);
       }
 
-      // 0-3. GET /api/google/oauth/callback (구글 인증 완료 콜백 -> refresh_token 저장)
+      // 0-3. POST & GET /api/google/oauth/callback (구글 인증 완료 콜백 -> refresh_token 저장)
       if (path === 'google/oauth/callback') {
-        const code = url.searchParams.get('code');
-        const error = url.searchParams.get('error');
+        let code = url.searchParams.get('code');
+        let error = url.searchParams.get('error');
+        let redirectUri = url.origin;
 
-        if (error || !code) {
-          return new Response(`Google OAuth 인증 실패: ${error || '인증 코드가 없습니다.'}`, { status: 400 });
+        if (request.method === 'POST') {
+          const postBody = await request.json().catch(() => ({})) as any;
+          if (postBody.code) code = postBody.code;
+          if (postBody.error) error = postBody.error;
+          if (postBody.redirectUri) redirectUri = postBody.redirectUri;
         }
 
-        const redirectUri = `${url.origin}/api/google/oauth/callback`;
+        if (error || !code) {
+          return new Response(JSON.stringify({ error: `Google OAuth 인증 실패: ${error || '인증 코드가 없습니다.'}` }), { status: 400, headers });
+        }
+
         const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -279,7 +285,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
         if (!tokenRes.ok) {
           const errData = await tokenRes.text();
-          return new Response(`토큰 교환 실패: ${errData}`, { status: 500 });
+          return new Response(JSON.stringify({ error: `토큰 교환 실패: ${errData}` }), { status: 500, headers });
         }
 
         const tokenData = await tokenRes.json<any>();
@@ -306,6 +312,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             expires_at = excluded.expires_at,
             updated_at = CURRENT_TIMESTAMP
         `).bind(refreshToken || '', accessToken, Date.now() + expiresIn * 1000).run();
+
+        if (request.method === 'POST') {
+          return new Response(JSON.stringify({ success: true, connected: true }), { headers });
+        }
 
         // 인증 성공 후 설정 화면으로 복귀
         return Response.redirect(`${url.origin}/#settings?gdrive=connected`, 302);
@@ -546,38 +556,47 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
         // 회사 Google 계정으로 실제 Google Drive v3 업로드 실행
         const companyToken = await getCompanyAccessToken(env);
-        if (companyToken && body.fileData) {
-          try {
-            const hierarchy = await serverEnsureDriveHierarchy({
-              projectCode: body.projectCode,
-              projectName: body.projectName || body.projectCode,
-              mainFolder: body.mainFolder || '02.마감팀자료',
-              roleName: body.roleName || '공종',
-              subtitle: body.category,
-              accessToken: companyToken,
-            });
+        if (!companyToken) {
+          return new Response(JSON.stringify({
+            error: 'GOOGLE_DRIVE_NOT_CONNECTED',
+            message: '회사 Google Drive 계정이 아직 연동되지 않았습니다. [설정] 메뉴에서 관리자 1회 승인(concost_dt@gmail.com)을 완료해주세요.',
+          }), { status: 400, headers });
+        }
 
-            // Base64 -> 바이너리
-            const binStr = atob(body.fileData);
-            const bytes = new Uint8Array(binStr.length);
-            for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+        try {
+          const hierarchy = await serverEnsureDriveHierarchy({
+            projectCode: body.projectCode,
+            projectName: body.projectName || body.projectCode,
+            mainFolder: body.mainFolder || '02.마감자료',
+            roleName: body.roleName || '공종',
+            subtitle: body.category,
+            accessToken: companyToken,
+          });
 
-            const mime = body.mimeType || (body.originalName.endsWith('.xlsx') ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/octet-stream');
-            const driveRes = await serverUploadToDrive({
-              fileName: body.originalName,
-              mimeType: mime,
-              fileBytes: bytes,
-              folderId: hierarchy.folderId,
-              accessToken: companyToken,
-            });
+          // Base64 -> 바이너리
+          const binStr = atob(body.fileData || '');
+          const bytes = new Uint8Array(binStr.length);
+          for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
 
-            if (driveRes.webViewLink) {
-              driveUrl = driveRes.webViewLink;
-            }
-            console.log(`[Server Google Drive] 업로드 완료: ${hierarchy.folderPath} > ${body.originalName}`);
-          } catch (gErr) {
-            console.error('Server Google Drive direct upload failed, fallback to D1 storage:', gErr);
+          const mime = body.mimeType || (body.originalName.endsWith('.xlsx') ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/octet-stream');
+          const driveRes = await serverUploadToDrive({
+            fileName: body.originalName,
+            mimeType: mime,
+            fileBytes: bytes,
+            folderId: hierarchy.folderId,
+            accessToken: companyToken,
+          });
+
+          if (driveRes.webViewLink) {
+            driveUrl = driveRes.webViewLink;
           }
+          console.log(`[Server Google Drive] 업로드 완료: ${hierarchy.folderPath} > ${body.originalName}`);
+        } catch (gErr: any) {
+          console.error('Server Google Drive direct upload failed:', gErr);
+          return new Response(JSON.stringify({
+            error: 'GOOGLE_DRIVE_UPLOAD_FAILED',
+            message: `Google Drive 업로드 실패: ${gErr.message || String(gErr)}`,
+          }), { status: 502, headers });
         }
 
         await env.DB.prepare(`

@@ -525,23 +525,20 @@ export async function uploadVaultFile(params: {
     fileData: base64Data,
   };
 
-  try {
-    const res = await fetch('/api/drive/files', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.file?.driveUrl) {
-        serverDriveUrl = data.file.driveUrl;
-      }
-    } else {
-      const errorJson = await res.json().catch(() => ({}));
-      throw new Error(errorJson.error || '서버 업로드 실패');
-    }
-  } catch (err) {
-    console.warn('Server upload error, saving to local cache:', err);
+  const res = await fetch('/api/drive/files', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const errorJson = await res.json().catch(() => ({}));
+    throw new Error(errorJson.message || errorJson.error || 'Google Drive 서버 업로드 실패');
+  }
+
+  const data = await res.json();
+  if (data.file?.driveUrl) {
+    serverDriveUrl = data.file.driveUrl;
   }
 
   const fileRecord: TechVaultFile = {
