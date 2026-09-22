@@ -27,12 +27,14 @@ export type MainFolderType = typeof MAIN_FOLDERS[number];
 export const SUBTITLES = [
   '1.도면 및 발주처 제공자료',
   '1.프로그램파일 (FIN)',
+  '1.프로그램파일 (RC)',
   '2.CAD작업도면',
   '3.질의사항&견적조건',
   '4.VIETQS 작업자료',
   '5.기타',
   // 하위 호환성
   '1.프로그램파일(FIN)',
+  '1.프로그램파일(RC)',
   '4.기타',
 ] as const;
 
@@ -51,7 +53,7 @@ export const FOLDER_SUBTITLES: Record<MainFolderType, readonly SubtitleType[]> =
     '5.기타',
   ],
   '03.구조자료': [
-    '1.프로그램파일 (FIN)',
+    '1.프로그램파일 (RC)',
     '2.CAD작업도면',
     '3.질의사항&견적조건',
     '4.VIETQS 작업자료',
@@ -76,8 +78,20 @@ export const SUBTITLE_METAS: Record<string, SubtitleMeta> = {
   '1.프로그램파일 (FIN)': {
     code: 'FIN',
     title: '1.프로그램파일 (FIN)',
-    description: '물량산출 프로그램 FIN 원본, 산출 데이터 백업 파일',
+    description: '마감 물량산출 프로그램 FIN 원본, 산출 데이터 백업 파일',
     icon: 'FIN',
+  },
+  '1.프로그램파일 (RC)': {
+    code: 'RC',
+    title: '1.프로그램파일 (RC)',
+    description: '구조(RC) 물량산출 프로그램 원본, 산출 데이터 백업 파일',
+    icon: 'RC',
+  },
+  '1.프로그램파일(RC)': {
+    code: 'RC',
+    title: '1.프로그램파일 (RC)',
+    description: '구조(RC) 물량산출 프로그램 원본, 산출 데이터 백업 파일',
+    icon: 'RC',
   },
   '2.CAD작업도면': {
     code: 'CAD',
