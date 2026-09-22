@@ -111,12 +111,11 @@ async function serverFindOrCreateFolder(name: string, parentId: string, accessTo
 }
 
 /**
- * 회사 구글 드라이브 5단계 계층 폴더 검증 및 생성
+ * 회사 구글 드라이브 4~5단계 계층 폴더 검증 및 생성
  * 1. 기술본부 자료실
  * 2. [프로젝트코드] 프로젝트명
- * 3. 01.접수자료 / 02.마감팀자료 / 03.구조팀자료
- * 4. 공종 (접수자료는 생략)
- * 5. 서브타이틀
+ * 3. 01.접수자료 / 02.마감자료 / 03.구조자료
+ * 4. 세분화 서브타이틀 폴더 (1.프로그램파일 (FIN), 2.CAD작업도면 등)
  */
 async function serverEnsureDriveHierarchy(params: {
   projectCode: string;
@@ -138,17 +137,17 @@ async function serverEnsureDriveHierarchy(params: {
   }
   const projectId = await serverFindOrCreateFolder(cleanProjectName, rootId, accessToken);
 
-  // 3단계: 대분류 폴더 (01.접수자료 / 02.마감팀자료 / 03.구조팀자료)
-  let normalizedMain = mainFolder || '02.마감팀자료';
-  if (normalizedMain.includes('마감')) normalizedMain = '02.마감팀자료';
-  else if (normalizedMain.includes('구조')) normalizedMain = '03.구조팀자료';
-  else if (normalizedMain.includes('접수')) normalizedMain = '01.접수자료';
+  // 3단계: 대분류 폴더 (01.접수자료 / 02.마감자료 / 03.구조자료)
+  let normalizedMain = '02.마감자료';
+  if (mainFolder.includes('접수') || mainFolder === '01.접수자료') normalizedMain = '01.접수자료';
+  else if (mainFolder.includes('구조') || mainFolder === '03.구조자료') normalizedMain = '03.구조자료';
+  else normalizedMain = '02.마감자료';
   const mainId = await serverFindOrCreateFolder(normalizedMain, projectId, accessToken);
 
-  // 4단계: 공종 폴더 (01.접수자료는 공종 폴더 생략)
+  // 4단계: 서브타이틀 폴더 (01.접수자료는 1.도면 및 발주처 제공자료, 그 외는 5대 서브타이틀)
   let parentForSub = mainId;
   let pathStr = `기술본부 자료실 > ${cleanProjectName} > ${normalizedMain}`;
-  if (normalizedMain !== '01.접수자료' && roleName && roleName !== '공통') {
+  if (roleName && roleName !== '공종' && roleName !== '공통' && roleName !== '마감팀' && roleName !== '구조팀') {
     parentForSub = await serverFindOrCreateFolder(roleName, mainId, accessToken);
     pathStr += ` > ${roleName}`;
   }
@@ -638,6 +637,57 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             storageProvider: 'GOOGLE_DRIVE',
             driveUrl,
           },
+        }), { headers });
+      }
+
+      // 4-3. DELETE /api/drive/files?id=... (파일 삭제)
+      if (path.startsWith('drive/files') && request.method === 'DELETE') {
+        const fileId = url.searchParams.get('id');
+        if (!fileId) {
+          return new Response(JSON.stringify({ error: 'File id is required' }), { status: 400, headers });
+        }
+        await env.DB.prepare('DELETE FROM drive_evidence WHERE id = ?').bind(fileId).run();
+        return new Response(JSON.stringify({ success: true, deletedId: fileId }), { headers });
+      }
+
+      // 4-4. POST /api/drive/folders/ensure (프로젝트 폴더 사전 자동생성)
+      if (path === 'drive/folders/ensure' && request.method === 'POST') {
+        const body = await request.json<any>().catch(() => ({}));
+        const { projectCode, projectName } = body;
+        if (!projectCode) {
+          return new Response(JSON.stringify({ error: 'projectCode is required' }), { status: 400, headers });
+        }
+
+        const companyToken = await getCompanyAccessToken(env);
+        if (!companyToken) {
+          return new Response(JSON.stringify({
+            error: 'GOOGLE_DRIVE_NOT_CONNECTED',
+            message: '회사 Google Drive 계정이 연동되지 않았습니다.',
+          }), { status: 400, headers });
+        }
+
+        const rootId = await serverFindOrCreateFolder('기술본부 자료실', 'root', companyToken);
+        const cleanProjectName = projectName ? (projectName.includes(projectCode) ? projectName : `[${projectCode}] ${projectName}`.trim()) : `[${projectCode}] 프로젝트`;
+        const projectId = await serverFindOrCreateFolder(cleanProjectName, rootId, companyToken);
+
+        const subTree: Record<string, string[]> = {
+          '01.접수자료': ['1.도면 및 발주처 제공자료'],
+          '02.마감자료': ['1.프로그램파일 (FIN)', '2.CAD작업도면', '3.질의사항&견적조건', '4.VIETQS 작업자료', '5.기타'],
+          '03.구조자료': ['1.프로그램파일 (FIN)', '2.CAD작업도면', '3.질의사항&견적조건', '4.VIETQS 작업자료', '5.기타'],
+        };
+
+        for (const [mainCat, subs] of Object.entries(subTree)) {
+          const mainId = await serverFindOrCreateFolder(mainCat, projectId, companyToken);
+          for (const sub of subs) {
+            await serverFindOrCreateFolder(sub, mainId, companyToken);
+          }
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          projectFolderId: projectId,
+          projectFolderPath: `기술본부 자료실 > ${cleanProjectName}`,
+          driveUrl: `https://drive.google.com/drive/folders/${projectId}`,
         }), { headers });
       }
     }

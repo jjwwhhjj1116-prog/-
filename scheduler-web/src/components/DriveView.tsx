@@ -13,6 +13,8 @@ import {
   fetchVaultFiles,
   uploadVaultFile,
   downloadVaultFile,
+  deleteVaultFile,
+  ensureProjectFolders,
 } from '../services/googleDriveService';
 import {
   UploadCloud,
@@ -28,6 +30,8 @@ import {
   Folder,
   AlertCircle,
   Building2,
+  Trash2,
+  RefreshCw,
 } from 'lucide-react';
 
 export const DriveView: React.FC = () => {
@@ -154,9 +158,43 @@ export const DriveView: React.FC = () => {
     }
   };
 
+  // 폴더 자동생성 및 동기화 상태
+  const [isSyncingFolders, setIsSyncingFolders] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
+
+  const handleSyncFolders = async () => {
+    if (!currentProject) return;
+    setIsSyncingFolders(true);
+    setSyncNotice(null);
+    try {
+      const res = await ensureProjectFolders(currentProject.code, currentProject.name);
+      if (res.success) {
+        setSyncNotice(`Google Drive에 기술본부 자료실 계층 폴더가 완벽히 준비되었습니다.`);
+        setTimeout(() => setSyncNotice(null), 5000);
+      } else {
+        setSyncNotice(`폴더 동기화 안내: ${res.message}`);
+        setTimeout(() => setSyncNotice(null), 5000);
+      }
+    } catch (err) {
+      console.error('Failed to sync folders:', err);
+    } finally {
+      setIsSyncingFolders(false);
+    }
+  };
+
+  // 파일 삭제 처리
+  const handleDeleteFile = async (file: TechVaultFile) => {
+    if (!confirm(`[${file.originalName}] 파일을 자료실 목록에서 삭제하시겠습니까?`)) return;
+    await deleteVaultFile(file.id);
+    setAllFiles((prev) => prev.filter((f) => f.id !== file.id));
+  };
+
   useEffect(() => {
     if (selectedProjectCode) {
       loadFiles(selectedProjectCode);
+      if (currentProject) {
+        ensureProjectFolders(currentProject.code, currentProject.name).catch(() => {});
+      }
     }
   }, [selectedProjectCode]);
 
@@ -298,16 +336,41 @@ export const DriveView: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 self-end sm:self-center">
-          <span className="text-xs font-medium text-slate-400">
-            회사 저장소: <strong className="text-slate-200">concost_dt@gmail.com</strong>
-          </span>
+        <div className="flex items-center gap-2.5 self-end sm:self-center flex-wrap">
+          <button
+            type="button"
+            disabled={isSyncingFolders || !isDriveConnected}
+            onClick={handleSyncFolders}
+            className="px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 text-xs font-black border border-blue-500/50 flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer shadow-sm"
+            title="선택된 프로젝트의 기술본부 자료실 4~5단계 계층 폴더를 Google Drive에 즉시 생성/확인합니다"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingFolders ? 'animate-spin' : ''}`} />
+            <span>{isSyncingFolders ? 'Drive 동기화 중...' : 'Drive 폴더 즉시생성/확인'}</span>
+          </button>
+
+          <a
+            href="https://drive.google.com/drive/my-drive"
+            target="_blank"
+            rel="noreferrer"
+            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-black border border-slate-600 flex items-center gap-1.5 transition-colors"
+          >
+            <ExternalLink className="w-3.5 h-3.5 text-slate-300" />
+            <span>Google Drive 열기</span>
+          </a>
+
           <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/30 flex items-center gap-1">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            5단계 폴더 매핑
+            계층 폴더 실연동
           </span>
         </div>
       </div>
+
+      {syncNotice && (
+        <div className="px-4 py-2 rounded-xl bg-emerald-950/90 border-2 border-emerald-500 text-emerald-200 text-xs font-black flex items-center gap-2 animate-fadeIn shadow-md">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>{syncNotice}</span>
+        </div>
+      )}
 
       {/* 2. 최우선 3대 대분류 폴더 선택 바 (01.접수자료 / 02.마감자료 / 03.구조자료) */}
       <div className="bg-slate-900 border-2 border-slate-700 rounded-2xl p-4 shadow-lg space-y-3">
@@ -737,6 +800,15 @@ export const DriveView: React.FC = () => {
                   >
                     <Download className="w-3.5 h-3.5" />
                     다운로드
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteFile(file)}
+                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-500/50 transition-colors cursor-pointer"
+                    title="파일 목록에서 삭제"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>

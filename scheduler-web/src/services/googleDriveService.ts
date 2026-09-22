@@ -172,11 +172,14 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
-// 로컬 스토리지 키
-const LOCAL_STORAGE_KEY = 'concost_tech_vault_files_cache';
+// 로컬 스토리지 키 (v2로 업그레이드하여 과거 유령 데이터 자동 무효화)
+const LOCAL_STORAGE_KEY = 'concost_tech_vault_files_v2';
 
 function getLocalVaultFiles(): TechVaultFile[] {
   try {
+    // 과거 레거시 유령 캐시 자동 정리
+    localStorage.removeItem('concost_tech_vault_files_cache');
+    localStorage.removeItem('concost_drive_vault_files');
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
     return saved ? JSON.parse(saved) : [];
   } catch {
@@ -607,3 +610,46 @@ export async function downloadVaultFile(file: TechVaultFile): Promise<void> {
     alert(`[${file.originalName}] 다운로드를 완료할 수 없습니다.`);
   }
 }
+
+/**
+ * 자료실 파일 삭제 (서버 D1 및 로컬 캐시 동시 삭제)
+ */
+export async function deleteVaultFile(fileId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/drive/files?id=${encodeURIComponent(fileId)}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      console.warn('Server delete returned non-200');
+    }
+  } catch (err) {
+    console.warn('Server delete failed:', err);
+  }
+
+  // 로컬 캐시에서도 삭제
+  const locals = getLocalVaultFiles().filter((f) => f.id !== fileId);
+  saveLocalVaultFiles(locals);
+  return true;
+}
+
+/**
+ * 선택된 프로젝트의 Google Drive 5대 계층 폴더 사전 자동생성
+ */
+export async function ensureProjectFolders(projectCode: string, projectName: string): Promise<{ success: boolean; driveUrl?: string; message?: string }> {
+  try {
+    const res = await fetch('/api/drive/folders/ensure', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectCode, projectName }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, driveUrl: data.driveUrl };
+    }
+    const err = await res.json().catch(() => ({}));
+    return { success: false, message: err.message || '폴더 생성 실패' };
+  } catch (err: any) {
+    return { success: false, message: err.message || '서버 통신 실패' };
+  }
+}
+
