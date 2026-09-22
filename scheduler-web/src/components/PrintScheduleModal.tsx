@@ -115,11 +115,16 @@ export const PrintScheduleModal: React.FC<Props> = ({
   }, {} as Record<string, { label: string; country: 'KR' | 'VN' | 'UK' }>);
 
   const handlePrint = () => {
+    document.body.classList.add('modal-printing');
     window.print();
+    setTimeout(() => {
+      document.body.classList.remove('modal-printing');
+    }, 1200);
   };
 
   const handleExportExcel = () => {
-    exportProjectsToExcel(projects, personnel);
+    const targetDate = new Date(months[0].year, months[0].month - 1, 1);
+    exportProjectsToExcel(projects, personnel, targetDate);
   };
 
   const nowStr = new Date().toLocaleString('ko-KR', {
@@ -133,7 +138,10 @@ export const PrintScheduleModal: React.FC<Props> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-sm flex flex-col items-center justify-start py-6 px-4 print:p-0 print:bg-white print:static print:overflow-visible">
+    <div
+      id="printable-schedule-modal"
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-sm flex flex-col items-center justify-start py-6 px-4 print:p-0 print:bg-white print:static print:overflow-visible print:w-full print:m-0 print:block"
+    >
       {/* 상단 컨트롤 바 (인쇄 시 완전 숨김) */}
       <div className="w-full max-w-[1240px] bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-xl border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-4 mb-6 sticky top-2 z-50 print:hidden">
         {/* 좌측 타이틀 */}

@@ -4,28 +4,116 @@ import type { Project, Person, Department } from '../store/useProjectStore';
 /**
  * 프로젝트 일정표 엑셀 내보내기 (Export)
  */
-export const exportProjectsToExcel = (projects: Project[], personnel: Person[]) => {
+export const exportProjectsToExcel = (
+  projects: Project[],
+  personnel: Person[],
+  targetDate: Date = new Date()
+) => {
   const personMap = new Map(personnel.map((p) => [p.id, p.name]));
+  const year = targetDate.getFullYear();
+  const month = targetDate.getMonth() + 1;
+  const daysInMonth = new Date(year, month, 0).getDate();
 
-  // 1. 화면 일치형 마감·구조·토목 통합 프로젝트 목록 (중복 제거)
-  const groupMap: Record<string, {
-    code: string;
-    name: string;
-    client: string;
-    area: string;
-    usage: string;
-    finishPm: string;
-    finishPeriod: string;
-    finishProgress: string;
-    structPm: string;
-    structPeriod: string;
-    structProgress: string;
-    civilPm: string;
-    civilPeriod: string;
-    civilProgress: string;
-    status: string;
-  }> = {};
+  const monthStartStr = `${year}-${String(month).padStart(2, '0')}-01`;
+  const monthEndStr = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
 
+  // 1. [핵심] 화면 일치형 월간 프로젝트 타임라인 간트 매트릭스 시트 구성
+  // AOA (Array of Arrays) 형식으로 정밀 구축
+  const timelineAoa: any[][] = [];
+
+  // Row 1: 대제목
+  const titleRow = new Array(9 + daysInMonth).fill('');
+  titleRow[0] = `CONCOST 기술본부 · ${year}년 ${month}월 프로젝트 통합 일정표 (월간 타임라인)`;
+  timelineAoa.push(titleRow);
+
+  // Row 2: 메인 헤더
+  const headerRow = [
+    'No',
+    '프로젝트 코드',
+    '프로젝트명',
+    '발주처',
+    '공종(팀)',
+    '담당 PM',
+    '시작일',
+    '종료일',
+    '진척률',
+  ];
+  for (let d = 1; d <= daysInMonth; d++) {
+    headerRow.push(`${d}일`);
+  }
+  timelineAoa.push(headerRow);
+
+  // Row 3: 요일 및 공휴일 서브헤더
+  const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+  const dayOfWeekRow = ['', '', '', '', '', '', '', '', ''];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateObj = new Date(year, month - 1, d);
+    const dayOfWeek = dayNames[dateObj.getDay()];
+    dayOfWeekRow.push(dayOfWeek);
+  }
+  timelineAoa.push(dayOfWeekRow);
+
+  // 해당 월에 일정이 겹치는 프로젝트 선별
+  const activeProjects = projects.filter(
+    (p) => !(p.endDate < monthStartStr || p.startDate > monthEndStr)
+  );
+
+  // 프로젝트 코드별 그룹핑 (마감/구조/토목 순차 행 배치)
+  let rowNo = 1;
+  activeProjects.forEach((p) => {
+    const pm = personMap.get(p.pmId) || p.pmId || '-';
+    const cleanName =
+      p.name.replace(/^\[.*?\]\s*/, '').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim() ||
+      p.name;
+    const client = (p as any).client || '-';
+
+    const row = [
+      rowNo++,
+      p.code || p.id,
+      cleanName,
+      client,
+      p.department,
+      pm,
+      p.startDate,
+      p.endDate,
+      `${p.progress}%`,
+    ];
+
+    // 1일부터 말일까지 타임라인 셀 채우기
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      if (dateStr >= p.startDate && dateStr <= p.endDate) {
+        // 간트 바 텍스트 표기
+        const deptPrefix = p.department === '마감팀' ? '■마감' : p.department === '구조팀' ? '■구조' : '■토목';
+        row.push(`${deptPrefix}(${p.progress}%)`);
+      } else {
+        row.push('');
+      }
+    }
+    timelineAoa.push(row);
+  });
+
+  const wsTimeline = XLSX.utils.aoa_to_sheet(timelineAoa);
+
+  // 컬럼 너비 설정
+  const cols = [
+    { wch: 5 },  // No
+    { wch: 15 }, // 코드
+    { wch: 28 }, // 프로젝트명
+    { wch: 14 }, // 발주처
+    { wch: 10 }, // 공종
+    { wch: 10 }, // 담당 PM
+    { wch: 12 }, // 시작일
+    { wch: 12 }, // 종료일
+    { wch: 8 },  // 진척률
+  ];
+  for (let d = 1; d <= daysInMonth; d++) {
+    cols.push({ wch: 12 }); // 각 일자 간트 컬럼 너비 (넉넉하게 12)
+  }
+  wsTimeline['!cols'] = cols;
+
+  // 2. 부서별 통합 요약 시트
+  const groupMap: Record<string, any> = {};
   projects.forEach((p) => {
     const code = p.code || p.id;
     if (!groupMap[code]) {
@@ -47,7 +135,6 @@ export const exportProjectsToExcel = (projects: Project[], personnel: Person[]) 
         status: p.status,
       };
     }
-
     const pm = personMap.get(p.pmId) || p.pmId || '-';
     const period = `${p.startDate} ~ ${p.endDate}`;
     const progress = `${p.progress}%`;
@@ -85,19 +172,6 @@ export const exportProjectsToExcel = (projects: Project[], personnel: Person[]) 
     '종합 상태': grp.status,
   }));
 
-  // 2. 부서별 개별 프로젝트 목록 시트
-  const projectRows = projects.map((p, idx) => ({
-    'No': idx + 1,
-    '프로젝트 코드': p.code,
-    '프로젝트명': p.name,
-    '담당부서': p.department,
-    '총괄 PM': personMap.get(p.pmId) || p.pmId,
-    '시작일': p.startDate,
-    '종료일': p.endDate,
-    '진척률(%)': p.progress,
-    '상태': p.status,
-  }));
-
   // 3. 세부 공종별 일정 시트
   const subTaskRows: any[] = [];
   projects.forEach((p) => {
@@ -119,15 +193,15 @@ export const exportProjectsToExcel = (projects: Project[], personnel: Person[]) 
 
   const wb = XLSX.utils.book_new();
   const wsIntegrated = XLSX.utils.json_to_sheet(integratedRows);
-  const wsProjects = XLSX.utils.json_to_sheet(projectRows);
   const wsSubTasks = XLSX.utils.json_to_sheet(subTaskRows);
 
-  XLSX.utils.book_append_sheet(wb, wsIntegrated, '프로젝트통합일정표');
-  XLSX.utils.book_append_sheet(wb, wsProjects, '부서별상세목록');
+  // 시트 1에 월간 타임라인 간트 차트 배치 (핵심)
+  XLSX.utils.book_append_sheet(wb, wsTimeline, `${year}년${month}월_타임라인일정표`);
+  XLSX.utils.book_append_sheet(wb, wsIntegrated, '프로젝트통합요약');
   XLSX.utils.book_append_sheet(wb, wsSubTasks, '세부공종일정');
 
   const today = new Date().toISOString().split('T')[0];
-  XLSX.writeFile(wb, `CONCOST_기술본부_프로젝트통합일정표_${today}.xlsx`);
+  XLSX.writeFile(wb, `CONCOST_기술본부_프로젝트통합일정표_${year}년${month}월_${today}.xlsx`);
 };
 
 /**

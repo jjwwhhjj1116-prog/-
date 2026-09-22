@@ -193,7 +193,7 @@ export default function ProjectCalendar({
     if (onExportExcel) {
       onExportExcel();
     } else {
-      exportProjectsToExcel(projects, personnel);
+      exportProjectsToExcel(projects, personnel, currentDate);
     }
   };
 

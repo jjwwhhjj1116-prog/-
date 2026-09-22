@@ -157,10 +157,18 @@
 @media print {
   @page {
     size: A4 landscape;
-    margin: 6mm 5mm 6mm 5mm;
+    margin: 5mm 5mm 5mm 5mm;
   }
 
-  /* 1. 인쇄 시 불필요한 레이아웃/조작 UI 완전 숨김 */
+  /* 1. 인쇄 모달이 활성화된 경우: 배경 웹 레이아웃 (헤더, 사이드바, 본문 main 전체)을 100% 숨김! */
+  body:has(#printable-schedule-modal) header,
+  body:has(#printable-schedule-modal) aside,
+  body:has(#printable-schedule-modal) main,
+  body:has(#printable-schedule-modal) #root > div > *:not(#printable-schedule-modal),
+  body.modal-printing header,
+  body.modal-printing aside,
+  body.modal-printing main,
+  body.modal-printing #root > div > *:not(#printable-schedule-modal),
   header,
   aside,
   nav,
@@ -186,20 +194,17 @@
     overflow: visible !important;
   }
 
-  /* 3. 메인 콘텐츠 영역 여백 제거 및 전체 폭 확장 */
-  main {
-    margin: 0 !important;
+  /* 3. 인쇄 모달 최상단 노출 및 전체 폭 핏 */
+  #printable-schedule-modal {
+    position: static !important;
+    inset: auto !important;
+    background: #ffffff !important;
     padding: 0 !important;
-    width: 100% !important;
-    max-width: 100% !important;
-  }
-
-  /* 4. 스크롤바 숨김 및 가로 잘림 방지 */
-  .custom-scrollbar,
-  .overflow-x-auto,
-  .overflow-y-auto {
+    margin: 0 !important;
     overflow: visible !important;
-    max-width: 100% !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
   }
 
   /* 5. 인쇄 시트 컨테이너 및 낱장 분할 */

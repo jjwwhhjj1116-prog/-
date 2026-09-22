@@ -19,12 +19,14 @@ import {
   Users,
   Settings2,
   Printer,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { useProjectStore, type Department } from '../store/useProjectStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { VIET_TEAMS_DATA, type VietTeam } from '../data/vietTeams';
 import { VietTeamModal } from './VietTeamModal';
 import ProjectCalendar from './ProjectCalendar';
+import { exportProjectsToExcel } from '../services/excelService';
 
 import { HOLIDAYS_2026 } from '../constants/holidays';
 
@@ -59,7 +61,7 @@ interface ScheduleRowUnit {
 }
 
 export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ department, onOpenPrintModal }) => {
-  const { projects, setSelectedProjectId } = useProjectStore();
+  const { projects, setSelectedProjectId, personnel } = useProjectStore();
   const { users } = useAuthStore();
   const [viewMode, setViewMode] = useState<'PERSONAL' | 'TEAM'>('TEAM');
   // 실시간 오늘 기준일 (2026-09-21)
@@ -361,6 +363,16 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
         </div>
 
         <div className="flex items-center gap-3">
+          {/* 엑셀 다운로드 버튼 */}
+          <button
+            onClick={() => exportProjectsToExcel(projects, personnel, currentDate)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition active:scale-95 cursor-pointer"
+            title="현재 월 실시간 타임라인 간트 일정표 엑셀 다운로드"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>엑셀 (.xlsx)</span>
+          </button>
+
           {/* 인쇄 / PDF 저장 버튼 */}
           {onOpenPrintModal && (
             <button
