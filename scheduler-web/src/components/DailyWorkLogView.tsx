@@ -35,17 +35,38 @@ export const DailyWorkLogView: React.FC = () => {
     generateItemsFromSchedule
   } = useWorkLogStore();
 
-  // 대상 작성자 선택 (로그인 사용자로 기본 고정, 드롭다운으로 변경 가능)
+  // 작성자 옵션 목록 (로그인 사용자가 personnel에 없으면 최상단에 추가)
+  const authorOptions = useMemo(() => {
+    const list = [...personnel];
+    if (currentUser && !list.some((p) => p.name.includes(currentUser.name))) {
+      list.unshift({
+        id: currentUser.id,
+        name: currentUser.name,
+        position: currentUser.position || '실장',
+        team: currentUser.department || '개발 TF',
+        role: '관리자'
+      } as any);
+    }
+    return list;
+  }, [personnel, currentUser]);
+
+  // 대상 작성자 선택 (로그인 사용자로 기본 고정)
   const [selectedUserName, setSelectedUserName] = useState<string>(() => {
-    return currentUser?.name || '성대용';
+    return currentUser?.name || '조한빈';
   });
 
-  // 1. 개인별 격리: 로그인한 각자 개인 계정의 업무일지만 필터링
+  // 관리자 전체 보기 토글 (ADMIN 계정인 경우 다른 팀원 일지 검토 가능)
+  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.name === '유종욱' || currentUser?.name === '박용진';
+  const [viewAllAsAdmin, setViewAllAsAdmin] = useState<boolean>(false);
+
+  // 1. 개인별 격리: 로그인한 각자 개인 계정의 업무일지만 필터링 (타인 일지 강제 fallback 완전 제거)
   const userWorkLogs = useMemo(() => {
     if (!currentUser) return workLogs;
+    if (isAdmin && viewAllAsAdmin) return workLogs;
+
     const cClean = currentUser.name.split(' ')[0];
     const cId = currentUser.id;
-    const filtered = workLogs.filter((w) => {
+    return workLogs.filter((w) => {
       const wClean = w.userName.split(' ')[0];
       return (
         w.userId === cId ||
@@ -54,8 +75,7 @@ export const DailyWorkLogView: React.FC = () => {
         w.userName === currentUser.name
       );
     });
-    return filtered.length > 0 ? filtered : workLogs.slice(0, 1);
-  }, [workLogs, currentUser]);
+  }, [workLogs, currentUser, isAdmin, viewAllAsAdmin]);
 
   // 오늘 날짜 (실제 시스템 오늘 날짜 실시간 연동)
   const [selectedDate, setSelectedDate] = useState<string>(() => {
@@ -75,7 +95,7 @@ export const DailyWorkLogView: React.FC = () => {
     const matched = userWorkLogs.find(
       (w) => w.date === selectedDate && w.userName.includes(selectedUserName.split(' ')[0])
     );
-    return matched || userWorkLogs[0];
+    return matched || userWorkLogs[0] || null;
   }, [userWorkLogs, selectedWorkLogId, selectedDate, selectedUserName]);
 
   // 편집용 로컬 상태
@@ -315,6 +335,22 @@ export const DailyWorkLogView: React.FC = () => {
         {/* 상단 액션 바 */}
         <div className="flex items-center gap-2 flex-wrap shrink-0">
           
+          {/* 관리자 전체 조회 토글 (유종욱 실장님 등 관리자 전용) */}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setViewAllAsAdmin(!viewAllAsAdmin)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                viewAllAsAdmin
+                  ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
+              }`}
+              title="관리자 전용: 전체 팀원 업무일지 열람 모드 전환"
+            >
+              {viewAllAsAdmin ? '👑 전체 팀원 일지 열람중' : '👤 내 일지만 보기'}
+            </button>
+          )}
+
           {/* 담당자 선택 (로그인 사용자 기준 기본 고정) */}
           <div className="flex items-center gap-1.5 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-700">
             <User size={13} className="text-slate-400" />
@@ -324,9 +360,9 @@ export const DailyWorkLogView: React.FC = () => {
               onChange={(e) => setSelectedUserName(e.target.value)}
               className="bg-transparent text-blue-400 text-xs font-black focus:outline-none cursor-pointer"
             >
-              {personnel.map((p) => (
+              {authorOptions.map((p) => (
                 <option key={p.id} value={p.name} className="bg-slate-900 text-white">
-                  {p.name} ({p.team})
+                  {p.name} ({p.team || '개발 TF'})
                 </option>
               ))}
             </select>

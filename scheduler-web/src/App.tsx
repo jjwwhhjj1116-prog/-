@@ -40,7 +40,7 @@ import { useAuthStore, isUserAdmin } from './store/useAuthStore';
 import { exportProjectsToExcel, importProjectsFromExcel } from './services/excelService';
 import realProjectsData from './data/realProjects.json';
 
-// 좌측 카테고리 정의 (최상단에 '프로젝트 접수목록' 추가, 회의록 하단에 '업무일지' 추가)
+// 좌측 카테고리 정의 (최상단에 '프로젝트 접수목록' 추가, 회의록 하위 2단 카테고리 추가)
 export type NavCategory =
   | '프로젝트 접수목록'
   | '프로젝트 일정표'
@@ -48,6 +48,8 @@ export type NavCategory =
   | '구조팀 일정표'
   | '토목&조경팀 일정표'
   | '회의록'
+  | '회의록 작성'
+  | '회의록 목록'
   | '업무일지'
   | '자료실(google드라이브)'
   | '연계시스템(검토)'
@@ -506,22 +508,62 @@ export default function App() {
               협업 및 산출 자료실
             </div>
             <div className="space-y-1">
-              <button
-                onClick={() => setActiveMenu('회의록')}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                  activeMenu === '회의록'
-                    ? 'bg-[#00338d] text-white shadow-sm'
-                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <FileSignature size={16} />
-                  <span>{t.minutes}</span>
+              {/* 회의록 대메뉴 및 2단 하위 카테고리 (- 회의록 작성, - 회의록 목록) */}
+              <div className="space-y-0.5">
+                <button
+                  onClick={() => setActiveMenu('회의록 작성')}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                    activeMenu === '회의록' || activeMenu === '회의록 작성' || activeMenu === '회의록 목록'
+                      ? 'bg-slate-100 dark:bg-slate-700/70 text-slate-900 dark:text-white'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <FileSignature size={16} className="text-blue-600 dark:text-blue-400" />
+                    <span>{t.minutes}</span>
+                  </div>
+                  <span className="text-[10px] bg-amber-50 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 px-1.5 py-0.2 rounded font-semibold">
+                    2단분류
+                  </span>
+                </button>
+
+                {/* 하위 2개 서브메뉴 들여쓰기 */}
+                <div className="pl-6 pr-1 space-y-1 pt-0.5 pb-1">
+                  <button
+                    onClick={() => setActiveMenu('회의록 작성')}
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      activeMenu === '회의록 작성' || activeMenu === '회의록'
+                        ? 'bg-[#00338d] text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] opacity-70">-</span>
+                      <span>회의록 작성</span>
+                    </div>
+                    <span className="text-[9px] px-1 rounded font-mono opacity-80">
+                      작성·AI
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveMenu('회의록 목록')}
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      activeMenu === '회의록 목록'
+                        ? 'bg-[#00338d] text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] opacity-70">-</span>
+                      <span>회의록 목록</span>
+                    </div>
+                    <span className="text-[9px] px-1 rounded font-mono opacity-80">
+                      아카이브
+                    </span>
+                  </button>
                 </div>
-                <span className="text-[10px] bg-amber-50 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 px-1.5 py-0.2 rounded font-semibold">
-                  안건
-                </span>
-              </button>
+              </div>
 
               {/* ✨ 회의록 하단에 업무일지 (개인별 업무일지 & 결재라인) 신규 추가 */}
               <button
@@ -884,8 +926,13 @@ export default function App() {
             <PersonalScheduleView department="토목&조경팀" />
           )}
 
-          {/* CASE 5: 회의록 */}
-          {activeMenu === '회의록' && <MinutesView />}
+          {/* CASE 5: 회의록 (작성 및 목록 2단 분기) */}
+          {(activeMenu === '회의록' || activeMenu === '회의록 작성') && (
+            <MinutesView initialTab="write" />
+          )}
+          {activeMenu === '회의록 목록' && (
+            <MinutesView initialTab="list" />
+          )}
 
           {/* CASE 5-2: 업무일지 (팀별 일정표 연계 및 3단 결재라인) */}
           {activeMenu === '업무일지' && <DailyWorkLogView />}

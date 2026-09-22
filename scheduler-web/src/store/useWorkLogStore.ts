@@ -91,7 +91,7 @@ const INITIAL_WORKLOGS: DailyWorkLog[] = [
         todayTask: '착수회의 결정사항 공종별 전파 및 조적/창호 산출 기준선 중간점검',
         progress: 65,
         status: '진행중',
-        tomorrowPlan: '하노이 지사(WIN/EXT) 1차 창호 수량 일람표 크로스체크',
+        tomorrowPlan: 'VIET QS(호치민) 1차 창호 수량 일람표 크로스체크',
         notes: '발주처 Rev.3 도면 변경사항 반영 완료, 내역팀 연계 검토'
       },
       {

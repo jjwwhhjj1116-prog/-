@@ -5,7 +5,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import {
   FileText,
   Plus,
-  CheckCircle2,
+  ClipboardCheck,
   FileSignature,
   Save,
   Trash2,
@@ -69,13 +69,11 @@ export interface MeetingRecord {
 export function extractAiMeetingSummary(rawText: string, projectName: string = ''): {
   summary: string;
   decisions: string[];
-  actionItems: ActionItem[];
 } {
   if (!rawText || !rawText.trim()) {
     return {
       summary: '회의 원문 대화록이 비어 있어 요약을 생성할 수 없습니다.',
-      decisions: ['대화록 원문을 입력하거나 파일을 첨부한 뒤 [AI 자동 정리]를 실행해 주세요.'],
-      actionItems: []
+      decisions: ['대화록 원문을 입력하거나 파일을 첨부한 뒤 [AI 자동 정리]를 실행해 주세요.']
     };
   }
 
@@ -93,11 +91,7 @@ export function extractAiMeetingSummary(rawText: string, projectName: string = '
     if (rawText.includes(r)) detectedRoles.push(r);
   });
 
-  // 3. 발언자 및 직급 추출
-  const speakerRegex = /([가-힣]{2,4}\s*(?:수석|실장|팀장|선임|부장|차장|과장|대리|사원|PM|파트장))/g;
-  const speakers = Array.from(new Set(rawText.match(speakerRegex) || []));
-
-  // 4. 핵심 요약문 생성
+  // 3. 핵심 요약문 생성
   const summaryPoints: string[] = [];
   const projectPrefix = projectName ? `[${projectName}] ` : '';
   summaryPoints.push(`1. ${projectPrefix}[도면 기준] ${latestRev} 최신 건축 도면 기준선 및 인터페이스 상세 확정`);
@@ -109,7 +103,7 @@ export function extractAiMeetingSummary(rawText: string, projectName: string = '
   if (detectedRoles.length > 0) {
     summaryPoints.push(`3. [공종별 투입] ${detectedRoles.join(', ')} 공종 우선 착수 및 부서 간 다중인원 협업 전개`);
   }
-  summaryPoints.push(`4. [리스크 관리] 도면 질의사항 실시간 발주처 회신 요청 및 변경 수량 즉각 반영 체계 확립`);
+  summaryPoints.push(`4. [글로벌 협업] VIET QS(호치민)와 창호/외벽 산출물 실시간 크로스체크 체계 확립`);
 
   // 5. 주요 결정사항 (Decisions) 추출
   const decisions: string[] = [];
@@ -125,64 +119,12 @@ export function extractAiMeetingSummary(rawText: string, projectName: string = '
   if (decisions.length === 0) {
     decisions.push(`건축 마감 도면 기준: ${latestRev} 최신 도면 일괄 적용`);
     decisions.push(`공종별 인터페이스 및 물량산출 기준선 사내 표준화`);
-    decisions.push(`사내 기술본부 및 하노이 지사 간 일일 산출물 크로스체크 합의`);
-  }
-
-  // 6. Action Items (실행 과제) 자동 생성
-  const actionItems: ActionItem[] = [];
-  const actionVerbs = ['산출', '검토', '전달', '작성', '마킹', '공유', '집계', '분할', '확인', '진행'];
-
-  lines.forEach((line, idx) => {
-    const hasAction = actionVerbs.some((v) => line.includes(v));
-    if (hasAction && actionItems.length < 6) {
-      const matchedSpeaker = speakers.find((sp) => line.includes(sp)) || (speakers[idx % speakers.length] || '조한빈 실장');
-      const matchedRole = detectedRoles.find((r) => line.includes(r)) || '조적';
-      const cleanTitle = line.replace(/^[\[\(].*?[\]\)]\s*/, '').replace(/^[가-힣]+:?\s*/, '').trim();
-
-      if (cleanTitle.length > 5) {
-        actionItems.push({
-          id: `act-ai-${Date.now()}-${idx}`,
-          title: cleanTitle.length > 45 ? cleanTitle.slice(0, 45) + '...' : cleanTitle,
-          assigneeName: matchedSpeaker,
-          roleName: matchedRole,
-          dueDate: dateMatches[0] ? '2026-09-30' : '2026-10-08',
-          status: '진행중'
-        });
-      }
-    }
-  });
-
-  if (actionItems.length === 0) {
-    actionItems.push({
-      id: `act-ai-${Date.now()}-1`,
-      title: `${latestRev} 조적벽체 도면 기준선 분할 및 작업 착수`,
-      assigneeName: '원종수 수석, 성대용 수석',
-      roleName: '조적',
-      dueDate: '2026-09-24',
-      status: '진행중'
-    });
-    actionItems.push({
-      id: `act-ai-${Date.now()}-2`,
-      title: '클린룸 창호 일람표 집계 및 하노이 지사 전달',
-      assigneeName: '창호팀 (VIET WIN)',
-      roleName: '창호',
-      dueDate: '2026-09-26',
-      status: '진행중'
-    });
-    actionItems.push({
-      id: `act-ai-${Date.now()}-3`,
-      title: '공내역 및 설계예가 서식 세팅 및 일위대가 검토',
-      assigneeName: '성대용 수석',
-      roleName: '내역',
-      dueDate: '2026-10-02',
-      status: '대기'
-    });
+    decisions.push(`사내 기술본부 및 VIET QS(호치민) 간 일일 산출물 크로스체크 합의`);
   }
 
   return {
     summary: summaryPoints.join('\n'),
-    decisions,
-    actionItems
+    decisions
   };
 }
 
@@ -213,12 +155,12 @@ const INITIAL_MEETINGS: MeetingRecord[] = [
 박상우 부장(삼성물산): 이번 FAB2는 도면 Rev.3이 최신본입니다. 특히 클린룸 하부 조적벽체와 복도 방화구획 창호는 도면 수정사항이 많으니 인터페이스 체크 부탁드립니다.
 원종수 수석: 조적 공종은 성대용 수석님과 2인 협업 투입하여 구역을 동·서로 나누어 동시 진행하겠습니다. 단열재 및 방수턱 디테일 기준을 명확히 주셔야 합니다.
 성대용 수석: 내역 공종도 마감팀에서 직접 수량 집계 후 공내역서, 설계예가, 실행가 3단 산출로 납품하기로 확정되었습니다.
-조한빈 실장: 네, 내역은 공내역 우선 산출 후 10월 5일까지 실행가 검토안을 작성하겠습니다. 베트남 창호팀(WIN) 및 외부팀(EXT)에 오늘 배포된 CAD 도면 즉시 공유 바랍니다.
+조한빈 실장: 네, 내역은 공내역 우선 산출 후 10월 5일까지 실행가 검토안을 작성하겠습니다. VIET QS(호치민) 창호팀(WIN) 및 외부팀(EXT)에 오늘 배포된 CAD 도면 즉시 공유 바랍니다.
 [15:15 회의 종료]`,
     notesAndInstructions: `1. 안건: 삼성물산 평택 P5 FAB-2 물량산출 용역 착수 및 공종별 기준선 협의
 2. 도면 기준: 2026-09-15 배포된 Rev.3 도면 기준 일괄 적용
 3. 조적 공종: 원종수 수석(동측), 성대용 수석(서측) 2인 분할 투입 확정
-4. 창호 공종: 베트남 하노이 지사(WIN)와 인터페이스 크로스체크
+4. 창호 공종: VIET QS 베트남지사(WIN)와 인터페이스 크로스체크
 5. 내역 공종: 공내역서 우선 산출 후 설계예가·실행가 순차 산출 납품
 6. 납품 일정: 2026년 10월 12일 최종 납품 기한 준수`,
     summary: `1. 프로젝트 납품 마감일: 2026-10-12 (중간 점검일: 2026-09-28)
@@ -229,34 +171,9 @@ const INITIAL_MEETINGS: MeetingRecord[] = [
       '건축 마감 도면 기준: 2026-09-15 배포된 Rev.3 도면 기준 일괄 적용',
       '조적 공종: 원종수 수석, 성대용 수석 2인 동시 투입 확정',
       '마감팀 내역 공종: 1차 공내역 작성 후 설계예가·실행가 순차 산출 납품',
-      '베트남 VIETQS 협업: 창호 및 외벽 수량은 하노이 지사에서 산출 검증'
+      'VIET QS 협업: 창호 및 외벽 수량은 VIET QS(호치민)에서 산출 검증'
     ],
-    actionItems: [
-      {
-        id: 'act-1',
-        title: 'Rev.3 조적벽체 도면 기준선 분할 및 작업 착수',
-        assigneeName: '원종수 수석, 성대용 수석',
-        roleName: '조적',
-        dueDate: '2026-09-24',
-        status: '진행중'
-      },
-      {
-        id: 'act-2',
-        title: '클린룸 창호 일람표 집계 및 하노이 지사 전달',
-        assigneeName: '창호팀 (VIET WIN)',
-        roleName: '창호',
-        dueDate: '2026-09-26',
-        status: '진행중'
-      },
-      {
-        id: 'act-3',
-        title: '공내역 및 설계예가 서식 세팅 및 일위대가 검토',
-        assigneeName: '성대용 수석',
-        roleName: '내역',
-        dueDate: '2026-10-02',
-        status: '대기'
-      }
-    ],
+    actionItems: [],
     status: 'FINAL',
     version: 1,
     updatedAt: '2026-09-17 15:30',
@@ -317,9 +234,27 @@ const loadStoredMeetings = (): MeetingRecord[] => {
   return INITIAL_MEETINGS;
 };
 
-export const MinutesView: React.FC = () => {
+export interface MinutesViewProps {
+  initialTab?: 'write' | 'list';
+}
+
+export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }) => {
   const { currentUser } = useAuthStore();
   const { projects } = useProjectStore();
+
+  // 회의록 하위 2단 카테고리 탭: 'write' (회의록 작성) | 'list' (회의록 목록)
+  const [activeSubTab, setActiveSubTab] = useState<'write' | 'list'>(initialTab);
+
+  // 회의록 목록 검색 및 필터 상태
+  const [listSearch, setListSearch] = useState<string>('');
+  const [listDeptFilter, setListDeptFilter] = useState<string>('ALL');
+
+  // props로 전달된 initialTab 변경 시 동기화
+  useEffect(() => {
+    if (initialTab) {
+      setActiveSubTab(initialTab);
+    }
+  }, [initialTab]);
 
   const [meetings, setMeetings] = useState<MeetingRecord[]>(loadStoredMeetings);
 
@@ -365,14 +300,22 @@ export const MinutesView: React.FC = () => {
           projectName: proj.name,
           projectCode: proj.code || proj.id,
           type: '착수회의',
-          title: `${proj.name} 착수회의 및 공종별 물량산출 기준 확정`,
-          meetingDate: new Date().toISOString().slice(0, 16),
-          location: '기술본부 대회의실 / 화상연결',
+          title: `${proj.name} 착수회의 및 물량산출 기준 확정`,
+          meetingDate: new Date().toISOString().slice(0, 10),
+          startTime: '14:00',
+          endTime: '15:30',
+          location: '컨코스트 본사 4층 대회의실 / 화상연결(VIET QS)',
+          clientName: proj.client || '발주처',
+          reportingDept: '기술본부 마감팀',
+          referenceDept: '개발 TF',
           department: proj.department || '마감팀',
-          author: currentUser ? `${currentUser.name} (${currentUser.position || '실장'})` : '조한빈 실장',
+          author: currentUser?.name || '조한빈',
+          authorPosition: currentUser?.position || '실장',
+          authorAffiliation: '기술본부 마감팀',
           attendeesInternal: ['조한빈 실장(PM)', '원종수 수석', '성대용 수석'],
           attendeesExternal: ['발주처 담당자'],
           rawTranscript: '',
+          notesAndInstructions: '',
           summary: '',
           decisions: [],
           actionItems: [],
@@ -398,6 +341,28 @@ export const MinutesView: React.FC = () => {
     }
   }, [meetings]);
 
+  // 회의록 목록 아카이브 필터링 (검색어 및 부서 필터)
+  const filteredMeetings = useMemo(() => {
+    return meetings.filter((m) => {
+      const matchDept = listDeptFilter === 'ALL' || m.department === listDeptFilter || m.reportingDept?.includes(listDeptFilter);
+      const q = listSearch.trim().toLowerCase();
+      const matchSearch =
+        !q ||
+        m.projectName?.toLowerCase().includes(q) ||
+        m.title?.toLowerCase().includes(q) ||
+        m.author?.toLowerCase().includes(q) ||
+        m.clientName?.toLowerCase().includes(q) ||
+        m.location?.toLowerCase().includes(q);
+      return matchDept && matchSearch;
+    });
+  }, [meetings, listDeptFilter, listSearch]);
+
+  // 회의록 삭제 핸들러
+  const handleDeleteMeeting = (meetingId: string) => {
+    if (!confirm('해당 회의록을 목록에서 삭제하시겠습니까?')) return;
+    setMeetings((prev) => prev.filter((m) => m.id !== meetingId));
+  };
+
   // 현재 활성 회의록
   const currentMeeting = useMemo(() => {
     return meetings.find((m) => m.id === currentMeetingId) || meetings[0];
@@ -422,12 +387,6 @@ export const MinutesView: React.FC = () => {
   const [formSummary, setFormSummary] = useState(currentMeeting?.summary || '');
   const [formDecisions, setFormDecisions] = useState(currentMeeting?.decisions.join('\n') || '');
   const [formAttachedFile, setFormAttachedFile] = useState(currentMeeting?.attachedFileName || '');
-
-  // Action Items 추가 인라인 폼
-  const [newActionTitle, setNewActionTitle] = useState('');
-  const [newActionAssignee, setNewActionAssignee] = useState('');
-  const [newActionRole, setNewActionRole] = useState('조적');
-  const [newActionDueDate, setNewActionDueDate] = useState('2026-09-28');
 
   // 회의록 변경 시 폼 동기화
   useEffect(() => {
@@ -495,35 +454,19 @@ export const MinutesView: React.FC = () => {
     setFormSummary(result.summary);
     setFormDecisions(result.decisions.join('\n'));
 
-    // Action Items도 자동 반영
-    if (result.actionItems.length > 0 && currentMeeting) {
-      setMeetings((prev) =>
-        prev.map((m) =>
-          m.id === currentMeeting.id
-            ? {
-                ...m,
-                summary: result.summary,
-                decisions: result.decisions,
-                actionItems: [
-                  ...m.actionItems,
-                  ...result.actionItems.filter(
-                    (newAi) => !m.actionItems.some((existing) => existing.title === newAi.title)
-                  )
-                ],
-                updatedAt: new Date().toLocaleString('ko-KR')
-              }
-            : m
-        )
-      );
+    // 공식 서식 본문에도 핵심 요약 & 결정사항 자동 세팅
+    if (!formNotesAndInstructions.trim()) {
+      const autoNotes = `1. 안건: ${formTitle}\n2. 도면 및 산출 기준선 협의 완료\n3. ${result.decisions.join('\n- ')}\n4. VIET QS(호치민) 협업 체계 가동`;
+      setFormNotesAndInstructions(autoNotes);
     }
 
     setIsAiProcessing(false);
-    setAiToast('✨ AI 자동 정리 완료! 핵심 요약, 주요 결정사항, 공종별 실행과제가 우측 서식에 반영되었습니다.');
+    setAiToast('✨ AI 자동 정리 완료! 핵심 요약 및 주요 결정사항이 공식 서식에 반영되었습니다.');
     setTimeout(() => setAiToast(null), 4500);
   };
 
-  // 폼 내용 실시간 회의록에 저장
-  const handleSaveCurrentMeeting = () => {
+  // 폼 내용 실시간 회의록에 저장 (저장 후 목록으로 자동 이동 옵션)
+  const handleSaveCurrentMeeting = (goToList: boolean = false) => {
     if (!currentMeeting) return;
 
     const updated: MeetingRecord = {
@@ -550,67 +493,12 @@ export const MinutesView: React.FC = () => {
     };
 
     setMeetings((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
-    alert('회의록이 성공적으로 저장되었습니다.');
+    alert('회의록이 회의록 목록에 성공적으로 저장·등록되었습니다.');
+    if (goToList) {
+      setActiveSubTab('list');
+    }
   };
 
-  // Action Item 추가
-  const handleAddActionItem = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newActionTitle.trim() || !currentMeeting) return;
-
-    const newItem: ActionItem = {
-      id: `act-${Date.now()}`,
-      title: newActionTitle.trim(),
-      assigneeName: newActionAssignee.trim() || (currentUser?.name ? `${currentUser.name} (${currentUser.position})` : '담당자'),
-      roleName: newActionRole,
-      dueDate: newActionDueDate,
-      status: '진행중'
-    };
-
-    setMeetings((prev) =>
-      prev.map((m) =>
-        m.id === currentMeeting.id
-          ? { ...m, actionItems: [...m.actionItems, newItem], updatedAt: new Date().toLocaleString('ko-KR') }
-          : m
-      )
-    );
-
-    setNewActionTitle('');
-    setNewActionAssignee('');
-  };
-
-  // Action Item 삭제
-  const handleDeleteActionItem = (id: string) => {
-    if (!currentMeeting) return;
-    setMeetings((prev) =>
-      prev.map((m) =>
-        m.id === currentMeeting.id
-          ? { ...m, actionItems: m.actionItems.filter((item) => item.id !== id) }
-          : m
-      )
-    );
-  };
-
-  // Action Item 상태 토글
-  const handleToggleActionStatus = (id: string) => {
-    if (!currentMeeting) return;
-    setMeetings((prev) =>
-      prev.map((m) =>
-        m.id === currentMeeting.id
-          ? {
-              ...m,
-              actionItems: m.actionItems.map((item) => {
-                if (item.id === id) {
-                  const nextStatus = item.status === '진행중' ? '완료' : item.status === '완료' ? '대기' : '진행중';
-                  return { ...item, status: nextStatus };
-                }
-                return item;
-              })
-            }
-          : m
-      )
-    );
-  };
 
   // 결재라인 서명/승인 토글
   const handleToggleSignature = (role: 'author' | 'pm' | 'director') => {
@@ -827,20 +715,6 @@ export const MinutesView: React.FC = () => {
 
     XLSX.utils.book_append_sheet(wb, ws, '회의록');
 
-    // 보너스 시트: 공종별 실행 과제 (Action Items) 목록 테이블
-    if (currentMeeting.actionItems && currentMeeting.actionItems.length > 0) {
-      const actionRows = currentMeeting.actionItems.map((item, idx) => ({
-        No: idx + 1,
-        상태: item.status,
-        공종: item.roleName,
-        '실행 과제 (Action Item)': item.title,
-        담당자: item.assigneeName,
-        완료기한: item.dueDate
-      }));
-      const wsActions = XLSX.utils.json_to_sheet(actionRows);
-      XLSX.utils.book_append_sheet(wb, wsActions, '공종별실행과제');
-    }
-
     const safeProjCode = (currentMeeting.projectCode || 'PROJECT').replace(/[^a-zA-Z0-9_-]/g, '');
     XLSX.writeFile(wb, `회의록_${safeProjCode}_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
@@ -933,40 +807,17 @@ export const MinutesView: React.FC = () => {
           setFormSummary(aiResult.summary);
           setFormDecisions(aiResult.decisions.join('\n'));
 
-          if (aiResult.actionItems.length > 0) {
-            setMeetings((prev) =>
-              prev.map((m) =>
-                m.id === currentMeeting.id
-                  ? {
-                      ...m,
-                      summary: aiResult.summary,
-                      decisions: aiResult.decisions,
-                      actionItems: aiResult.actionItems,
-                      updatedAt: new Date().toLocaleString('ko-KR')
-                    }
-                  : m
-              )
-            );
-          }
-        }
-
-        // 만약 '공종별실행과제' 시트가 있으면 액션아이템 추가 파싱
-        const actionSheetName = wb.SheetNames.find((name) => name.includes('실행') || name.includes('과제') || name.includes('Action'));
-        if (actionSheetName && actionSheetName !== wb.SheetNames[0]) {
-          const actionRows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[actionSheetName]);
-          const newActions: ActionItem[] = actionRows.map((r, idx) => ({
-            id: `act-imported-${Date.now()}-${idx}`,
-            title: r['실행 과제 (Action Item)'] || r['과제명'] || r['내용'] || '가져온 실행 과제',
-            assigneeName: r['담당자'] || '담당자',
-            roleName: r['공종'] || '조적',
-            dueDate: r['완료기한'] || r['기한'] || '2026-09-30',
-            status: r['상태'] === '완료' ? '완료' : r['상태'] === '대기' ? '대기' : '진행중'
-          }));
-
           setMeetings((prev) =>
             prev.map((m) =>
               m.id === currentMeeting.id
-                ? { ...m, actionItems: [...m.actionItems, ...newActions], updatedAt: new Date().toLocaleString('ko-KR') }
+                ? {
+                    ...m,
+                    notesAndInstructions: fullBodyText,
+                    rawTranscript: fullBodyText,
+                    summary: aiResult.summary,
+                    decisions: aiResult.decisions,
+                    updatedAt: new Date().toLocaleString('ko-KR')
+                  }
                 : m
             )
           );
@@ -985,107 +836,352 @@ export const MinutesView: React.FC = () => {
   return (
     <div className="space-y-5 animate-fadeIn">
       
-      {/* 1. 최상단 헤더: 프로젝트 선택 드롭다운 & 핵심 도구 모음 */}
-      <div className="bg-slate-900 border-2 border-slate-700 p-4 sm:p-5 rounded-2xl shadow-xl text-white flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        
-        {/* 좌측: 프로젝트 선택 드롭다운 */}
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black shadow-md shrink-0">
-            <FileSignature size={20} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <span className="text-[10px] font-black text-blue-400 tracking-wider uppercase block mb-0.5">
-              QUANTITY TAKEOFF MEETING STUDIO · 클레임센터 표준 연동
+      {/* 0. 회의록 2단 하위 카테고리 탭: [📝 회의록 작성] | [📋 회의록 목록 (아카이브)] */}
+      <div className="bg-slate-900/95 border-2 border-slate-700/80 p-2.5 rounded-2xl flex items-center justify-between flex-wrap gap-3 shadow-xl backdrop-blur-md">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('write')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+              activeSubTab === 'write'
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50 scale-100'
+                : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700'
+            }`}
+          >
+            <FileSignature size={15} className={activeSubTab === 'write' ? 'text-white' : 'text-blue-400'} />
+            <span>회의록 작성 & 서식 편집</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('list')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+              activeSubTab === 'list'
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50 scale-100'
+                : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700'
+            }`}
+          >
+            <ClipboardCheck size={15} className={activeSubTab === 'list' ? 'text-white' : 'text-emerald-400'} />
+            <span>회의록 목록 (아카이브)</span>
+            <span className="px-2 py-0.5 rounded-full bg-slate-950 text-blue-300 text-[10px] font-black border border-blue-500/40">
+              총 {meetings.length}건
             </span>
-            <div className="flex items-center gap-2 flex-wrap">
-              <label htmlFor="project-select" className="text-xs font-bold text-slate-300 shrink-0">
-                프로젝트 선택:
-              </label>
-              <select
-                id="project-select"
-                value={selectedProjectCode}
-                onChange={(e) => setSelectedProjectCode(e.target.value)}
-                className="bg-slate-950 border border-blue-500/60 text-white text-xs font-bold px-3 py-1.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-md truncate cursor-pointer shadow-inner"
-              >
-                {uniqueProjects.map((p) => (
-                  <option key={p.code || p.id} value={p.code || p.id}>
-                    [{p.code || p.id}] {p.name}
-                  </option>
-                ))}
-              </select>
+          </button>
+        </div>
 
-              {/* 해당 프로젝트 내 회의록 선택 (복수 건일 경우) */}
-              {projectMeetings.length > 1 && (
-                <select
-                  value={currentMeetingId}
-                  onChange={(e) => setCurrentMeetingId(e.target.value)}
-                  className="bg-slate-800 border border-slate-600 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg cursor-pointer"
-                >
-                  {projectMeetings.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.type}: {m.title.slice(0, 25)}...
-                    </option>
-                  ))}
-                </select>
-              )}
+        {activeSubTab === 'write' ? (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('list')}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-600 flex items-center gap-1.5 cursor-pointer transition"
+            >
+              <ClipboardCheck size={13} className="text-emerald-400" />
+              <span>전체 목록 보기</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSaveCurrentMeeting(true)}
+              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md cursor-pointer transition active:scale-95"
+            >
+              <Save size={13} />
+              <span>저장 후 목록 이동</span>
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              handleCreateNewMeeting();
+              setActiveSubTab('write');
+            }}
+            className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md cursor-pointer transition active:scale-95"
+          >
+            <Plus size={14} />
+            <span>+ 새 회의록 작성</span>
+          </button>
+        )}
+      </div>
+
+      {/* CASE A: 회의록 목록 (아카이브 - 전 직원 열람 & 검색 & 엑셀 다운로드) */}
+      {activeSubTab === 'list' && (
+        <div className="space-y-4 animate-fadeIn">
+          {/* 목록 상단 검색 & 필터 바 */}
+          <div className="bg-slate-900 border-2 border-slate-700 p-4 sm:p-5 rounded-2xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-3 text-white">
+            <div className="flex items-center gap-3 w-full md:w-auto flex-1">
+              <div className="relative flex-1 max-w-md">
+                <input
+                  type="text"
+                  value={listSearch}
+                  onChange={(e) => setListSearch(e.target.value)}
+                  placeholder="프로젝트명, 회의 안건, 작성자, 거래처명 검색..."
+                  className="w-full text-xs pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <FileText size={14} className="absolute left-3 top-2.5 text-slate-400" />
+              </div>
+
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                {(['ALL', '마감팀', '구조팀', '개발 TF'] as const).map((dept) => (
+                  <button
+                    key={dept}
+                    type="button"
+                    onClick={() => setListDeptFilter(dept)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      listDeptFilter === dept ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {dept === 'ALL' ? '전체 부서' : dept}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 text-xs font-bold text-slate-300">
+              <span className="text-blue-400">총 {filteredMeetings.length}건 조회됨</span>
+              <button
+                type="button"
+                onClick={() => {
+                  handleCreateNewMeeting();
+                  setActiveSubTab('write');
+                }}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md cursor-pointer transition active:scale-95"
+              >
+                <Plus size={14} />
+                <span>새 회의록 작성</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 회의록 목록 아카이브 테이블 */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left border-collapse">
+                <thead className="bg-slate-100 dark:bg-slate-800 text-[11px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
+                  <tr>
+                    <th className="p-3.5 w-12 text-center">No.</th>
+                    <th className="p-3.5 w-32">프로젝트 코드</th>
+                    <th className="p-3.5">프로젝트명 / 회의 안건</th>
+                    <th className="p-3.5 w-24 text-center">회의 유형</th>
+                    <th className="p-3.5 w-28 text-center">회의 일시</th>
+                    <th className="p-3.5 w-28">거래처명</th>
+                    <th className="p-3.5 w-24 text-center">작성자</th>
+                    <th className="p-3.5 w-24 text-center">상태</th>
+                    <th className="p-3.5 w-36 text-center">열람 및 관리</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {filteredMeetings.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="p-12 text-center text-slate-400">
+                        <FileSignature size={40} className="mx-auto mb-2 opacity-30 text-blue-400" />
+                        <p className="font-bold text-sm">등록된 회의록이 없거나 검색 결과와 일치하지 않습니다.</p>
+                        <p className="text-xs mt-1 text-slate-500">
+                          상단의 [+ 새 회의록 작성] 버튼을 눌러 새 회의록을 작성해 보세요.
+                        </p>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredMeetings.map((m, idx) => (
+                      <tr
+                        key={m.id}
+                        className="hover:bg-blue-50/50 dark:hover:bg-slate-800/60 transition group cursor-pointer"
+                        onClick={() => {
+                          setSelectedProjectCode(m.projectCode || m.projectId);
+                          setCurrentMeetingId(m.id);
+                          setActiveSubTab('write');
+                        }}
+                      >
+                        <td className="p-3.5 text-center font-mono text-slate-400">
+                          {idx + 1}
+                        </td>
+                        <td className="p-3.5 font-mono font-bold text-blue-600 dark:text-blue-400 whitespace-nowrap">
+                          {m.projectCode || m.projectId}
+                        </td>
+                        <td className="p-3.5">
+                          <div className="font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition">
+                            {m.title}
+                          </div>
+                          <div className="text-[11px] text-slate-500 truncate max-w-md">
+                            {m.projectName} · {m.location}
+                          </div>
+                        </td>
+                        <td className="p-3.5 text-center">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 whitespace-nowrap">
+                            {m.type}
+                          </span>
+                        </td>
+                        <td className="p-3.5 text-center font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                          {m.meetingDate}
+                        </td>
+                        <td className="p-3.5 font-bold text-slate-700 dark:text-slate-300">
+                          {m.clientName || '-'}
+                        </td>
+                        <td className="p-3.5 text-center whitespace-nowrap">
+                          <span className="font-bold text-slate-800 dark:text-slate-200 block">
+                            {m.author}
+                          </span>
+                          <span className="text-[10px] text-slate-400 block">
+                            {m.authorPosition}
+                          </span>
+                        </td>
+                        <td className="p-3.5 text-center whitespace-nowrap">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
+                            m.directorApproved
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300'
+                              : 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300'
+                          }`}>
+                            {m.directorApproved ? '공식날인' : '작성중'}
+                          </span>
+                        </td>
+                        <td className="p-3.5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedProjectCode(m.projectCode || m.projectId);
+                                setCurrentMeetingId(m.id);
+                                setActiveSubTab('write');
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 border border-blue-200 dark:border-blue-800 text-[11px] font-bold transition cursor-pointer"
+                              title="회의록 열람 및 수정"
+                            >
+                              열람/수정
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedProjectCode(m.projectCode || m.projectId);
+                                setCurrentMeetingId(m.id);
+                                handleExportExcel();
+                              }}
+                              className="p-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-emerald-600 hover:bg-slate-200 border border-slate-300 dark:border-slate-700 transition cursor-pointer"
+                              title="공식 엑셀 서식 다운로드"
+                            >
+                              <FileSpreadsheet size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteMeeting(m.id)}
+                              className="p-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-rose-500 hover:bg-rose-100 border border-slate-300 dark:border-slate-700 transition cursor-pointer"
+                              title="회의록 삭제"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
-
-        {/* 우측: 엑셀 내보내기/가져오기, 새 회의록, 저장 버튼 */}
-        <div className="flex items-center gap-2 flex-wrap shrink-0">
-          <button
-            type="button"
-            onClick={handleExportExcel}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-600 transition cursor-pointer shadow-xs"
-            title="현재 회의록 엑셀 다운로드 (.xlsx)"
-          >
-            <FileSpreadsheet size={14} className="text-emerald-400" />
-            <span>엑셀 내보내기</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => excelImportRef.current?.click()}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-600 transition cursor-pointer shadow-xs"
-            title="엑셀 파일에서 실행 과제 가져오기"
-          >
-            <Upload size={14} className="text-blue-400" />
-            <span>엑셀 가져오기</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleCreateNewMeeting}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-600 transition cursor-pointer shadow-xs"
-          >
-            <Plus size={14} className="text-amber-400" />
-            <span>새 회의록 작성</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleSaveCurrentMeeting}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-md transition cursor-pointer active:scale-95"
-          >
-            <Save size={14} />
-            <span>저장 완료</span>
-          </button>
-        </div>
-      </div>
-
-      {/* AI 알림 토스트 */}
-      {aiToast && (
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg animate-fadeIn flex items-center justify-between">
-          <span>{aiToast}</span>
-          <button onClick={() => setAiToast(null)} className="text-white/80 hover:text-white text-sm">✕</button>
-        </div>
       )}
 
-      {/* 2. 대화형 2단 메인 레이아웃 */}
-      {/* 좌측 (6열): 회의록 수동작성 & 자료 첨부시 AI 자동 정리 기능 */}
-      {/* 우측 (6열): 클레임센터 표준 정식 서식 미리보기 & 결재라인 */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      {/* CASE B: 회의록 작성 & 서식 편집 뷰 */}
+      {activeSubTab === 'write' && (
+        <div className="space-y-5 animate-fadeIn">
+          {/* 1. 최상단 헤더: 프로젝트 선택 드롭다운 & 핵심 도구 모음 */}
+          <div className="bg-slate-900 border-2 border-slate-700 p-4 sm:p-5 rounded-2xl shadow-xl text-white flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            
+            {/* 좌측: 프로젝트 선택 드롭다운 */}
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black shadow-md shrink-0">
+                <FileSignature size={20} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <span className="text-[10px] font-black text-blue-400 tracking-wider uppercase block mb-0.5">
+                  QUANTITY TAKEOFF MEETING STUDIO · 클레임센터 표준 연동
+                </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label htmlFor="project-select" className="text-xs font-bold text-slate-300 shrink-0">
+                    프로젝트 선택:
+                  </label>
+                  <select
+                    id="project-select"
+                    value={selectedProjectCode}
+                    onChange={(e) => setSelectedProjectCode(e.target.value)}
+                    className="bg-slate-950 border border-blue-500/60 text-white text-xs font-bold px-3 py-1.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-md truncate cursor-pointer shadow-inner"
+                  >
+                    {uniqueProjects.map((p) => (
+                      <option key={p.code || p.id} value={p.code || p.id}>
+                        [{p.code || p.id}] {p.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* 해당 프로젝트 내 회의록 선택 (복수 건일 경우) */}
+                  {projectMeetings.length > 1 && (
+                    <select
+                      value={currentMeetingId}
+                      onChange={(e) => setCurrentMeetingId(e.target.value)}
+                      className="bg-slate-800 border border-slate-600 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg cursor-pointer"
+                    >
+                      {projectMeetings.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.type}: {m.title.slice(0, 25)}...
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* 우측: 엑셀 내보내기/가져오기, 새 회의록, 저장 버튼 */}
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-600 transition cursor-pointer shadow-xs"
+                title="현재 회의록 엑셀 다운로드 (.xlsx)"
+              >
+                <FileSpreadsheet size={14} className="text-emerald-400" />
+                <span>엑셀 내보내기</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => excelImportRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-600 transition cursor-pointer shadow-xs"
+                title="엑셀 파일에서 공식 양식 가져오기"
+              >
+                <Upload size={14} className="text-blue-400" />
+                <span>엑셀 가져오기</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCreateNewMeeting}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-600 transition cursor-pointer shadow-xs"
+              >
+                <Plus size={14} className="text-amber-400" />
+                <span>새 회의록 작성</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSaveCurrentMeeting(false)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-md transition cursor-pointer active:scale-95"
+              >
+                <Save size={14} />
+                <span>저장 완료</span>
+              </button>
+            </div>
+          </div>
+
+          {/* AI 알림 토스트 */}
+          {aiToast && (
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg animate-fadeIn flex items-center justify-between">
+              <span>{aiToast}</span>
+              <button onClick={() => setAiToast(null)} className="text-white/80 hover:text-white text-sm">✕</button>
+            </div>
+          )}
+
+          {/* 2. 대화형 2단 메인 레이아웃 */}
+          {/* 좌측 (6열): 회의록 수동작성 & 자료 첨부시 AI 자동 정리 기능 */}
+          {/* 우측 (6열): 클레임센터 표준 정식 서식 미리보기 & 결재라인 */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         
         {/* ======================= 좌측 패널 (lg:col-span-6) ======================= */}
         <div className="lg:col-span-6 space-y-4">
@@ -1365,79 +1461,7 @@ export const MinutesView: React.FC = () => {
             </div>
           </div>
 
-          {/* 카드 D: 공종별 실행 과제 (Action Item) 신규 추가 */}
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 text-white space-y-3 shadow-md">
-            <span className="text-xs font-black text-emerald-400 flex items-center gap-1.5 pb-2 border-b border-slate-800">
-              <CheckCircle2 size={14} />
-              <span>4. 공종별 실행 과제 (Action Item) 추가</span>
-            </span>
-
-            <form onSubmit={handleAddActionItem} className="space-y-2.5">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div>
-                  <label className="block text-[10px] text-slate-400 mb-1">공종</label>
-                  <select
-                    value={newActionRole}
-                    onChange={(e) => setNewActionRole(e.target.value)}
-                    className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold"
-                  >
-                    <option value="조적">조적</option>
-                    <option value="창호">창호</option>
-                    <option value="외부">외부</option>
-                    <option value="내부">내부</option>
-                    <option value="세대">세대</option>
-                    <option value="내역">내역</option>
-                    <option value="가설">가설</option>
-                    <option value="보">보 (구조)</option>
-                    <option value="슬라브">슬라브 (구조)</option>
-                    <option value="기둥">기둥 (구조)</option>
-                    <option value="기초">기초 (구조)</option>
-                    <option value="PM">PM 총괄</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[10px] text-slate-400 mb-1">담당자</label>
-                  <input
-                    type="text"
-                    value={newActionAssignee}
-                    onChange={(e) => setNewActionAssignee(e.target.value)}
-                    placeholder="원종수 수석"
-                    className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-[10px] text-slate-400 mb-1">완료 기한</label>
-                  <input
-                    type="date"
-                    value={newActionDueDate}
-                    onChange={(e) => setNewActionDueDate(e.target.value)}
-                    className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] text-slate-400 mb-1">실행 과제 내용</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newActionTitle}
-                    onChange={(e) => setNewActionTitle(e.target.value)}
-                    placeholder="예: Rev.3 조적벽체 기준선 분할 및 작업 착수"
-                    className="flex-1 text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white"
-                  />
-                  <button
-                    type="submit"
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shrink-0 transition cursor-pointer"
-                  >
-                    + 추가
-                  </button>
-                </div>
-              </div>
-            </form>
           </div>
-
-        </div>
 
         {/* ======================= 우측 패널 (lg:col-span-6): 회사 공식 회의록 서식 1:1 완벽 재현 ======================= */}
         <div className="lg:col-span-6 sticky top-4">
@@ -1655,87 +1679,7 @@ export const MinutesView: React.FC = () => {
               </div>
             </div>
 
-            {/* 3. 공종별 실행 과제 및 조치사항 (Action Items Table) - 첨부 스크린샷과 1:1 완벽 일치! */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-black text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
-                  <CheckCircle2 size={14} className="text-emerald-500" />
-                  <span>공종별 실행 과제 및 조치사항 (Action Items Table)</span>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] font-black">
-                    총 {currentMeeting?.actionItems.length || 0}건
-                  </span>
-                </h4>
-              </div>
 
-              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-750">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-100 dark:bg-slate-800 text-[11px] text-slate-600 dark:text-slate-300 font-extrabold border-b border-slate-200 dark:border-slate-700">
-                    <tr>
-                      <th className="p-2.5 w-16 text-center">상태</th>
-                      <th className="p-2.5 w-16 text-center">공종</th>
-                      <th className="p-2.5">실행 과제 (Action Item)</th>
-                      <th className="p-2.5 w-32">담당자</th>
-                      <th className="p-2.5 w-24 text-center">기한</th>
-                      <th className="p-2.5 w-10 text-center">삭제</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {!currentMeeting?.actionItems || currentMeeting.actionItems.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="p-4 text-center text-slate-400 italic">
-                          등록된 공종별 실행 과제가 없습니다. 좌측 패널에서 추가해 주세요.
-                        </td>
-                      </tr>
-                    ) : (
-                      currentMeeting.actionItems.map((item) => (
-                        <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60 transition">
-                          <td className="p-2.5 text-center">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleActionStatus(item.id)}
-                              className={`text-[10px] font-black px-2 py-0.5 rounded-md transition cursor-pointer ${
-                                item.status === '완료'
-                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300'
-                                  : item.status === '진행중'
-                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-300'
-                                  : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
-                              }`}
-                              title="클릭하여 상태 변경"
-                            >
-                              {item.status}
-                            </button>
-                          </td>
-                          <td className="p-2.5 text-center">
-                            <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-bold text-[11px] text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
-                              {item.roleName}
-                            </span>
-                          </td>
-                          <td className="p-2.5 font-medium text-slate-900 dark:text-white">
-                            {item.title}
-                          </td>
-                          <td className="p-2.5 font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                            {item.assigneeName}
-                          </td>
-                          <td className="p-2.5 text-center font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                            {item.dueDate}
-                          </td>
-                          <td className="p-2.5 text-center">
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteActionItem(item.id)}
-                              className="text-slate-400 hover:text-rose-500 transition cursor-pointer"
-                              title="삭제"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
 
             {/* 4. 하단 결재라인 (첨부 스크린샷 1:1 완벽 일치!) */}
             <div className="pt-4 border-t-2 border-slate-200 dark:border-slate-750">
@@ -1795,10 +1739,27 @@ export const MinutesView: React.FC = () => {
               </div>
             </div>
 
+            {/* 5. 회의록 목록 저장 및 등록 버튼 */}
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => handleSaveCurrentMeeting(true)}
+                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-blue-950/40 transition cursor-pointer active:scale-98"
+              >
+                <Save size={16} />
+                <span>💾 회의록 저장 및 [회의록 목록]에 등록</span>
+              </button>
+              <p className="text-[11px] text-slate-400 text-center mt-1.5 font-medium">
+                저장 후 회의록 목록(아카이브)으로 자동 이동하여 전 직원이 즉시 열람·출력할 수 있습니다.
+              </p>
+            </div>
+
           </div>
         </div>
 
       </div>
+    </div>
+  )}
 
       {/* 숨김 파일 업로드 input들 */}
       <input
