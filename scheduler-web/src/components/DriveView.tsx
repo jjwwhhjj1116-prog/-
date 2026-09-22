@@ -79,8 +79,8 @@ export const DriveView: React.FC = () => {
     return roles.find((r) => r !== 'PM') || roles[0] || '조적';
   });
 
-  // 5. 세분화 서브타이틀 선택 상태 (기본: 1.프로그램파일 (FIN))
-  const [selectedSubtitle, setSelectedSubtitle] = useState<SubtitleType>('1.프로그램파일 (FIN)');
+  // 5. 세분화 서브타이틀 선택 상태 (기본: 1.납품자료)
+  const [selectedSubtitle, setSelectedSubtitle] = useState<SubtitleType>('1.납품자료');
 
   // 파일 목록 상태
   const [allFiles, setAllFiles] = useState<TechVaultFile[]>([]);
@@ -207,7 +207,7 @@ export const DriveView: React.FC = () => {
     });
 
     allFiles.forEach((f) => {
-      const normalizedSub = f.subtitle === '1.프로그램파일(FIN)' ? '1.프로그램파일 (FIN)' : f.subtitle === '4.기타' ? '5.기타' : f.subtitle;
+      const normalizedSub = String(f.subtitle);
       const fileMainFolder = f.mainFolder || (f.teamName === '구조팀' ? '03.구조자료' : f.subtitle.includes('도면 및 발주처') ? '01.접수자료' : '02.마감자료');
       if (fileMainFolder === selectedMainFolder && counts[normalizedSub] !== undefined) {
         counts[normalizedSub] += 1;
@@ -219,7 +219,7 @@ export const DriveView: React.FC = () => {
   // 현재 필터된 파일 목록
   const currentSubtitleFiles = useMemo(() => {
     return allFiles.filter((f) => {
-      const normalizedSub = f.subtitle === '1.프로그램파일(FIN)' ? '1.프로그램파일 (FIN)' : f.subtitle === '4.기타' ? '5.기타' : f.subtitle;
+      const normalizedSub = String(f.subtitle);
       const fileMainFolder = f.mainFolder || (f.teamName === '구조팀' ? '03.구조자료' : f.subtitle.includes('도면 및 발주처') ? '01.접수자료' : '02.마감자료');
       if (fileMainFolder !== selectedMainFolder) return false;
       if (normalizedSub !== selectedSubtitle) return false;

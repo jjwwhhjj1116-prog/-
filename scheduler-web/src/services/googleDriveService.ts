@@ -26,15 +26,26 @@ export type MainFolderType = typeof MAIN_FOLDERS[number];
 // 세분화된 서브타이틀 폴더 목록
 export const SUBTITLES = [
   '1.도면 및 발주처 제공자료',
-  '1.프로그램파일 (FIN)',
+  // 마감팀
+  '1.납품자료',
+  '2.프로그램파일(FIN)',
+  '2.프로그램파일 (FIN)',
+  '3.CAD작업도면',
+  '4.견적조건 및 질의사항',
+  '5.VIET QS 작업자료',
+  '6.타분야자료',
+  // 구조팀
+  '1.프로그램파일(RC)',
   '1.프로그램파일 (RC)',
   '2.CAD작업도면',
+  '3.견적조건 및 질의사항',
+  '4.VIET QS 작업자료',
+  // 하위 호환성
+  '1.프로그램파일 (FIN)',
+  '1.프로그램파일(FIN)',
   '3.질의사항&견적조건',
   '4.VIETQS 작업자료',
   '5.기타',
-  // 하위 호환성
-  '1.프로그램파일(FIN)',
-  '1.프로그램파일(RC)',
   '4.기타',
 ] as const;
 
@@ -46,18 +57,18 @@ export const FOLDER_SUBTITLES: Record<MainFolderType, readonly SubtitleType[]> =
     '1.도면 및 발주처 제공자료',
   ],
   '02.마감자료': [
-    '1.프로그램파일 (FIN)',
-    '2.CAD작업도면',
-    '3.질의사항&견적조건',
-    '4.VIETQS 작업자료',
-    '5.기타',
+    '1.납품자료',
+    '2.프로그램파일(FIN)',
+    '3.CAD작업도면',
+    '4.견적조건 및 질의사항',
+    '5.VIET QS 작업자료',
+    '6.타분야자료',
   ],
   '03.구조자료': [
-    '1.프로그램파일 (RC)',
+    '1.프로그램파일(RC)',
     '2.CAD작업도면',
-    '3.질의사항&견적조건',
-    '4.VIETQS 작업자료',
-    '5.기타',
+    '3.견적조건 및 질의사항',
+    '4.VIET QS 작업자료',
   ],
 };
 
@@ -75,58 +86,115 @@ export const SUBTITLE_METAS: Record<string, SubtitleMeta> = {
     description: '발주처 원본 도면, 현장설명서, 입찰안내서, 지침자료',
     icon: 'DOC',
   },
-  '1.프로그램파일 (FIN)': {
+  // 마감팀
+  '1.납품자료': {
+    code: 'DELIVER',
+    title: '1.납품자료',
+    description: '최종 납품 내역서, 견적서, 최종 성과물 보고서',
+    icon: 'OUT',
+  },
+  '2.프로그램파일(FIN)': {
     code: 'FIN',
-    title: '1.프로그램파일 (FIN)',
+    title: '2.프로그램파일(FIN)',
     description: '마감 물량산출 프로그램 FIN 원본, 산출 데이터 백업 파일',
     icon: 'FIN',
   },
-  '1.프로그램파일 (RC)': {
-    code: 'RC',
-    title: '1.프로그램파일 (RC)',
-    description: '구조(RC) 물량산출 프로그램 원본, 산출 데이터 백업 파일',
-    icon: 'RC',
+  '2.프로그램파일 (FIN)': {
+    code: 'FIN',
+    title: '2.프로그램파일(FIN)',
+    description: '마감 물량산출 프로그램 FIN 원본, 산출 데이터 백업 파일',
+    icon: 'FIN',
   },
-  '1.프로그램파일(RC)': {
-    code: 'RC',
-    title: '1.프로그램파일 (RC)',
-    description: '구조(RC) 물량산출 프로그램 원본, 산출 데이터 백업 파일',
-    icon: 'RC',
+  '1.프로그램파일 (FIN)': {
+    code: 'FIN',
+    title: '2.프로그램파일(FIN)',
+    description: '마감 물량산출 프로그램 FIN 원본, 산출 데이터 백업 파일',
+    icon: 'FIN',
+  },
+  '1.프로그램파일(FIN)': {
+    code: 'FIN',
+    title: '2.프로그램파일(FIN)',
+    description: '마감 물량산출 프로그램 FIN 원본, 산출 데이터 백업 파일',
+    icon: 'FIN',
+  },
+  '3.CAD작업도면': {
+    code: 'CAD',
+    title: '3.CAD작업도면',
+    description: '건축/구조 산출 작업도면 (DWG, DXF, PDF 등)',
+    icon: 'CAD',
   },
   '2.CAD작업도면': {
     code: 'CAD',
     title: '2.CAD작업도면',
-    description: '건축/구조 산출 작업도면 (DWG, DXF, PDF 등)',
+    description: '구조 산출 작업도면 (DWG, DXF, PDF 등)',
     icon: 'CAD',
   },
+  '4.견적조건 및 질의사항': {
+    code: 'Q&A',
+    title: '4.견적조건 및 질의사항',
+    description: '견적조건표, 설계 질의회신서, 특기시방 및 단가 검토',
+    icon: 'Q&A',
+  },
+  '3.견적조건 및 질의사항': {
+    code: 'Q&A',
+    title: '3.견적조건 및 질의사항',
+    description: '구조 견적조건표, 설계 질의회신서, 단가 검토',
+    icon: 'Q&A',
+  },
+  '5.VIET QS 작업자료': {
+    code: 'VIETQS',
+    title: '5.VIET QS 작업자료',
+    description: '베트남 VIET QS 외주 및 협업 산출자료, 1차/2차 검토본',
+    icon: 'VN',
+  },
+  '4.VIET QS 작업자료': {
+    code: 'VIETQS',
+    title: '4.VIET QS 작업자료',
+    description: '베트남 VIET QS 외주 및 협업 산출자료, 1차/2차 검토본',
+    icon: 'VN',
+  },
+  '6.타분야자료': {
+    code: 'OTHER',
+    title: '6.타분야자료',
+    description: '기계, 전기, 토목, 조경 등 타분야 연계 및 협의 자료',
+    icon: 'ETC',
+  },
+  // 구조팀
+  '1.프로그램파일(RC)': {
+    code: 'RC',
+    title: '1.프로그램파일(RC)',
+    description: '철근콘크리트(RC) 구조물량 산출 프로그램 원본, 산출 데이터 백업',
+    icon: 'RC',
+  },
+  '1.프로그램파일 (RC)': {
+    code: 'RC',
+    title: '1.프로그램파일(RC)',
+    description: '철근콘크리트(RC) 구조물량 산출 프로그램 원본, 산출 데이터 백업',
+    icon: 'RC',
+  },
+  // 이전 호환성
   '3.질의사항&견적조건': {
     code: 'Q&A',
-    title: '3.질의사항&견적조건',
-    description: '설계 질의회신서, 견적조건표, 단가 비교 및 특기시방',
+    title: '4.견적조건 및 질의사항',
+    description: '견적조건표, 설계 질의회신서',
     icon: 'Q&A',
   },
   '4.VIETQS 작업자료': {
     code: 'VIETQS',
-    title: '4.VIETQS 작업자료',
-    description: '베트남 VIETQS 외주 및 협업 산출자료, 1차/2차 검토본',
+    title: '5.VIET QS 작업자료',
+    description: '베트남 VIET QS 외주 및 협업 산출자료',
     icon: 'VN',
   },
   '5.기타': {
     code: 'ETC',
-    title: '5.기타',
-    description: '현장사진, 참고자료, 압축파일(ZIP, 7Z), 회의록 등',
+    title: '6.타분야자료',
+    description: '참고자료 및 기타 보관 자료',
     icon: 'ETC',
-  },
-  '1.프로그램파일(FIN)': {
-    code: 'FIN',
-    title: '1.프로그램파일 (FIN)',
-    description: '물량산출 프로그램 FIN 원본, 산출 데이터 백업 파일',
-    icon: 'FIN',
   },
   '4.기타': {
     code: 'ETC',
-    title: '5.기타',
-    description: '현장사진, 참고자료, 압축파일(ZIP, 7Z), 회의록 등',
+    title: '6.타분야자료',
+    description: '참고자료 및 기타 보관 자료',
     icon: 'ETC',
   },
 };

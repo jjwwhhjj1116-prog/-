@@ -672,8 +672,20 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
         const subTree: Record<string, string[]> = {
           '01.접수자료': ['1.도면 및 발주처 제공자료'],
-          '02.마감자료': ['1.프로그램파일 (FIN)', '2.CAD작업도면', '3.질의사항&견적조건', '4.VIETQS 작업자료', '5.기타'],
-          '03.구조자료': ['1.프로그램파일 (RC)', '2.CAD작업도면', '3.질의사항&견적조건', '4.VIETQS 작업자료', '5.기타'],
+          '02.마감자료': [
+            '1.납품자료',
+            '2.프로그램파일(FIN)',
+            '3.CAD작업도면',
+            '4.견적조건 및 질의사항',
+            '5.VIET QS 작업자료',
+            '6.타분야자료',
+          ],
+          '03.구조자료': [
+            '1.프로그램파일(RC)',
+            '2.CAD작업도면',
+            '3.견적조건 및 질의사항',
+            '4.VIET QS 작업자료',
+          ],
         };
 
         for (const [mainCat, subs] of Object.entries(subTree)) {
