@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import realProjectsData from '../data/realProjects.json';
 import concostUsersData from '../data/concostUsers.json';
 import { VIET_TEAMS_DATA } from '../data/vietTeams';
@@ -99,6 +100,7 @@ interface ProjectState {
   deleteProject: (id: string) => void;
   setProjects: (projects: Project[]) => void;
   updateSubTask: (projectId: string, roleName: string, subTask: Partial<SubTaskSchedule>) => void;
+  updateProjectSubTasks: (projectId: string, subTasks: Record<string, SubTaskSchedule>) => void;
   addRevision: (projectId: string, revision: Omit<Revision, 'id' | 'round'>) => void;
 }
 
@@ -129,72 +131,117 @@ const initialPersonnel: Person[] = [
 // 실제 프로젝트 접수목록(30건) 기반 실무 데이터 (가짜 샘플 5건 완전 제거)
 const initialProjects: Project[] = realProjectsData as unknown as Project[];
 
-export const useProjectStore = create<ProjectState>((set) => ({
-  projects: initialProjects,
-  personnel: initialPersonnel,
-  selectedProjectId: null,
-  setSelectedProjectId: (id) => set({ selectedProjectId: id }),
-  filterRegion: 'ALL',
-  setFilterRegion: (region) => set({ filterRegion: region }),
-  filterDepartment: 'ALL',
-  setFilterDepartment: (dept) => set({ filterDepartment: dept }),
-  addProject: (p) => set((state) => ({
-    projects: [
-      ...state.projects,
-      {
-        ...p,
-        id: 'p_' + Math.random().toString(36).substring(2, 9),
-        code: p.code || `TK-${new Date().getFullYear()}-${String(state.projects.length + 1).padStart(5, '0')}`,
-        subTasks: p.subTasks || {},
-        roles: p.roles || {},
-        progress: p.progress || 0,
-      }
-    ]
-  })),
-  updateProject: (id, p) => set((state) => ({
-    projects: state.projects.map((proj) => (proj.id === id ? { ...proj, ...p } : proj))
-  })),
-  deleteProject: (id) => set((state) => ({
-    projects: state.projects.filter((p) => p.id !== id)
-  })),
-  setProjects: (projects) => set({ projects }),
-  updateSubTask: (projectId, roleName, subTaskUpdate) => set((state) => ({
-    projects: state.projects.map((proj) => {
-      if (proj.id !== projectId) return proj;
-      const currentSub = proj.subTasks[roleName] || {
-        roleName,
-        personId: '',
-        startDate: proj.startDate,
-        endDate: proj.endDate,
-        status: '예정',
-        memo: '',
-        version: 'v1'
-      };
-      const updatedSub: SubTaskSchedule = { ...currentSub, ...subTaskUpdate };
-      return {
-        ...proj,
-        subTasks: {
-          ...proj.subTasks,
-          [roleName]: updatedSub
-        },
-        roles: {
-          ...proj.roles,
-          [roleName]: {
-            personId: updatedSub.personId,
-            startDate: updatedSub.startDate,
-            endDate: updatedSub.endDate
+export const useProjectStore = create<ProjectState>()(
+  persist(
+    (set) => ({
+      projects: initialProjects,
+      personnel: initialPersonnel,
+      selectedProjectId: null,
+      setSelectedProjectId: (id) => set({ selectedProjectId: id }),
+      filterRegion: 'ALL',
+      setFilterRegion: (region) => set({ filterRegion: region }),
+      filterDepartment: 'ALL',
+      setFilterDepartment: (dept) => set({ filterDepartment: dept }),
+      addProject: (p) => set((state) => ({
+        projects: [
+          ...state.projects,
+          {
+            ...p,
+            id: 'p_' + Math.random().toString(36).substring(2, 9),
+            code: p.code || `TK-${new Date().getFullYear()}-${String(state.projects.length + 1).padStart(5, '0')}`,
+            subTasks: p.subTasks || {},
+            roles: p.roles || {},
+            progress: p.progress || 0,
           }
-        }
-      };
-    })
-  })),
-  addRevision: (projectId, revision) => set((state) => ({
-    projects: state.projects.map((proj) => {
-      if (proj.id !== projectId) return proj;
-      const currentRevisions = proj.revisions || [];
-      const round = currentRevisions.length + 1;
-      const newRevision: Revision = { ...revision, id: Math.random().toString(36).substring(2, 9), round };
-      return { ...proj, revisions: [...currentRevisions, newRevision] };
-    })
-  }))
-}));
+        ]
+      })),
+      updateProject: (id, p) => set((state) => ({
+        projects: state.projects.map((proj) => (proj.id === id ? { ...proj, ...p } : proj))
+      })),
+      deleteProject: (id) => set((state) => ({
+        projects: state.projects.filter((p) => p.id !== id)
+      })),
+      setProjects: (projects) => set({ projects }),
+      updateSubTask: (projectId, roleName, subTaskUpdate) => set((state) => ({
+        projects: state.projects.map((proj) => {
+          if (proj.id !== projectId) return proj;
+          const currentSub = proj.subTasks[roleName] || {
+            roleName,
+            personId: '',
+            startDate: proj.startDate,
+            endDate: proj.endDate,
+            status: '예정',
+            memo: '',
+            version: 'v1'
+          };
+          const updatedSub: SubTaskSchedule = { ...currentSub, ...subTaskUpdate };
+
+          // PM 공종 변경 시 상위 pmId도 즉시 연동
+          const newPmId = (roleName === 'PM' && updatedSub.personId) ? updatedSub.personId : proj.pmId;
+
+          return {
+            ...proj,
+            pmId: newPmId,
+            subTasks: {
+              ...proj.subTasks,
+              [roleName]: updatedSub
+            },
+            roles: {
+              ...proj.roles,
+              [roleName]: {
+                personId: updatedSub.personId,
+                startDate: updatedSub.startDate,
+                endDate: updatedSub.endDate
+              }
+            }
+          };
+        })
+      })),
+      // 전체 공종 일괄 원자적 저장 (PM 및 roles 100% 동기화)
+      updateProjectSubTasks: (projectId, newSubTasks) => set((state) => ({
+        projects: state.projects.map((proj) => {
+          if (proj.id !== projectId) return proj;
+
+          // 새로운 roles 매핑 생성
+          const updatedRoles = { ...(proj.roles || {}) };
+          Object.entries(newSubTasks).forEach(([roleName, st]) => {
+            updatedRoles[roleName] = {
+              personId: st.personId,
+              startDate: st.startDate,
+              endDate: st.endDate
+            };
+          });
+
+          // PM 공종에 배정된 인원이 있으면 pmId 자동 동기화
+          const pmSub = newSubTasks['PM'];
+          const newPmId = pmSub?.personId || pmSub?.personIds?.[0] || proj.pmId;
+
+          return {
+            ...proj,
+            pmId: newPmId,
+            subTasks: newSubTasks,
+            roles: updatedRoles
+          };
+        })
+      })),
+      addRevision: (projectId, revision) => set((state) => ({
+        projects: state.projects.map((proj) => {
+          if (proj.id !== projectId) return proj;
+          const currentRevisions = proj.revisions || [];
+          const round = currentRevisions.length + 1;
+          const newRevision: Revision = { ...revision, id: Math.random().toString(36).substring(2, 9), round };
+          return { ...proj, revisions: [...currentRevisions, newRevision] };
+        })
+      }))
+    }),
+    {
+      name: 'concost_projects_data_v2',
+      // initialProjects는 항상 30건 실무 데이터 보존
+      partialize: (state) => ({
+        projects: state.projects,
+        filterRegion: state.filterRegion,
+        filterDepartment: state.filterDepartment
+      })
+    }
+  )
+);

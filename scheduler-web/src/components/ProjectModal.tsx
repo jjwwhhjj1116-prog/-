@@ -35,7 +35,7 @@ interface ProjectModalProps {
 export default function ProjectModal({ projectId, onClose }: ProjectModalProps) {
   const {
     projects,
-    updateSubTask
+    updateProjectSubTasks
   } = useProjectStore();
 
   const { users } = useAuthStore();
@@ -182,13 +182,16 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
     });
   };
 
-  // 전체 공종 일괄 저장
+  // 전체 공종 일괄 원자적 저장 (PM, 공종별 산출인원, roles 100% 동기화 및 localStorage 영구 보존)
   const handleSaveAll = () => {
-    Object.entries(localSubTasks).forEach(([roleName, item]) => {
-      updateSubTask(project.id, roleName, item);
+    updateProjectSubTasks(project.id, localSubTasks);
+    setAssignToast({
+      role: '전체 공종',
+      name: 'PM 및 산출 인원이 일정표에 성공적으로 저장·동기화되었습니다'
     });
-    alert('전체 공종 일정이 성공적으로 저장되었습니다. 다중 배정 인원 및 내역 유형이 실시간 동기화되었습니다.');
-    onClose();
+    setTimeout(() => {
+      onClose();
+    }, 400);
   };
 
   // 타 프로젝트와의 날짜 중복(Overlap) 검사 로직
@@ -768,34 +771,42 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
             </div>
           </div>
 
-          {/* ======================= 우측 패널: 팀원 실시간 가용성 & 스케줄 확인 간트 (5 cols, ~42%) ======================= */}
-          <div className="lg:col-span-5 p-5 overflow-y-auto custom-scrollbar flex flex-col gap-3.5 bg-white dark:bg-slate-900">
+          {/* ======================= 우측 패널: 팀원 실시간 가용성 & 투입 현황판 (5 cols, ~42%, 좌측과 완전한 시각적 대비) ======================= */}
+          <div className="lg:col-span-5 p-5 overflow-y-auto custom-scrollbar flex flex-col gap-3.5 bg-slate-50/90 dark:bg-slate-950 border-t-2 lg:border-t-0 lg:border-l-2 border-indigo-500/40 dark:border-indigo-500/40 shadow-inner">
             
-            {/* 우측 패널 헤더 */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <Users size={16} className="text-[#00338d] dark:text-blue-400" />
-                  팀원 실시간 가용성 & 투입 현황
+            {/* 우측 패널 헤더: 눈에 확 띄는 인디고/앰버 테마 박스 */}
+            <div className="bg-gradient-to-r from-indigo-900/20 via-slate-900 to-indigo-950/40 border border-indigo-500/30 dark:border-indigo-500/40 p-3.5 rounded-2xl shadow-sm space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black text-indigo-900 dark:text-indigo-200 flex items-center gap-2">
+                  <span className="p-1 rounded-lg bg-indigo-600 text-white shadow-xs">
+                    <Users size={15} />
+                  </span>
+                  <span>팀원 실시간 가용성 & 투입 현황판</span>
                 </h3>
-                <span className="text-[10px] font-mono font-bold text-slate-400">
+                <span className="text-[10px] font-mono font-bold bg-indigo-950 text-indigo-300 px-2.5 py-0.5 rounded-full border border-indigo-500/40">
                   {project.startDate} ~ {project.endDate}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                [배정]을 누르면 포커스된 <strong className="text-[#00338d] dark:text-blue-400">[{selectedRole}]</strong> 공종에 즉시 반영됩니다.
-              </p>
+              <div className="text-xs bg-amber-500/15 border border-amber-500/40 text-amber-900 dark:text-amber-200 px-3 py-1.5 rounded-xl font-bold flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  <span>[+ 배정] 클릭 시 포커스된 공종에 실시간 투입</span>
+                </span>
+                <span className="bg-amber-500 text-slate-950 font-black px-2 py-0.5 rounded-md text-[11px] shadow-xs">
+                  [{selectedRole || rolesForTeam[0]}] 공종
+                </span>
+              </div>
             </div>
 
             {/* 필터 및 컴팩트 검색 바 (검색창 너비 적정화) */}
-            <div className="flex flex-wrap items-center gap-1.5 justify-between bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
+            <div className="flex flex-wrap items-center gap-1.5 justify-between bg-white dark:bg-slate-900 p-1.5 rounded-xl border border-indigo-500/20 dark:border-slate-800 shadow-2xs">
               <div className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => setRightFilter('ALL')}
                   className={`px-2.5 py-1 text-xs font-bold rounded-lg transition ${
                     rightFilter === 'ALL'
-                      ? 'bg-white dark:bg-slate-700 text-[#00338d] dark:text-white shadow-2xs'
+                      ? 'bg-indigo-600 text-white shadow-2xs'
                       : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
                   }`}
                 >
@@ -818,7 +829,7 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                   onClick={() => setRightFilter('KOREA')}
                   className={`px-2 py-1 text-xs font-bold rounded-lg transition ${
                     rightFilter === 'KOREA'
-                      ? 'bg-white dark:bg-slate-700 text-[#00338d] dark:text-white shadow-2xs'
+                      ? 'bg-indigo-600 text-white shadow-2xs'
                       : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
                   }`}
                 >
@@ -829,7 +840,7 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                   onClick={() => setRightFilter('VIETNAM')}
                   className={`px-2 py-1 text-xs font-bold rounded-lg transition ${
                     rightFilter === 'VIETNAM'
-                      ? 'bg-white dark:bg-slate-700 text-[#00338d] dark:text-white shadow-2xs'
+                      ? 'bg-indigo-600 text-white shadow-2xs'
                       : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
                   }`}
                 >
@@ -845,127 +856,113 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="팀원 검색..."
-                  className="w-full text-xs pl-6 pr-2 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none"
+                  className="w-full text-xs pl-6 pr-2 py-1 rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
             </div>
 
             {/* 인원/팀 가용성 카드 목록 */}
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {filteredAvailability.map((unit) => {
                 const overlapCount = unit.overlaps.length;
                 const isAvailable = overlapCount === 0;
 
+                const targetRole = selectedRole || rolesForTeam[0];
+                const targetSub = localSubTasks[targetRole];
+                const pIds = targetSub?.personIds && targetSub.personIds.length > 0
+                  ? targetSub.personIds
+                  : (targetSub?.personId ? [targetSub.personId] : []);
+                const isAssignedToFocusedRole = pIds.includes(unit.id) || pIds.includes(unit.name);
+
                 return (
                   <div
                     key={unit.id}
-                    className={`p-3 rounded-xl border transition-all ${
-                      isAvailable
-                        ? 'bg-emerald-50/20 dark:bg-emerald-950/10 border-emerald-200 dark:border-emerald-800/60 hover:border-emerald-400'
+                    className={`p-3.5 rounded-2xl border-2 transition-all ${
+                      isAssignedToFocusedRole
+                        ? 'bg-indigo-950/70 border-indigo-500 shadow-lg shadow-indigo-950/50 ring-2 ring-indigo-500/40'
+                        : isAvailable
+                        ? 'bg-white dark:bg-slate-900/95 border-emerald-500/30 hover:border-emerald-400 shadow-xs'
                         : overlapCount === 1
-                        ? 'bg-amber-50/20 dark:bg-amber-950/10 border-amber-200 dark:border-amber-800/60 hover:border-amber-400'
-                        : 'bg-rose-50/20 dark:bg-rose-950/10 border-rose-200 dark:border-rose-800/60 hover:border-rose-400'
+                        ? 'bg-white dark:bg-slate-900/95 border-amber-500/40 hover:border-amber-400 shadow-xs'
+                        : 'bg-white dark:bg-slate-900/95 border-rose-500/40 hover:border-rose-400 shadow-xs'
                     }`}
                   >
                     {/* 상단 프로필 & 배정 버튼 */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div
-                          className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                          className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs shrink-0 shadow-xs ${
                             unit.isVietnam
-                              ? 'bg-rose-500 text-white'
-                              : 'bg-[#00338d] text-white'
+                              ? 'bg-rose-600 text-white'
+                              : 'bg-indigo-600 text-white'
                           }`}
                         >
                           {unit.name.slice(0, 1)}
                         </div>
                         <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className="font-extrabold text-slate-900 dark:text-white text-xs truncate">
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="font-black text-slate-900 dark:text-white text-xs truncate">
                               {unit.name}
                             </span>
-                            <span className="text-[10px] text-slate-400 font-medium truncate">
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
                               {unit.subTitle}
                             </span>
                           </div>
 
                           {/* 가용성 상태 배지 */}
-                          <div className="flex items-center gap-1.5 mt-0.5">
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                             {isAvailable ? (
-                              <span className="text-[10px] font-extrabold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/60 px-1.5 py-0.2 rounded-full flex items-center gap-1">
-                                🟢 투입 추천 (여유)
+                              <span className="text-[10px] font-black text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                🟢 투입 가능 (여유)
                               </span>
                             ) : overlapCount === 1 ? (
-                              <span className="text-[10px] font-extrabold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/60 px-1.5 py-0.2 rounded-full flex items-center gap-1">
-                                🟡 1건 겹침 (주의)
+                              <span className="text-[10px] font-black text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 border border-amber-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                🟡 1건 겹침 (조율)
                               </span>
                             ) : (
-                              <span className="text-[10px] font-extrabold text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-900/60 px-1.5 py-0.2 rounded-full flex items-center gap-1">
+                              <span className="text-[10px] font-black text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-950/80 border border-rose-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
                                 🔴 중복 {overlapCount}건 (과부하)
                               </span>
                             )}
 
                             {unit.assignedRoleInCurrent && (
-                              <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/60 px-1.5 py-0.2 rounded-full">
+                              <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-950 px-2 py-0.5 rounded-full border border-blue-500/30">
                                 현재 [{unit.assignedRoleInCurrent}]
                               </span>
                             )}
 
-                            {(() => {
-                              const targetRole = selectedRole || rolesForTeam[0];
-                              const targetSub = localSubTasks[targetRole];
-                              const pIds = targetSub?.personIds && targetSub.personIds.length > 0
-                                ? targetSub.personIds
-                                : (targetSub?.personId ? [targetSub.personId] : []);
-                              const isCurrentRoleAssigned = pIds.includes(unit.id) || pIds.includes(unit.name);
-
-                              if (isCurrentRoleAssigned) {
-                                return (
-                                  <span className="text-[10px] font-black text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-950 px-1.5 py-0.2 rounded-full ring-1 ring-indigo-400">
-                                    ★ 포커스 [{targetRole}] 배정중
-                                  </span>
-                                );
-                              }
-                              return null;
-                            })()}
+                            {isAssignedToFocusedRole && (
+                              <span className="text-[10px] font-black text-white bg-indigo-600 px-2 py-0.5 rounded-full shadow-xs flex items-center gap-1 animate-pulse">
+                                ★ 포커스 [{targetRole}] 배정중
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
 
                       {/* 원클릭 배정/해제 토글 액션 버튼 */}
-                      {(() => {
-                        const targetRole = selectedRole || rolesForTeam[0];
-                        const targetSub = localSubTasks[targetRole];
-                        const pIds = targetSub?.personIds && targetSub.personIds.length > 0
-                          ? targetSub.personIds
-                          : (targetSub?.personId ? [targetSub.personId] : []);
-                        const isAssigned = pIds.includes(unit.id) || pIds.includes(unit.name);
-
-                        return (
-                          <button
-                            type="button"
-                            onClick={() => handleTogglePerson(targetRole, unit.id, unit.name)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-extrabold shadow-2xs flex items-center gap-1 shrink-0 transition active:scale-95 ${
-                              isAssigned
-                                ? 'bg-rose-600 hover:bg-rose-700 text-white'
-                                : 'bg-[#00338d] hover:bg-[#002266] text-white'
-                            }`}
-                            title={isAssigned ? `현재 [${targetRole}] 공종에서 ${unit.name} 투입 해제` : `현재 [${targetRole}] 공종에 ${unit.name} 추가 배정`}
-                          >
-                            {isAssigned ? (
-                              <>
-                                <CheckCircle2 size={13} />
-                                <span>배정됨 (해제)</span>
-                              </>
-                            ) : (
-                              <>
-                                <UserCheck size={13} />
-                                <span>+ 배정</span>
-                              </>
-                            )}
-                          </button>
-                        );
-                      })()}
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePerson(targetRole, unit.id, unit.name)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black shadow-md flex items-center gap-1 shrink-0 transition active:scale-95 cursor-pointer ${
+                          isAssignedToFocusedRole
+                            ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-900/40'
+                            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/40'
+                        }`}
+                        title={isAssignedToFocusedRole ? `현재 [${targetRole}] 공종에서 ${unit.name} 투입 해제` : `현재 [${targetRole}] 공종에 ${unit.name} 즉시 추가 배정`}
+                      >
+                        {isAssignedToFocusedRole ? (
+                          <>
+                            <CheckCircle2 size={13} />
+                            <span>배정됨 (해제)</span>
+                          </>
+                        ) : (
+                          <>
+                            <UserCheck size={13} />
+                            <span>+ 배정</span>
+                          </>
+                        )}
+                      </button>
                     </div>
 
                     {/* 타 프로젝트 중복 표시 (정돈된 뱃지 스타일) */}
