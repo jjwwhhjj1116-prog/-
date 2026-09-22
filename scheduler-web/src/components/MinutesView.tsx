@@ -35,17 +35,25 @@ export interface MeetingRecord {
   projectName: string;
   projectCode: string;
   type: MeetingType;
-  title: string;
-  meetingDate: string;
-  location: string;
+  title: string; // 회의명
+  meetingDate: string; // 회의일시
+  startTime?: string; // 시작시간
+  endTime?: string; // 종료시간
+  location: string; // 회의장소
+  clientName?: string; // 거래처명
+  reportingDept?: string; // 보고부서
+  referenceDept?: string; // 참조부서
   department: string;
-  author: string;
-  attendeesInternal: string[];
-  attendeesExternal: string[];
+  author: string; // 성명
+  authorPosition?: string; // 직급
+  authorAffiliation?: string; // 소속
+  attendeesInternal: string[]; // 참석자(컨코스트)
+  attendeesExternal: string[]; // 참석자(거래처)
   rawTranscript: string;
   attachedFileName?: string;
   summary: string;
   decisions: string[];
+  notesAndInstructions?: string; // 회의내용 및 지시사항 본문
   actionItems: ActionItem[];
   status: MeetingStatus;
   version: number;
@@ -187,12 +195,19 @@ const INITIAL_MEETINGS: MeetingRecord[] = [
     projectCode: 'TK-2026087',
     type: '착수회의',
     title: '삼성 P5 FAB2 신축공사 견적용역 착수회의 및 공종별 물량산출 기준 확정',
-    meetingDate: '2026-09-17T14:00',
+    meetingDate: '2026-09-17',
+    startTime: '14:00',
+    endTime: '15:30',
     location: '컨코스트 본사 4층 대회의실 / 화상연결(VIET QS)',
+    clientName: '삼성물산(주)',
+    reportingDept: '기술본부 마감팀',
+    referenceDept: '개발 TF',
     department: '마감팀',
-    author: '조한빈 실장',
-    attendeesInternal: ['조한빈 실장(PM)', '성대용 수석', '원종수 수석', '김재헌 수석', '임승주 선임'],
-    attendeesExternal: ['삼성물산 견적팀 박상우 부장', '하이테크엔지니어링 설계를 담당'],
+    author: '조한빈',
+    authorPosition: '실장',
+    authorAffiliation: '기술본부 마감팀',
+    attendeesInternal: ['조한빈 실장(PM)', '성대용 수석', '원종수 수석', '김재헌 팀장', '임승주 선임'],
+    attendeesExternal: ['삼성물산 견적팀 박상우 부장', '하이테크엔지니어링 설계담당'],
     rawTranscript: `[14:00 킥오프 시작]
 조한빈 실장: P5 FAB2 복합시설 견적용역 착수회의 시작하겠습니다. 납품 기한은 2026년 10월 12일까지이며, 중간 체크데이는 9월 28일입니다.
 박상우 부장(삼성물산): 이번 FAB2는 도면 Rev.3이 최신본입니다. 특히 클린룸 하부 조적벽체와 복도 방화구획 창호는 도면 수정사항이 많으니 인터페이스 체크 부탁드립니다.
@@ -200,6 +215,12 @@ const INITIAL_MEETINGS: MeetingRecord[] = [
 성대용 수석: 내역 공종도 마감팀에서 직접 수량 집계 후 공내역서, 설계예가, 실행가 3단 산출로 납품하기로 확정되었습니다.
 조한빈 실장: 네, 내역은 공내역 우선 산출 후 10월 5일까지 실행가 검토안을 작성하겠습니다. 베트남 창호팀(WIN) 및 외부팀(EXT)에 오늘 배포된 CAD 도면 즉시 공유 바랍니다.
 [15:15 회의 종료]`,
+    notesAndInstructions: `1. 안건: 삼성물산 평택 P5 FAB-2 물량산출 용역 착수 및 공종별 기준선 협의
+2. 도면 기준: 2026-09-15 배포된 Rev.3 도면 기준 일괄 적용
+3. 조적 공종: 원종수 수석(동측), 성대용 수석(서측) 2인 분할 투입 확정
+4. 창호 공종: 베트남 하노이 지사(WIN)와 인터페이스 크로스체크
+5. 내역 공종: 공내역서 우선 산출 후 설계예가·실행가 순차 산출 납품
+6. 납품 일정: 2026년 10월 12일 최종 납품 기한 준수`,
     summary: `1. 프로젝트 납품 마감일: 2026-10-12 (중간 점검일: 2026-09-28)
 2. 최신 도면 기준: 건축도면 Rev.3 확정 반영
 3. 조적 공종 투입 계획: 원종수 수석(동측 구역) + 성대용 수석(서측 구역) 2인 동시 투입하여 산출 기간 단축
@@ -386,10 +407,18 @@ export const MinutesView: React.FC = () => {
   const [formTitle, setFormTitle] = useState(currentMeeting?.title || '');
   const [formType, setFormType] = useState<MeetingType>(currentMeeting?.type || '착수회의');
   const [formDate, setFormDate] = useState(currentMeeting?.meetingDate || '');
+  const [formStartTime, setFormStartTime] = useState(currentMeeting?.startTime || '14:00');
+  const [formEndTime, setFormEndTime] = useState(currentMeeting?.endTime || '15:30');
   const [formLocation, setFormLocation] = useState(currentMeeting?.location || '');
+  const [formClientName, setFormClientName] = useState(currentMeeting?.clientName || '');
+  const [formReportingDept, setFormReportingDept] = useState(currentMeeting?.reportingDept || '기술본부 마감팀');
+  const [formReferenceDept, setFormReferenceDept] = useState(currentMeeting?.referenceDept || '개발 TF');
+  const [formAuthorPosition, setFormAuthorPosition] = useState(currentMeeting?.authorPosition || '실장');
+  const [formAuthorAffiliation, setFormAuthorAffiliation] = useState(currentMeeting?.authorAffiliation || '기술본부 마감팀');
   const [formAttendeesInternal, setFormAttendeesInternal] = useState(currentMeeting?.attendeesInternal.join(', ') || '');
   const [formAttendeesExternal, setFormAttendeesExternal] = useState(currentMeeting?.attendeesExternal.join(', ') || '');
   const [formTranscript, setFormTranscript] = useState(currentMeeting?.rawTranscript || '');
+  const [formNotesAndInstructions, setFormNotesAndInstructions] = useState(currentMeeting?.notesAndInstructions || '');
   const [formSummary, setFormSummary] = useState(currentMeeting?.summary || '');
   const [formDecisions, setFormDecisions] = useState(currentMeeting?.decisions.join('\n') || '');
   const [formAttachedFile, setFormAttachedFile] = useState(currentMeeting?.attachedFileName || '');
@@ -406,10 +435,18 @@ export const MinutesView: React.FC = () => {
       setFormTitle(currentMeeting.title);
       setFormType(currentMeeting.type);
       setFormDate(currentMeeting.meetingDate);
+      setFormStartTime(currentMeeting.startTime || '14:00');
+      setFormEndTime(currentMeeting.endTime || '15:30');
       setFormLocation(currentMeeting.location);
+      setFormClientName(currentMeeting.clientName || '');
+      setFormReportingDept(currentMeeting.reportingDept || '기술본부 마감팀');
+      setFormReferenceDept(currentMeeting.referenceDept || '개발 TF');
+      setFormAuthorPosition(currentMeeting.authorPosition || '실장');
+      setFormAuthorAffiliation(currentMeeting.authorAffiliation || '기술본부 마감팀');
       setFormAttendeesInternal(currentMeeting.attendeesInternal.join(', '));
       setFormAttendeesExternal(currentMeeting.attendeesExternal.join(', '));
       setFormTranscript(currentMeeting.rawTranscript);
+      setFormNotesAndInstructions(currentMeeting.notesAndInstructions || '');
       setFormSummary(currentMeeting.summary);
       setFormDecisions(currentMeeting.decisions.join('\n'));
       setFormAttachedFile(currentMeeting.attachedFileName || '');
@@ -494,10 +531,18 @@ export const MinutesView: React.FC = () => {
       title: formTitle,
       type: formType,
       meetingDate: formDate,
+      startTime: formStartTime,
+      endTime: formEndTime,
       location: formLocation,
+      clientName: formClientName,
+      reportingDept: formReportingDept,
+      referenceDept: formReferenceDept,
+      authorPosition: formAuthorPosition,
+      authorAffiliation: formAuthorAffiliation,
       attendeesInternal: formAttendeesInternal.split(',').map((s) => s.trim()).filter(Boolean),
       attendeesExternal: formAttendeesExternal.split(',').map((s) => s.trim()).filter(Boolean),
       rawTranscript: formTranscript,
+      notesAndInstructions: formNotesAndInstructions,
       attachedFileName: formAttachedFile,
       summary: formSummary,
       decisions: formDecisions.split('\n').map((s) => s.trim()).filter(Boolean),
@@ -599,13 +644,21 @@ export const MinutesView: React.FC = () => {
       projectCode: proj.code || proj.id,
       type: '착수회의',
       title: `${proj.name} 착수회의 및 공종별 기준 협의`,
-      meetingDate: new Date().toISOString().slice(0, 16),
-      location: '기술본부 대회의실',
+      meetingDate: new Date().toISOString().slice(0, 10),
+      startTime: '14:00',
+      endTime: '15:30',
+      location: '컨코스트 본사 4층 대회의실',
+      clientName: proj.client || '발주처',
+      reportingDept: '기술본부 마감팀',
+      referenceDept: '개발 TF',
       department: proj.department || '마감팀',
-      author: currentUser ? `${currentUser.name} (${currentUser.position || '실장'})` : '조한빈 실장',
-      attendeesInternal: ['조한빈 실장(PM)', '원종수 수석', '성대용 수석'],
-      attendeesExternal: ['삼성물산 견적팀'],
+      author: currentUser?.name || '조한빈',
+      authorPosition: currentUser?.position || '실장',
+      authorAffiliation: '기술본부 마감팀',
+      attendeesInternal: ['조한빈 실장(PM)', '성대용 수석', '원종수 수석'],
+      attendeesExternal: ['발주처 담당자'],
       rawTranscript: '',
+      notesAndInstructions: '',
       summary: '',
       decisions: [],
       actionItems: [],
@@ -621,48 +674,178 @@ export const MinutesView: React.FC = () => {
     setCurrentMeetingId(newMeeting.id);
   };
 
-  // 엑셀 내보내기 (.xlsx)
+  // 엑셀 내보내기 (.xlsx) - [회사 공식 회의록 양식 100% 동일 좌표 생성]
   const handleExportExcel = () => {
     if (!currentMeeting) return;
 
-    // 시트 1: 회의 기본정보 및 요약
-    const summaryData = [
-      { 구분: '문서번호', 내용: `CC-MIN-${currentMeeting.projectCode}` },
-      { 구분: '프로젝트 코드', 내용: currentMeeting.projectCode },
-      { 구분: '프로젝트명', 내용: currentMeeting.projectName },
-      { 구분: '회의명', 내용: currentMeeting.title },
-      { 구분: '회의유형', 내용: currentMeeting.type },
-      { 구분: '회의일시', 내용: currentMeeting.meetingDate },
-      { 구분: '회의장소', 내용: currentMeeting.location },
-      { 구분: '작성자', 내용: currentMeeting.author },
-      { 구분: '내부 참석자', 내용: currentMeeting.attendeesInternal.join(', ') },
-      { 구분: '외부 참석자', 내용: currentMeeting.attendeesExternal.join(', ') },
-      { 구분: '핵심 요약 (Summary)', 내용: currentMeeting.summary },
-      { 구분: '주요 결정사항 (Decisions)', 내용: currentMeeting.decisions.join(' | ') },
-      { 구분: '결재상태', 내용: currentMeeting.directorApproved ? '기술본부장 최종승인' : currentMeeting.pmApproved ? 'PM승인' : '작성중' }
-    ];
+    // AOA (Array of Arrays) 매트릭스 생성: Row 1 ~ Row 44
+    // 엑셀 행 번호: 1-indexed (Row 1은 인덱스 0, Row 44는 인덱스 43)
+    // 컬럼: A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7
+    const rows: any[][] = [];
+    for (let r = 0; r < 45; r++) {
+      rows.push(new Array(9).fill(''));
+    }
 
-    // 시트 2: 공종별 실행 과제 (Action Items)
-    const actionRows = currentMeeting.actionItems.map((item, idx) => ({
-      No: idx + 1,
-      상태: item.status,
-      공종: item.roleName,
-      '실행 과제 (Action Item)': item.title,
-      담당자: item.assigneeName,
-      완료기한: item.dueDate
-    }));
+    // Row 2: 대제목
+    rows[1][2] = '회   의   록';
+
+    // Row 4: 작성자
+    rows[3][1] = '작 성 자';
+    rows[3][2] = formAuthorAffiliation || currentMeeting.authorAffiliation || '기술본부 마감팀';
+    rows[3][4] = formAuthorPosition || currentMeeting.authorPosition || '실장';
+    rows[3][6] = currentMeeting.author || '조한빈';
+
+    // Row 5: 회의일시
+    rows[4][1] = '회의일시';
+    rows[4][2] = formDate.slice(0, 10).replace(/-/g, '.');
+    rows[4][4] = '시 간';
+    rows[4][5] = formStartTime || '14:00';
+    rows[4][6] = '~';
+    rows[4][7] = formEndTime || '15:30';
+
+    // Row 6: 회의장소
+    rows[5][1] = '회의장소';
+    rows[5][2] = formLocation || currentMeeting.location || '컨코스트 본사 대회의실';
+
+    // Row 7: 거래처명
+    rows[6][1] = '거 래 처 명';
+    rows[6][2] = formClientName || currentMeeting.clientName || '삼성물산(주)';
+
+    // Row 8: 보고부서
+    rows[7][1] = '보 고 부 서';
+    rows[7][2] = formReportingDept || currentMeeting.reportingDept || '기술본부 마감팀';
+
+    // Row 9: 참조부서
+    rows[8][1] = '참 조 부 서';
+    rows[8][2] = formReferenceDept || currentMeeting.referenceDept || '개발 TF';
+
+    // Row 10: 참석자 (컨코스트)
+    rows[9][1] = '참석자 (컨코스트)';
+    rows[9][2] = formAttendeesInternal || currentMeeting.attendeesInternal.join(', ');
+
+    // Row 11: 참석자 (거 래 처)
+    rows[10][1] = '참석자 (거 래 처)';
+    rows[10][2] = formAttendeesExternal || currentMeeting.attendeesExternal.join(', ');
+
+    // Row 13: 회의명
+    rows[12][1] = '회  의  명';
+    rows[12][2] = formTitle || currentMeeting.title;
+
+    // Row 15: 첨부파일
+    rows[14][1] = '첨 부 파 일';
+    rows[14][2] = formAttachedFile || currentMeeting.attachedFileName || '없음';
+
+    // Row 16: 회의내용 및 지시사항 헤더
+    rows[15][1] = '회의내용 및 지시사항';
+
+    // Row 17 ~ Row 43: 본문 내용 줄별 분할 삽입
+    // 본문 내용 우선순위: 1) 작성된 notesAndInstructions, 2) 요약 및 결정사항, 3) rawTranscript
+    let bodyLines: string[] = [];
+    if (formNotesAndInstructions && formNotesAndInstructions.trim()) {
+      bodyLines = formNotesAndInstructions.split('\n').map((l) => l.trim()).filter(Boolean);
+    } else {
+      if (formSummary) {
+        bodyLines.push('[핵심 요약]');
+        formSummary.split('\n').forEach((l) => l.trim() && bodyLines.push(`- ${l.trim()}`));
+      }
+      if (formDecisions) {
+        bodyLines.push('');
+        bodyLines.push('[주요 결정사항]');
+        formDecisions.split('\n').forEach((l) => l.trim() && bodyLines.push(`✓ ${l.trim()}`));
+      }
+      if (currentMeeting.actionItems && currentMeeting.actionItems.length > 0) {
+        bodyLines.push('');
+        bodyLines.push('[공종별 실행 과제 (Action Items)]');
+        currentMeeting.actionItems.forEach((act, idx) => {
+          bodyLines.push(`${idx + 1}. [${act.roleName}] ${act.title} (담당: ${act.assigneeName}, 기한: ${act.dueDate}, 상태: ${act.status})`);
+        });
+      }
+      if (bodyLines.length === 0 && formTranscript) {
+        bodyLines = formTranscript.split('\n').map((l) => l.trim()).filter(Boolean);
+      }
+    }
+
+    // Row 17부터 최대 Row 43까지 본문 채우기 (27개 행)
+    for (let i = 0; i < 27; i++) {
+      rows[16 + i][1] = bodyLines[i] || '';
+    }
+
+    // Row 44: 푸터
+    rows[43][1] = '※거래처 명함은 PDF파일로 업로드';
 
     const wb = XLSX.utils.book_new();
-    const wsSummary = XLSX.utils.json_to_sheet(summaryData);
-    const wsActions = XLSX.utils.json_to_sheet(actionRows);
+    const ws = XLSX.utils.aoa_to_sheet(rows);
 
-    XLSX.utils.book_append_sheet(wb, wsSummary, '회의개요');
-    XLSX.utils.book_append_sheet(wb, wsActions, '공종별실행과제');
+    // 컬럼 너비 설정 (A열: 3, B열: 18, C열: 22, D열: 10, E열: 10, F열: 10, G열: 12, H열: 12)
+    ws['!cols'] = [
+      { wch: 3 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 12 }
+    ];
 
-    XLSX.writeFile(wb, `CONCOST_회의록_${currentMeeting.projectCode}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    // 셀 병합(Merges) 정의
+    ws['!merges'] = [
+      // Row 2: 대제목 C2:F2
+      { s: { r: 1, c: 2 }, e: { r: 1, c: 5 } },
+      // Row 4: 작성자 소속 C4:D4, 직급 E4:F4, 성명 G4:H4
+      { s: { r: 3, c: 2 }, e: { r: 3, c: 3 } },
+      { s: { r: 3, c: 4 }, e: { r: 3, c: 5 } },
+      { s: { r: 3, c: 6 }, e: { r: 3, c: 7 } },
+      // Row 5: 회의일시 C5:D5
+      { s: { r: 4, c: 2 }, e: { r: 4, c: 3 } },
+      // Row 6: 회의장소 C6:H6
+      { s: { r: 5, c: 2 }, e: { r: 5, c: 7 } },
+      // Row 7: 거래처명 C7:H7
+      { s: { r: 6, c: 2 }, e: { r: 6, c: 7 } },
+      // Row 8: 보고부서 C8:H8
+      { s: { r: 7, c: 2 }, e: { r: 7, c: 7 } },
+      // Row 9: 참조부서 C9:H9
+      { s: { r: 8, c: 2 }, e: { r: 8, c: 7 } },
+      // Row 10: 참석자(컨코스트) C10:H10
+      { s: { r: 9, c: 2 }, e: { r: 9, c: 7 } },
+      // Row 11: 참석자(거래처) C11:H11
+      { s: { r: 10, c: 2 }, e: { r: 10, c: 7 } },
+      // Row 13: 회의명 C13:H13
+      { s: { r: 12, c: 2 }, e: { r: 12, c: 7 } },
+      // Row 15: 첨부파일 C15:H15
+      { s: { r: 14, c: 2 }, e: { r: 14, c: 7 } },
+      // Row 16: 회의내용 및 지시사항 헤더 B16:H16
+      { s: { r: 15, c: 1 }, e: { r: 15, c: 7 } },
+      // Row 44: 푸터 B44:H44
+      { s: { r: 43, c: 1 }, e: { r: 43, c: 7 } }
+    ];
+
+    // Row 17 ~ Row 43 각각 B열~H열 병합
+    for (let r = 16; r < 43; r++) {
+      ws['!merges'].push({ s: { r, c: 1 }, e: { r, c: 7 } });
+    }
+
+    XLSX.utils.book_append_sheet(wb, ws, '회의록');
+
+    // 보너스 시트: 공종별 실행 과제 (Action Items) 목록 테이블
+    if (currentMeeting.actionItems && currentMeeting.actionItems.length > 0) {
+      const actionRows = currentMeeting.actionItems.map((item, idx) => ({
+        No: idx + 1,
+        상태: item.status,
+        공종: item.roleName,
+        '실행 과제 (Action Item)': item.title,
+        담당자: item.assigneeName,
+        완료기한: item.dueDate
+      }));
+      const wsActions = XLSX.utils.json_to_sheet(actionRows);
+      XLSX.utils.book_append_sheet(wb, wsActions, '공종별실행과제');
+    }
+
+    const safeProjCode = (currentMeeting.projectCode || 'PROJECT').replace(/[^a-zA-Z0-9_-]/g, '');
+    XLSX.writeFile(wb, `회의록_${safeProjCode}_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
-  // 엑셀 가져오기 (.xlsx)
+  // 엑셀 가져오기 (.xlsx) - [회사 공식 서식 셀 좌표 기반 100% 자동 파싱 및 AI 연동]
   const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !currentMeeting) return;
@@ -672,10 +855,104 @@ export const MinutesView: React.FC = () => {
       try {
         const data = new Uint8Array(event.target?.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
 
-        // Action Items 시트 탐색
-        const actionSheetName = wb.SheetNames.find((name) => name.includes('실행') || name.includes('과제') || name.includes('Action')) || wb.SheetNames[1];
-        if (actionSheetName) {
+        if (!sheet) {
+          alert('엑셀 시트를 찾을 수 없습니다.');
+          return;
+        }
+
+        // 셀 값 읽기 헬퍼 함수
+        const getVal = (cellAddr: string) => {
+          const cell = sheet[cellAddr];
+          return cell && cell.v !== undefined ? String(cell.v).trim() : '';
+        };
+
+        // 공식 서식 셀 파싱
+        const parsedAffiliation = getVal('C4');
+        const parsedPosition = getVal('E4');
+        const parsedAuthor = getVal('G4');
+        const parsedDate = getVal('C5');
+        const parsedStartTime = getVal('F5');
+        const parsedEndTime = getVal('H5');
+        const parsedLocation = getVal('C6');
+        const parsedClientName = getVal('C7');
+        const parsedReportingDept = getVal('C8');
+        const parsedReferenceDept = getVal('C9');
+        const parsedAttendeesInternal = getVal('C10');
+        const parsedAttendeesExternal = getVal('C11');
+        const parsedTitle = getVal('C13');
+        const parsedAttached = getVal('C15');
+
+        // Row 17 ~ 43 본문 텍스트 추출
+        const parsedLines: string[] = [];
+        for (let r = 17; r <= 43; r++) {
+          const line = getVal(`B${r}`) || getVal(`C${r}`);
+          if (line && !line.startsWith('※')) {
+            parsedLines.push(line);
+          }
+        }
+        const fullBodyText = parsedLines.join('\n');
+
+        // 폼 상태에 즉시 반영
+        if (parsedTitle) setFormTitle(parsedTitle);
+        if (parsedAffiliation) setFormAuthorAffiliation(parsedAffiliation);
+        if (parsedPosition) setFormAuthorPosition(parsedPosition);
+        if (parsedDate) setFormDate(parsedDate);
+        if (parsedStartTime) setFormStartTime(parsedStartTime);
+        if (parsedEndTime) setFormEndTime(parsedEndTime);
+        if (parsedLocation) setFormLocation(parsedLocation);
+        if (parsedClientName) setFormClientName(parsedClientName);
+        if (parsedReportingDept) setFormReportingDept(parsedReportingDept);
+        if (parsedReferenceDept) setFormReferenceDept(parsedReferenceDept);
+        if (parsedAttendeesInternal) setFormAttendeesInternal(parsedAttendeesInternal);
+        if (parsedAttendeesExternal) setFormAttendeesExternal(parsedAttendeesExternal);
+        if (parsedAttached) setFormAttachedFile(parsedAttached);
+
+        if (parsedAuthor) {
+          setMeetings((prev) =>
+            prev.map((m) =>
+              m.id === currentMeeting.id
+                ? {
+                    ...m,
+                    author: parsedAuthor,
+                    authorPosition: parsedPosition || m.authorPosition,
+                    authorAffiliation: parsedAffiliation || m.authorAffiliation
+                  }
+                : m
+            )
+          );
+        }
+
+        if (fullBodyText) {
+          setFormNotesAndInstructions(fullBodyText);
+          setFormTranscript(fullBodyText);
+
+          // ✨ AI 자동 분석 및 요약 엔진 즉시 연동!
+          const aiResult = extractAiMeetingSummary(fullBodyText, currentMeeting.projectName || '');
+          setFormSummary(aiResult.summary);
+          setFormDecisions(aiResult.decisions.join('\n'));
+
+          if (aiResult.actionItems.length > 0) {
+            setMeetings((prev) =>
+              prev.map((m) =>
+                m.id === currentMeeting.id
+                  ? {
+                      ...m,
+                      summary: aiResult.summary,
+                      decisions: aiResult.decisions,
+                      actionItems: aiResult.actionItems,
+                      updatedAt: new Date().toLocaleString('ko-KR')
+                    }
+                  : m
+              )
+            );
+          }
+        }
+
+        // 만약 '공종별실행과제' 시트가 있으면 액션아이템 추가 파싱
+        const actionSheetName = wb.SheetNames.find((name) => name.includes('실행') || name.includes('과제') || name.includes('Action'));
+        if (actionSheetName && actionSheetName !== wb.SheetNames[0]) {
           const actionRows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[actionSheetName]);
           const newActions: ActionItem[] = actionRows.map((r, idx) => ({
             id: `act-imported-${Date.now()}-${idx}`,
@@ -693,11 +970,13 @@ export const MinutesView: React.FC = () => {
                 : m
             )
           );
-          alert(`엑셀 파일에서 ${newActions.length}건의 실행 과제(Action Items)를 성공적으로 가져왔습니다.`);
         }
+
+        setAiToast('📥 공식 회의록 엑셀 양식 데이터 파싱 및 AI 자동 정리가 100% 성공적으로 완료되었습니다.');
+        setTimeout(() => setAiToast(null), 5000);
       } catch (err) {
         console.error(err);
-        alert('엑셀 파일을 읽는 중 오류가 발생했습니다.');
+        alert('엑셀 파일을 읽는 중 오류가 발생했습니다. 파일 형식을 확인해 주세요.');
       }
     };
     reader.readAsArrayBuffer(file);
@@ -811,12 +1090,12 @@ export const MinutesView: React.FC = () => {
         {/* ======================= 좌측 패널 (lg:col-span-6) ======================= */}
         <div className="lg:col-span-6 space-y-4">
           
-          {/* 카드 A: 회의 기본 정보 및 메타데이터 */}
+          {/* 카드 A: 회의 기본 정보 및 공식 메타데이터 */}
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 text-white space-y-3 shadow-md">
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
               <span className="text-xs font-black text-blue-400 flex items-center gap-1.5">
                 <Building2 size={14} />
-                <span>1. 회의 기본 스펙 설정</span>
+                <span>1. 공식 회의록 기본 스펙 (회사 서식 1:1 대응)</span>
               </span>
               <span className="text-[10px] text-slate-400 font-mono">
                 {currentMeeting?.projectCode}
@@ -824,7 +1103,7 @@ export const MinutesView: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-300 mb-1">회의 제목</label>
+              <label className="block text-[11px] font-bold text-slate-300 mb-1">회 의 명 (제목)</label>
               <input
                 type="text"
                 value={formTitle}
@@ -834,32 +1113,71 @@ export const MinutesView: React.FC = () => {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
+            {/* 작성자 정보 (소속, 직급, 성명) */}
+            <div className="grid grid-cols-3 gap-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
               <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">회의 유형</label>
-                <select
-                  value={formType}
-                  onChange={(e) => setFormType(e.target.value as MeetingType)}
-                  className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold"
-                >
-                  <option value="착수회의">착수회의 (Kick-off)</option>
-                  <option value="공정회의">공정/진도회의</option>
-                  <option value="도면질의협의">도면질의협의</option>
-                  <option value="내역검토회">내역/산출 검토회</option>
-                  <option value="긴급이슈">긴급이슈 회의</option>
-                </select>
+                <label className="block text-[10px] font-bold text-slate-400 mb-1">작성자 소속</label>
+                <input
+                  type="text"
+                  value={formAuthorAffiliation}
+                  onChange={(e) => setFormAuthorAffiliation(e.target.value)}
+                  placeholder="기술본부 마감팀"
+                  className="w-full text-xs p-2 rounded-lg bg-slate-900 border border-slate-700 text-white"
+                />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">회의 일시</label>
+                <label className="block text-[10px] font-bold text-slate-400 mb-1">작성자 직급</label>
                 <input
-                  type="datetime-local"
-                  value={formDate}
+                  type="text"
+                  value={formAuthorPosition}
+                  onChange={(e) => setFormAuthorPosition(e.target.value)}
+                  placeholder="실장 / 수석"
+                  className="w-full text-xs p-2 rounded-lg bg-slate-900 border border-slate-700 text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 mb-1">작성자 성명</label>
+                <input
+                  type="text"
+                  value={currentMeeting?.author || '조한빈'}
+                  disabled
+                  className="w-full text-xs p-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 font-bold"
+                />
+              </div>
+            </div>
+
+            {/* 일시 및 시간 */}
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">회의 일자</label>
+                <input
+                  type="date"
+                  value={formDate.slice(0, 10)}
                   onChange={(e) => setFormDate(e.target.value)}
+                  className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">시작 시간</label>
+                <input
+                  type="time"
+                  value={formStartTime}
+                  onChange={(e) => setFormStartTime(e.target.value)}
+                  className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">종료 시간</label>
+                <input
+                  type="time"
+                  value={formEndTime}
+                  onChange={(e) => setFormEndTime(e.target.value)}
                   className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono"
                 />
               </div>
             </div>
 
+            {/* 회의장소 및 거래처명 */}
             <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="block text-[11px] font-bold text-slate-300 mb-1">회의 장소</label>
@@ -867,34 +1185,60 @@ export const MinutesView: React.FC = () => {
                   type="text"
                   value={formLocation}
                   onChange={(e) => setFormLocation(e.target.value)}
-                  placeholder="대회의실 / 화상연결"
+                  placeholder="컨코스트 본사 4층 대회의실 / 화상"
                   className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">작성자</label>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">거 래 처 명</label>
                 <input
                   type="text"
-                  value={currentMeeting?.author || '조한빈 실장'}
-                  disabled
-                  className="w-full text-xs p-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-300"
+                  value={formClientName}
+                  onChange={(e) => setFormClientName(e.target.value)}
+                  placeholder="삼성물산(주)"
+                  className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white"
                 />
               </div>
             </div>
 
+            {/* 보고부서 및 참조부서 */}
             <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">사내 참석자 (쉼표 구분)</label>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">보 고 부 서</label>
                 <input
                   type="text"
-                  value={formAttendeesInternal}
-                  onChange={(e) => setFormAttendeesInternal(e.target.value)}
-                  placeholder="조한빈, 성대용, 원종수"
+                  value={formReportingDept}
+                  onChange={(e) => setFormReportingDept(e.target.value)}
+                  placeholder="기술본부 마감팀"
                   className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">발주처 참석자 (쉼표 구분)</label>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">참 조 부 서</label>
+                <input
+                  type="text"
+                  value={formReferenceDept}
+                  onChange={(e) => setFormReferenceDept(e.target.value)}
+                  placeholder="개발 TF"
+                  className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white"
+                />
+              </div>
+            </div>
+
+            {/* 참석자 */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">참석자 (컨코스트)</label>
+                <input
+                  type="text"
+                  value={formAttendeesInternal}
+                  onChange={(e) => setFormAttendeesInternal(e.target.value)}
+                  placeholder="조한빈 실장(PM), 성대용 수석, 원종수 수석"
+                  className="w-full text-xs p-2 rounded-xl bg-slate-950 border border-slate-700 text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">참석자 (거래처)</label>
                 <input
                   type="text"
                   value={formAttendeesExternal}
@@ -906,12 +1250,12 @@ export const MinutesView: React.FC = () => {
             </div>
           </div>
 
-          {/* 카드 B: 회의 자료 첨부 & 원문 대화록 + ✨ AI 자동 정리 기능 */}
+          {/* 카드 B: 회의내용 및 지시사항 + 대화록 첨부 & AI 자동정리 */}
           <div className="bg-gradient-to-br from-slate-900 via-indigo-950/40 to-slate-900 border-2 border-indigo-500/50 rounded-2xl p-4 text-white space-y-3 shadow-xl">
             <div className="flex items-center justify-between pb-2 border-b border-indigo-900/60">
               <span className="text-xs font-black text-indigo-300 flex items-center gap-1.5">
                 <Sparkles size={14} className="text-amber-400 animate-pulse" />
-                <span>2. 회의 자료 첨부 & AI 자동 정리 작성</span>
+                <span>2. 회의내용 및 지시사항 (공식 본문 & AI 자동 정리)</span>
               </span>
               <button
                 type="button"
@@ -919,7 +1263,7 @@ export const MinutesView: React.FC = () => {
                 className="text-[11px] font-bold text-indigo-300 hover:text-white flex items-center gap-1 bg-indigo-950 px-2.5 py-1 rounded-lg border border-indigo-800 transition cursor-pointer"
               >
                 <Paperclip size={12} />
-                <span>파일 첨부 (.txt, .docx 등)</span>
+                <span>회의자료 파일 첨부</span>
               </button>
             </div>
 
@@ -927,30 +1271,45 @@ export const MinutesView: React.FC = () => {
               <div className="bg-indigo-950/80 border border-indigo-800 px-3 py-1.5 rounded-xl text-xs text-indigo-200 flex items-center justify-between">
                 <span className="flex items-center gap-1.5 truncate">
                   <Paperclip size={12} className="text-amber-400" />
-                  <strong>첨부된 자료:</strong> {formAttachedFile}
+                  <strong>첨부파일:</strong> {formAttachedFile}
                 </span>
                 <button
                   type="button"
                   onClick={() => setFormAttachedFile('')}
-                  className="text-xs text-rose-400 hover:text-rose-300 font-bold ml-2"
+                  className="text-xs text-rose-400 hover:text-rose-300 font-bold ml-2 cursor-pointer"
                 >
                   제거
                 </button>
               </div>
             )}
 
+            {/* 공식 서식 본문: 회의내용 및 지시사항 직접 작성란 */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                회의내용 및 지시사항 (공식 엑셀 본문 Row 17~43)
+              </label>
+              <textarea
+                rows={6}
+                value={formNotesAndInstructions}
+                onChange={(e) => setFormNotesAndInstructions(e.target.value)}
+                placeholder="공식 회의록 본문에 들어갈 내용 및 지시사항을 줄바꿈 단위로 작성하세요. (아래 AI 자동 정리를 실행하면 자동으로도 채워집니다.)"
+                className="w-full text-xs font-mono p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none leading-relaxed"
+              />
+            </div>
+
+            {/* 대화록/원문 텍스트 */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-[11px] font-bold text-slate-300">
-                  회의 원문 대화록 / 녹음 녹취록 텍스트
+                  원문 녹취록 / 메신저 대화록 (AI 요약용)
                 </label>
-                <span className="text-[10px] text-slate-400">텍스트 입력 또는 파일 첨부</span>
+                <span className="text-[10px] text-slate-400">자유 텍스트 입력</span>
               </div>
               <textarea
-                rows={5}
+                rows={4}
                 value={formTranscript}
                 onChange={(e) => setFormTranscript(e.target.value)}
-                placeholder="회의에서 오간 대화 내용이나 회의 자료 텍스트를 자유롭게 붙여넣으세요. 입력 후 아래 [✨ AI 자동 정리] 버튼을 누르면 핵심 요약, 주요 결정사항, 공종별 실행과제가 1초 만에 자동 생성됩니다."
+                placeholder="회의에서 오간 대화 내용이나 녹취록을 붙여넣으세요. 아래 [✨ AI 자동 정리]를 누르면 공식 서식 본문과 핵심 요약, 공종별 실행과제가 1초 만에 자동 생성됩니다."
                 className="w-full text-xs font-mono p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none leading-relaxed"
               />
             </div>
@@ -970,21 +1329,21 @@ export const MinutesView: React.FC = () => {
               ) : (
                 <>
                   <Sparkles size={16} className="text-amber-300 animate-pulse" />
-                  <span>✨ 회의 자료 기반 AI 자동 정리 및 서식 반영 (AI Summarize)</span>
+                  <span>✨ 회의 자료 기반 AI 자동 정리 및 공식 서식 반영 (AI Summarize)</span>
                 </>
               )}
             </button>
           </div>
 
-          {/* 카드 C: 수동 편집 (핵심 요약 & 주요 결정사항) */}
+          {/* 카드 C: 핵심 요약 & 주요 결정사항 수동 보정 */}
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 text-white space-y-3 shadow-md">
             <span className="text-xs font-black text-blue-400 flex items-center gap-1.5 pb-2 border-b border-slate-800">
               <FileText size={14} />
-              <span>3. 핵심 요약 & 주요 결정사항 수동 보정</span>
+              <span>3. 핵심 요약 & 주요 결정사항 보정</span>
             </span>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-300 mb-1">회의 핵심 요약 (Summary)</label>
+              <label className="block text-[11px] font-bold text-slate-300 mb-1">핵심 요약 (Summary)</label>
               <textarea
                 rows={3}
                 value={formSummary}
@@ -1080,21 +1439,19 @@ export const MinutesView: React.FC = () => {
 
         </div>
 
-        {/* ======================= 우측 패널 (lg:col-span-6): 클레임센터 표준 정식 회의록 미리보기 ======================= */}
+        {/* ======================= 우측 패널 (lg:col-span-6): 회사 공식 회의록 서식 1:1 완벽 재현 ======================= */}
         <div className="lg:col-span-6 sticky top-4">
-          <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-750 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-6 text-slate-900 dark:text-slate-100">
+          <div className="bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-700 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 text-slate-900 dark:text-slate-100">
             
-            {/* 회의록 A4 헤더 */}
-            <div className="border-b-2 border-slate-900 dark:border-white pb-4 flex items-start justify-between">
-              <div>
-                <span className="text-[10px] font-mono font-black text-blue-600 dark:text-blue-400 block mb-0.5">
-                  CC-MIN-{currentMeeting?.projectCode || 'TK-2026087'} · 공식 착수회의록
-                </span>
-                <h3 className="text-lg md:text-xl font-black text-slate-900 dark:text-white leading-tight">
-                  {formTitle || '프로젝트 착수회의록'}
-                </h3>
-              </div>
-              <span className={`text-[10px] font-black px-2.5 py-1 rounded-full shrink-0 border ${
+            {/* 공식 회의록 대제목 (C2 셀) */}
+            <div className="text-center border-b-2 border-slate-900 dark:border-white pb-3 flex items-center justify-between">
+              <span className="text-[10px] font-mono font-bold text-slate-400">
+                CC-MIN-{currentMeeting?.projectCode || 'PROJECT'}
+              </span>
+              <h2 className="text-xl sm:text-2xl font-black tracking-widest text-slate-900 dark:text-white">
+                회   의   록
+              </h2>
+              <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border ${
                 currentMeeting?.directorApproved
                   ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300'
                   : 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300'
@@ -1103,25 +1460,165 @@ export const MinutesView: React.FC = () => {
               </span>
             </div>
 
-            {/* 회의 개요 기본 테이블 */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-750 text-xs">
-              <table className="w-full border-collapse">
+            {/* 공식 회의록 메타데이터 표 (B4~H16 완전 일치) */}
+            <div className="overflow-hidden rounded-lg border-2 border-slate-700 text-xs">
+              <table className="w-full border-collapse border border-slate-700 text-left">
                 <tbody>
-                  <tr className="border-b border-slate-200 dark:border-slate-750">
-                    <td className="w-24 p-2 bg-slate-100 dark:bg-slate-800 font-bold text-slate-600 dark:text-slate-300">프로젝트명</td>
-                    <td className="p-2 font-bold">{currentMeeting?.projectName}</td>
+                  {/* Row 4: 작성자 */}
+                  <tr className="border-b border-slate-700">
+                    <th className="w-24 p-2 bg-slate-100 dark:bg-slate-800 font-extrabold text-slate-700 dark:text-slate-200 border-r border-slate-700 text-center">
+                      작 성 자
+                    </th>
+                    <td colSpan={5} className="p-2">
+                      <div className="flex items-center gap-4">
+                        <span><strong className="text-slate-500">소속:</strong> {formAuthorAffiliation}</span>
+                        <span><strong className="text-slate-500">직급:</strong> {formAuthorPosition}</span>
+                        <span><strong className="text-slate-500">성명:</strong> <span className="font-black text-blue-600 dark:text-blue-400">{currentMeeting?.author || '조한빈'}</span></span>
+                      </div>
+                    </td>
                   </tr>
-                  <tr className="border-b border-slate-200 dark:border-slate-750">
-                    <td className="p-2 bg-slate-100 dark:bg-slate-800 font-bold text-slate-600 dark:text-slate-300">회의일시/장소</td>
-                    <td className="p-2 font-mono">{formDate.replace('T', ' ')} · {formLocation}</td>
+
+                  {/* Row 5: 회의일시 */}
+                  <tr className="border-b border-slate-700">
+                    <th className="p-2 bg-slate-100 dark:bg-slate-800 font-extrabold text-slate-700 dark:text-slate-200 border-r border-slate-700 text-center">
+                      회의일시
+                    </th>
+                    <td colSpan={2} className="p-2 font-mono">
+                      {formDate.slice(0, 10).replace(/-/g, '.')}
+                    </td>
+                    <th className="w-16 p-2 bg-slate-100 dark:bg-slate-800 font-extrabold text-slate-700 dark:text-slate-200 border-x border-slate-700 text-center">
+                      시 간
+                    </th>
+                    <td colSpan={2} className="p-2 font-mono">
+                      {formStartTime} ~ {formEndTime}
+                    </td>
                   </tr>
-                  <tr className="border-b border-slate-200 dark:border-slate-750">
-                    <td className="p-2 bg-slate-100 dark:bg-slate-800 font-bold text-slate-600 dark:text-slate-300">사내 참석자</td>
-                    <td className="p-2">{formAttendeesInternal}</td>
+
+                  {/* Row 6: 회의장소 */}
+                  <tr className="border-b border-slate-700">
+                    <th className="p-2 bg-slate-100 dark:bg-slate-800 font-extrabold text-slate-700 dark:text-slate-200 border-r border-slate-700 text-center">
+                      회의장소
+                    </th>
+                    <td colSpan={5} className="p-2 font-medium">
+                      {formLocation}
+                    </td>
                   </tr>
+
+                  {/* Row 7: 거래처명 */}
+                  <tr className="border-b border-slate-700">
+                    <th className="p-2 bg-slate-100 dark:bg-slate-800 font-extrabold text-slate-700 dark:text-slate-200 border-r border-slate-700 text-center">
+                      거 래 처 명
+                    </th>
+                    <td colSpan={5} className="p-2 font-bold text-slate-800 dark:text-slate-100">
+                      {formClientName || currentMeeting?.clientName || '삼성물산(주)'}
+                    </td>
+                  </tr>
+
+                  {/* Row 8 & 9: 보고부서 / 참조부서 */}
+                  <tr className="border-b border-slate-700">
+                    <th className="p-2 bg-slate-100 dark:bg-slate-800 font-extrabold text-slate-700 dark:text-slate-200 border-r border-slate-700 text-center">
+                      보 고 부 서
+                    </th>
+                    <td colSpan={2} className="p-2 font-medium border-r border-slate-700">
+                      {formReportingDept}
+                    </td>
+                    <th className="p-2 bg-slate-100 dark:bg-slate-800 font-extrabold text-slate-700 dark:text-slate-200 border-r border-slate-700 text-center">
+                      참 조 부 서
+                    </th>
+                    <td colSpan={2} className="p-2 font-medium">
+                      {formReferenceDept}
+                    </td>
+                  </tr>
+
+                  {/* Row 10: 참석자 (컨코스트) */}
+                  <tr className="border-b border-slate-700">
+                    <th className="p-2 bg-slate-100 dark:bg-slate-800 font-extrabold text-slate-700 dark:text-slate-200 border-r border-slate-700 text-center">
+                      참석자 (컨코스트)
+                    </th>
+                    <td colSpan={5} className="p-2">
+                      {formAttendeesInternal}
+                    </td>
+                  </tr>
+
+                  {/* Row 11: 참석자 (거 래 처) */}
+                  <tr className="border-b border-slate-700">
+                    <th className="p-2 bg-slate-100 dark:bg-slate-800 font-extrabold text-slate-700 dark:text-slate-200 border-r border-slate-700 text-center">
+                      참석자 (거 래 처)
+                    </th>
+                    <td colSpan={5} className="p-2">
+                      {formAttendeesExternal}
+                    </td>
+                  </tr>
+
+                  {/* Row 13: 회의명 */}
+                  <tr className="border-b border-slate-700">
+                    <th className="p-2 bg-slate-100 dark:bg-slate-800 font-extrabold text-slate-700 dark:text-slate-200 border-r border-slate-700 text-center">
+                      회  의  명
+                    </th>
+                    <td colSpan={5} className="p-2 font-black text-blue-700 dark:text-blue-300">
+                      {formTitle}
+                    </td>
+                  </tr>
+
+                  {/* Row 15: 첨부파일 */}
+                  <tr className="border-b border-slate-700">
+                    <th className="p-2 bg-slate-100 dark:bg-slate-800 font-extrabold text-slate-700 dark:text-slate-200 border-r border-slate-700 text-center">
+                      첨 부 파 일
+                    </th>
+                    <td colSpan={5} className="p-2 text-slate-500 font-mono">
+                      {formAttachedFile || '없음'}
+                    </td>
+                  </tr>
+
+                  {/* Row 16: 회의내용 및 지시사항 헤더 */}
+                  <tr className="bg-slate-200 dark:bg-slate-800 border-b border-slate-700">
+                    <th colSpan={6} className="p-2.5 font-black text-center text-slate-800 dark:text-slate-100 tracking-wider">
+                      회의내용 및 지시사항
+                    </th>
+                  </tr>
+
+                  {/* Row 17 ~ 43: 본문 내용 (줄글 및 AI 분석결과) */}
                   <tr>
-                    <td className="p-2 bg-slate-100 dark:bg-slate-800 font-bold text-slate-600 dark:text-slate-300">발주처 참석자</td>
-                    <td className="p-2">{formAttendeesExternal}</td>
+                    <td colSpan={6} className="p-4 bg-white dark:bg-slate-900 leading-relaxed font-sans text-xs space-y-3 min-h-[220px]">
+                      {formNotesAndInstructions ? (
+                        <div className="whitespace-pre-line text-slate-800 dark:text-slate-200">
+                          {formNotesAndInstructions}
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {formSummary && (
+                            <div>
+                              <strong className="text-blue-600 dark:text-blue-400 block mb-1">[핵심 요약]</strong>
+                              <p className="whitespace-pre-line text-slate-700 dark:text-slate-300 pl-2 border-l-2 border-blue-400">
+                                {formSummary}
+                              </p>
+                            </div>
+                          )}
+                          {formDecisions && (
+                            <div>
+                              <strong className="text-purple-600 dark:text-purple-400 block mb-1">[주요 결정사항]</strong>
+                              <ul className="list-disc list-inside space-y-0.5 text-slate-700 dark:text-slate-300 pl-2">
+                                {formDecisions.split('\n').filter(Boolean).map((d, i) => (
+                                  <li key={i}>{d}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {!formSummary && !formDecisions && (
+                            <p className="text-slate-400 italic text-center py-6">
+                              회의내용을 직접 입력하거나 대화록을 붙여넣은 뒤 [✨ AI 자동 정리]를 누르면 공식 서식 본문이 완성됩니다.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+
+                  {/* Row 44: 푸터 주의사항 안내문 */}
+                  <tr className="bg-slate-50 dark:bg-slate-800/60 border-t border-slate-700 text-center">
+                    <td colSpan={6} className="p-2 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                      ※거래처 명함은 PDF파일로 업로드
+                    </td>
                   </tr>
                 </tbody>
               </table>

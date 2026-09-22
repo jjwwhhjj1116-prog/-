@@ -15,6 +15,33 @@ export interface WorkLogItem {
   notes: string; // 특이사항/이슈
 }
 
+export interface ApprovalSign {
+  approved: boolean;
+  name: string;
+  signedAt?: string;
+}
+
+export const TEAM_APPROVAL_LINES: Record<
+  Department,
+  {
+    leader: { name: string; title: string };
+    chief: { name: string; title: string };
+  }
+> = {
+  마감팀: {
+    leader: { name: '김재헌 팀장', title: '팀장' },
+    chief: { name: '조한빈 실장', title: '실장' }
+  },
+  구조팀: {
+    leader: { name: '신동헌 팀장', title: '팀장' },
+    chief: { name: '장범선 실장', title: '실장' }
+  },
+  '토목&조경팀': {
+    leader: { name: '김재헌 팀장', title: '팀장' },
+    chief: { name: '조한빈 실장', title: '실장' }
+  }
+};
+
 export interface DailyWorkLog {
   id: string;
   date: string; // YYYY-MM-DD
@@ -24,23 +51,20 @@ export interface DailyWorkLog {
   department: Department;
   items: WorkLogItem[];
   overallNotes: string;
-  // 결재 진행 상태: 작성중(DRAFT) -> 주관PM대기(SUBMITTED_PM) -> 팀별실장대기(APPROVED_PM) -> 최종결재완료(APPROVED_FINAL)
-  approvalStatus: 'DRAFT' | 'SUBMITTED_PM' | 'APPROVED_PM' | 'APPROVED_FINAL';
+  // 2단 결재 상태: 작성중(DRAFT) -> 1차 팀장검토대기(SUBMITTED_LEADER) -> 2차 실장최종승인(APPROVED_FINAL)
+  approvalStatus: 'DRAFT' | 'SUBMITTED_LEADER' | 'APPROVED_FINAL' | 'SUBMITTED_PM' | 'APPROVED_PM';
   authorSignature: {
     signed: boolean;
     name: string;
     signedAt?: string;
   };
-  pmApproval: {
-    approved: boolean;
-    name: string;
-    signedAt?: string;
-  };
-  teamLeaderApproval: {
-    approved: boolean;
-    name: string;
-    signedAt?: string;
-  };
+  // 1차 팀장 검토 (마감팀: 김재헌 팀장, 구조팀: 신동헌 팀장)
+  leaderReview: ApprovalSign;
+  // 2차 실장 최종 승인 (마감팀: 조한빈 실장, 구조팀: 장범선 실장)
+  chiefApproval: ApprovalSign;
+  // 레거시 호환 필드
+  pmApproval?: ApprovalSign;
+  teamLeaderApproval?: ApprovalSign;
   createdAt: string;
   updatedAt: string;
 }
@@ -91,14 +115,24 @@ const INITIAL_WORKLOGS: DailyWorkLog[] = [
       name: '조한빈 실장',
       signedAt: '2026-09-21 17:30'
     },
+    leaderReview: {
+      approved: true,
+      name: '김재헌 팀장',
+      signedAt: '2026-09-21 17:40'
+    },
+    chiefApproval: {
+      approved: true,
+      name: '조한빈 실장',
+      signedAt: '2026-09-21 18:00'
+    },
     pmApproval: {
       approved: true,
-      name: '조한빈 PM',
+      name: '김재헌 팀장',
       signedAt: '2026-09-21 17:40'
     },
     teamLeaderApproval: {
       approved: true,
-      name: '마감팀 조한빈 실장',
+      name: '조한빈 실장',
       signedAt: '2026-09-21 18:00'
     },
     createdAt: '2026-09-21 17:00',
@@ -140,19 +174,27 @@ const INITIAL_WORKLOGS: DailyWorkLog[] = [
       }
     ],
     overallNotes: '조적 공종 원종수 수석님과 2인 분할 산출 원활히 진행 중. 내역 공종 사전 준비 완료.',
-    approvalStatus: 'SUBMITTED_PM',
+    approvalStatus: 'SUBMITTED_LEADER',
     authorSignature: {
       signed: true,
       name: '성대용 수석',
       signedAt: '2026-09-21 17:15'
     },
+    leaderReview: {
+      approved: false,
+      name: '김재헌 팀장'
+    },
+    chiefApproval: {
+      approved: false,
+      name: '조한빈 실장'
+    },
     pmApproval: {
       approved: false,
-      name: '조한빈 PM'
+      name: '김재헌 팀장'
     },
     teamLeaderApproval: {
       approved: false,
-      name: '마감팀 조한빈 실장'
+      name: '조한빈 실장'
     },
     createdAt: '2026-09-21 17:15',
     updatedAt: '2026-09-21 17:15'
@@ -165,7 +207,15 @@ const loadInitialWorkLogs = (): DailyWorkLog[] => {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return parsed.map((item: any) => {
+          const dept = (item.department || '마감팀') as Department;
+          const line = TEAM_APPROVAL_LINES[dept] || TEAM_APPROVAL_LINES.마감팀;
+          return {
+            ...item,
+            leaderReview: item.leaderReview || item.pmApproval || { approved: false, name: line.leader.name },
+            chiefApproval: item.chiefApproval || item.teamLeaderApproval || { approved: false, name: line.chief.name }
+          };
+        });
       }
     }
   } catch (e) {
@@ -180,13 +230,15 @@ interface WorkLogState {
   setSelectedWorkLogId: (id: string | null) => void;
   saveWorkLog: (log: DailyWorkLog) => void;
   deleteWorkLog: (id: string) => void;
-  // 1단계: 작성자 -> 주관 PM에게 결재 상신
+  // 1단계: 작성자 -> 해당 팀 팀장에게 결재 상신 (마감팀: 김재헌 팀장, 구조팀: 신동헌 팀장)
+  submitApprovalToLeader: (id: string) => void;
+  // 2단계: 해당 팀 실장 최종 결재 승인 (마감팀: 조한빈 실장, 구조팀: 장범선 실장) -> 일정표에 실시간 반영 및 저장
+  approveFinalByChief: (id: string, chiefName?: string) => void;
+  // 이전 호환 메서드 (하위호환 유지)
   submitApprovalToPm: (id: string) => void;
-  // 2단계: 주관 PM 1차 승인 -> 팀별 실장에게 결재 전달
   approveByPm: (id: string, pmName: string) => void;
-  // 3단계: 팀별 실장 최종 결재 승인 -> 그날 일정이 프로젝트/팀별 일정표에 실제 반영 및 저장
   approveFinalByLeader: (id: string, leaderName: string) => void;
-  // 팀별 일정표에서 특정 인원의 오늘 업무 자동 추출
+  // 팀별 일정표에서 특정 인원의 오늘 업무 자동 추출 (정밀 연계)
   generateItemsFromSchedule: (userName: string, _dateStr: string, projects: Project[]) => WorkLogItem[];
 }
 
@@ -226,47 +278,38 @@ export const useWorkLogStore = create<WorkLogState>((set) => ({
     });
   },
 
-  // 1단계: 작성자가 결재 상신 누르면 주관 PM에게 전달
-  submitApprovalToPm: (id) => {
+  // 1단계: 작성자 결재 상신 -> 각 팀 팀장에게 전달 (마감팀: 김재헌 팀장, 구조팀: 신동헌 팀장)
+  submitApprovalToLeader: (id) => {
     const nowStr = new Date().toLocaleString('ko-KR');
     set((state) => {
       const updated = state.workLogs.map((w) => {
         if (w.id === id) {
+          const dept = (w.department || '마감팀') as Department;
+          const line = TEAM_APPROVAL_LINES[dept] || TEAM_APPROVAL_LINES.마감팀;
           return {
             ...w,
-            approvalStatus: 'SUBMITTED_PM' as const,
+            approvalStatus: 'SUBMITTED_LEADER' as const,
             authorSignature: {
               signed: true,
               name: `${w.userName} (${w.userPosition})`,
               signedAt: nowStr
             },
-            updatedAt: nowStr
-          };
-        }
-        return w;
-      });
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      } catch (e) {
-        console.error(e);
-      }
-      return { workLogs: updated };
-    });
-  },
-
-  // 2단계: 주관 PM 1차 결재 완료 -> 각 팀별 실장에게 전달
-  approveByPm: (id, pmName) => {
-    const nowStr = new Date().toLocaleString('ko-KR');
-    set((state) => {
-      const updated = state.workLogs.map((w) => {
-        if (w.id === id) {
-          return {
-            ...w,
-            approvalStatus: 'APPROVED_PM' as const,
+            leaderReview: {
+              approved: false,
+              name: line.leader.name
+            },
+            chiefApproval: {
+              approved: false,
+              name: line.chief.name
+            },
+            // 레거시 호환
             pmApproval: {
-              approved: true,
-              name: pmName,
-              signedAt: nowStr
+              approved: false,
+              name: line.leader.name
+            },
+            teamLeaderApproval: {
+              approved: false,
+              name: line.chief.name
             },
             updatedAt: nowStr
           };
@@ -282,13 +325,13 @@ export const useWorkLogStore = create<WorkLogState>((set) => ({
     });
   },
 
-  // 3단계: 팀별 실장 최종 결재 승인 -> 프로젝트 일정표 및 팀별 일정표에 실시간 정리 및 확정 저장
-  approveFinalByLeader: (id, leaderName) => {
+  // 2단계: 각 팀 실장 최종 결재 승인 (마감팀: 조한빈 실장, 구조팀: 장범선 실장)
+  // 최종 결재 시 해당 일정이 일정표에 그대로 정리되어 저장!
+  approveFinalByChief: (id, chiefName) => {
     const nowStr = new Date().toLocaleString('ko-KR');
     set((state) => {
       const targetLog = state.workLogs.find((w) => w.id === id);
-      
-      // 사용자 요구사항 핵심 반영: 최종결재가 되면 그날 일정이 일정표에 그대로 정리되어 저장
+
       if (targetLog) {
         const projectStore = useProjectStore.getState();
         targetLog.items.forEach((item) => {
@@ -315,12 +358,31 @@ export const useWorkLogStore = create<WorkLogState>((set) => ({
 
       const updated = state.workLogs.map((w) => {
         if (w.id === id) {
+          const dept = (w.department || '마감팀') as Department;
+          const line = TEAM_APPROVAL_LINES[dept] || TEAM_APPROVAL_LINES.마감팀;
+          const finalChiefName = chiefName || line.chief.name;
           return {
             ...w,
             approvalStatus: 'APPROVED_FINAL' as const,
+            leaderReview: {
+              approved: true,
+              name: line.leader.name,
+              signedAt: w.leaderReview?.signedAt || nowStr
+            },
+            chiefApproval: {
+              approved: true,
+              name: finalChiefName,
+              signedAt: nowStr
+            },
+            // 레거시 호환
+            pmApproval: {
+              approved: true,
+              name: line.leader.name,
+              signedAt: nowStr
+            },
             teamLeaderApproval: {
               approved: true,
-              name: leaderName,
+              name: finalChiefName,
               signedAt: nowStr
             },
             updatedAt: nowStr
@@ -338,12 +400,82 @@ export const useWorkLogStore = create<WorkLogState>((set) => ({
     });
   },
 
+  // 레거시 호환 래퍼
+  submitApprovalToPm: (id) => {
+    useWorkLogStore.getState().submitApprovalToLeader(id);
+  },
+  approveByPm: (id, pmName) => {
+    // 1차 팀장 검토 승인
+    const nowStr = new Date().toLocaleString('ko-KR');
+    set((state) => {
+      const updated = state.workLogs.map((w) => {
+        if (w.id === id) {
+          return {
+            ...w,
+            leaderReview: {
+              approved: true,
+              name: pmName,
+              signedAt: nowStr
+            },
+            pmApproval: {
+              approved: true,
+              name: pmName,
+              signedAt: nowStr
+            },
+            updatedAt: nowStr
+          };
+        }
+        return w;
+      });
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
+      }
+      return { workLogs: updated };
+    });
+  },
+  approveFinalByLeader: (id, leaderName) => {
+    useWorkLogStore.getState().approveFinalByChief(id, leaderName);
+  },
+
+  // 팀별 일정표에서 특정 인원의 오늘 업무 정밀 자동 추출
   generateItemsFromSchedule: (userName: string, _dateStr: string, projects: Project[]) => {
     const items: WorkLogItem[] = [];
+    const targetDate = _dateStr || new Date().toISOString().split('T')[0];
+
+    // 1. 이름 정규화 (예: '성대용 수석' -> '성대용')
+    const cleanName = userName.replace(/\s*(실장|팀장|수석|책임|선임|전임|사원|PM|본부장|이사|대표).*$/, '').trim();
+
+    // 2. 사내 인원 목록에서 ID 및 이름 매핑 셋 구축
+    const personnel = useProjectStore.getState().personnel || [];
+    const matchedPersons = personnel.filter(
+      (p) => p.name.includes(cleanName) || p.id === userName || p.name === userName
+    );
+    const candidateKeys = new Set<string>([
+      userName,
+      cleanName,
+      ...matchedPersons.map((p) => p.id),
+      ...matchedPersons.map((p) => p.name),
+      ...matchedPersons.map((p) => p.name.split(' ')[0])
+    ].filter(Boolean));
 
     projects.forEach((p) => {
-      // 1. PM으로 지정된 프로젝트 확인
-      const isPm = p.pmId?.includes(userName) || (p as any).pmPerson?.name?.includes(userName);
+      // 프로젝트 진행 기간 검사 (당일 포함 또는 진행중)
+      const isDateInRange =
+        (!p.startDate || p.startDate <= targetDate) &&
+        (!p.endDate || targetDate <= p.endDate);
+      const isProjectActive = p.status === '진행중' || isDateInRange;
+
+      if (!isProjectActive) return;
+
+      // A. PM 지정 여부 검사 (p.pmId가 candidateKeys에 포함되거나 cleanName이 포함된 경우)
+      const isPm =
+        (p.pmId && candidateKeys.has(p.pmId)) ||
+        (p.pmId && candidateKeys.has(p.pmId.trim())) ||
+        (p.roles?.PM?.personId && candidateKeys.has(p.roles.PM.personId)) ||
+        (p as any).pmPerson?.name?.includes(cleanName);
+
       if (isPm) {
         items.push({
           id: `gen-${p.id}-PM`,
@@ -352,22 +484,24 @@ export const useWorkLogStore = create<WorkLogState>((set) => ({
           projectName: p.name,
           department: p.department,
           roleName: 'PM',
-          todayTask: `[${p.name}] 전체 공정 진도 관리 및 품질 체크`,
-          progress: p.progress,
+          todayTask: `[${p.name}] 전체 공정 진도 관리, 품질 검증 및 납품 일정 관리`,
+          progress: p.progress || 60,
           status: (p.status as any) || '진행중',
-          tomorrowPlan: '익일 작업 진척도 집계 및 세부 일정 점검',
-          notes: `일정: ${p.startDate} ~ ${p.endDate}`
+          tomorrowPlan: '익일 작업 진척도 집계 및 세부 공종 크로스체크',
+          notes: `프로젝트 기간: ${p.startDate} ~ ${p.endDate}`
         });
       }
 
-      // 2. subTasks에서 배정된 공종 탐색
+      // B. subTasks 검사
       if (p.subTasks) {
         Object.entries(p.subTasks).forEach(([roleName, sub]) => {
-          if (roleName === 'PM') return; // 이미 위에서 처리
+          if (roleName === 'PM') return;
+
           const isAssigned =
-            sub.personId === userName ||
-            (sub.personIds && sub.personIds.includes(userName)) ||
-            (sub.memo && sub.memo.includes(userName));
+            (sub.personId && candidateKeys.has(sub.personId)) ||
+            (sub.personIds && sub.personIds.some((pid) => candidateKeys.has(pid))) ||
+            (sub.memo && candidateKeys.has(sub.memo.trim())) ||
+            (sub.memo && cleanName && sub.memo.includes(cleanName));
 
           if (isAssigned) {
             items.push({
@@ -377,32 +511,57 @@ export const useWorkLogStore = create<WorkLogState>((set) => ({
               projectName: p.name,
               department: p.department,
               roleName,
-              todayTask: sub.memo ? `[${roleName}] ${sub.memo}` : `[${roleName}] 도면 기준 수량산출 및 물량 집계 진행`,
-              progress: p.progress,
+              todayTask: sub.memo ? `[${roleName}] ${sub.memo}` : `[${roleName}] 도면 기준 물량산출 및 집계표 작성 진행`,
+              progress: p.progress || 50,
               status: (sub.status as any) || '진행중',
-              tomorrowPlan: `[${roleName}] 잔여 수량 산출 및 크로스체크`,
+              tomorrowPlan: `[${roleName}] 잔여 구역 산출 및 내역팀 크로스체크`,
               notes: `공종 일정: ${sub.startDate || p.startDate} ~ ${sub.endDate || p.endDate}`
+            });
+          }
+        });
+      }
+
+      // C. roles 객체 검사 (subTasks에 없거나 roles에 직접 정의된 경우)
+      if (p.roles) {
+        Object.entries(p.roles).forEach(([roleName, roleData]) => {
+          if (!roleData || roleName === 'PM') return;
+          if (items.some((it) => it.projectId === p.id && it.roleName === roleName)) return;
+
+          const isAssigned = roleData.personId && candidateKeys.has(roleData.personId);
+          if (isAssigned) {
+            items.push({
+              id: `gen-${p.id}-${roleName}-role`,
+              projectId: p.id,
+              projectCode: p.code || p.id,
+              projectName: p.name,
+              department: p.department,
+              roleName,
+              todayTask: `[${roleName}] 도면 기준 물량산출 및 집계표 작성 진행`,
+              progress: p.progress || 50,
+              status: '진행중',
+              tomorrowPlan: `[${roleName}] 잔여 수량 산출 및 일람표 검증`,
+              notes: `공종 일정: ${roleData.startDate || p.startDate} ~ ${roleData.endDate || p.endDate}`
             });
           }
         });
       }
     });
 
-    // 만약 탐색된 배정 공종이 없다면 기본 마감팀 주요 프로젝트 1건 자동 생성
+    // 만약 탐색된 배정 공종이 없다면 진행 중인 최우선 프로젝트 1건을 기본 연계
     if (items.length === 0 && projects.length > 0) {
-      const base = projects[0];
+      const activeProj = projects.find((p) => p.status === '진행중') || projects[0];
       items.push({
-        id: `gen-${base.id}-default`,
-        projectId: base.id,
-        projectCode: base.code || base.id,
-        projectName: base.name,
-        department: base.department,
-        roleName: '마감공종',
-        todayTask: `[${base.name}] 설계 도면 검토 및 수량 산출 작업 수행`,
-        progress: base.progress,
+        id: `gen-${activeProj.id}-default`,
+        projectId: activeProj.id,
+        projectCode: activeProj.code || activeProj.id,
+        projectName: activeProj.name,
+        department: activeProj.department,
+        roleName: '도면산출',
+        todayTask: `[${activeProj.name}] 설계도면 검토 및 수량산출 작업 진행`,
+        progress: activeProj.progress || 50,
         status: '진행중',
-        tomorrowPlan: '공종별 수량 집계표 작성 및 내역 대조',
-        notes: '일정표 기반 자동 연계'
+        tomorrowPlan: '산출 물량 집계표 작성 및 내역 대조',
+        notes: `일정: ${activeProj.startDate} ~ ${activeProj.endDate}`
       });
     }
 
