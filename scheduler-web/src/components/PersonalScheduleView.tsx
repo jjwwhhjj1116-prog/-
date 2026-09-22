@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Users,
   Settings2,
+  Printer,
 } from 'lucide-react';
 import { useProjectStore, type Department } from '../store/useProjectStore';
 import { useAuthStore } from '../store/useAuthStore';
@@ -29,6 +30,7 @@ import { HOLIDAYS_2026 } from '../constants/holidays';
 
 interface PersonalScheduleViewProps {
   department: Department;
+  onOpenPrintModal?: () => void;
 }
 
 interface AssignedTask {
@@ -56,7 +58,7 @@ interface ScheduleRowUnit {
   isVietnam: boolean;
 }
 
-export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ department }) => {
+export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ department, onOpenPrintModal }) => {
   const { projects, setSelectedProjectId } = useProjectStore();
   const { users } = useAuthStore();
   const [viewMode, setViewMode] = useState<'PERSONAL' | 'TEAM'>('TEAM');
@@ -359,6 +361,18 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
         </div>
 
         <div className="flex items-center gap-3">
+          {/* 인쇄 / PDF 저장 버튼 */}
+          {onOpenPrintModal && (
+            <button
+              onClick={onOpenPrintModal}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl bg-slate-900 text-white hover:bg-slate-800 shadow-sm transition active:scale-95 cursor-pointer"
+              title="A4 가로 규격 완벽 핏 인쇄 및 PDF 저장"
+            >
+              <Printer className="w-4 h-4 text-emerald-400" />
+              <span>인쇄 / PDF 저장</span>
+            </button>
+          )}
+
           {/* 팀 전체 프로젝트 간트 (좌측) ↔ 개인/팀별 캘린더 (우측) */}
           <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-xl border border-slate-200 dark:border-slate-600">
             <button
@@ -419,7 +433,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
       {/* 2. 메인 캘린더 렌더링 */}
       {viewMode === 'TEAM' ? (
         <div className="space-y-4">
-          <ProjectCalendar />
+          <ProjectCalendar onOpenPrintModal={onOpenPrintModal} />
         </div>
       ) : (
         <div className="corporate-card overflow-hidden">

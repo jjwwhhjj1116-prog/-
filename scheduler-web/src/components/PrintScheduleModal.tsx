@@ -263,8 +263,8 @@ export const PrintScheduleModal: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* 인쇄 A4 가로 시트 컨테이너 */}
-      <div className={`print-container w-full max-w-[1240px] space-y-8 ${colorMode === 'mono' ? 'grayscale' : ''}`}>
+      {/* 인쇄 A4 가로 시트 컨테이너 (1일~31일 전체 무짤림 100% 핏 보장) */}
+      <div className={`print-container w-full max-w-[1240px] print:max-w-none print:w-full space-y-8 print:space-y-0 ${colorMode === 'mono' ? 'grayscale' : ''}`}>
         {(printMode === 'ALL' ? months : [months[0]]).map((m, pageIdx) => {
           const mStartStr = `${m.year}-${String(m.month).padStart(2, '0')}-01`;
           const mEndStr = `${m.year}-${String(m.month).padStart(2, '0')}-${String(m.days).padStart(2, '0')}`;
@@ -277,7 +277,7 @@ export const PrintScheduleModal: React.FC<Props> = ({
           return (
             <div
               key={`${m.year}-${m.month}`}
-              className="bg-white text-slate-900 rounded-xl shadow-2xl p-6 border border-slate-300 w-full min-h-[780px] flex flex-col justify-between print:shadow-none print:border-none print:p-0 print:m-0 print:min-h-screen page-break-sheet"
+              className="bg-white text-slate-900 rounded-xl shadow-2xl p-6 print:p-3 border border-slate-300 print:border-none w-full min-h-[780px] print:min-h-0 print:h-auto flex flex-col justify-between print:shadow-none print:m-0 page-break-sheet"
               style={{ breakAfter: 'page', pageBreakAfter: 'always' }}
             >
               <div>
@@ -343,10 +343,10 @@ export const PrintScheduleModal: React.FC<Props> = ({
                   <table className="w-full text-left border-collapse table-fixed text-[11px]">
                     <thead>
                       <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 font-black">
-                        <th className="py-2 px-2.5 w-[220px] border-r border-slate-300">
+                        <th className="py-1.5 px-2 w-[165px] border-r border-slate-300 text-[10px]">
                           프로젝트 정보
                         </th>
-                        <th className="py-2 px-1.5 w-[90px] text-center border-r border-slate-300">
+                        <th className="py-1.5 px-1 w-[65px] text-center border-r border-slate-300 text-[10px]">
                           공종 / PM
                         </th>
                         {/* 1 ~ days 일자 컬럼 헤더 */}
@@ -384,7 +384,7 @@ export const PrintScheduleModal: React.FC<Props> = ({
                         return (
                           <tr key={`${group.code || 'grp'}-${gIdx}`} className="hover:bg-slate-50/50">
                             {/* 프로젝트 정보 (단일 행 통합) */}
-                            <td className="py-1 px-2.5 border-r border-slate-300 align-middle">
+                            <td className="py-1 px-1.5 w-[165px] border-r border-slate-300 align-middle">
                               <div className="flex items-center gap-1 mb-0.5 flex-wrap">
                                 <span className="text-[9px] font-mono font-black bg-slate-100 px-1 rounded border border-slate-300">
                                   {group.code}
@@ -404,7 +404,7 @@ export const PrintScheduleModal: React.FC<Props> = ({
                                   </span>
                                 ))}
                               </div>
-                              <div className="font-black text-slate-900 line-clamp-1 leading-snug" title={group.name}>
+                              <div className="font-black text-slate-900 line-clamp-1 leading-snug text-[10px]" title={group.name}>
                                 {((group.name || '').replace(/^\[.*?\]\s*/, '').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim()) || group.name || '프로젝트'}
                               </div>
                               {group.area && (
@@ -415,7 +415,7 @@ export const PrintScheduleModal: React.FC<Props> = ({
                             </td>
 
                             {/* 담당 PM 및 공정률 (마감/구조/토목 상하 분할) */}
-                            <td className="py-1 px-1.5 border-r border-slate-300 text-center align-middle">
+                            <td className="py-1 px-1 w-[65px] border-r border-slate-300 text-center align-middle">
                               <div className="flex flex-col gap-1">
                                 {group.lanes.map((lane, lIdx) => (
                                   <div

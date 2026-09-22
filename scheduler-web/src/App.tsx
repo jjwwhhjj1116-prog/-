@@ -913,17 +913,26 @@ export default function App() {
 
           {/* CASE 2: 마감팀 일정표 */}
           {activeMenu === '마감팀 일정표' && (
-            <PersonalScheduleView department="마감팀" />
+            <PersonalScheduleView
+              department="마감팀"
+              onOpenPrintModal={() => setIsPrintModalOpen(true)}
+            />
           )}
 
           {/* CASE 3: 구조팀 일정표 */}
           {activeMenu === '구조팀 일정표' && (
-            <PersonalScheduleView department="구조팀" />
+            <PersonalScheduleView
+              department="구조팀"
+              onOpenPrintModal={() => setIsPrintModalOpen(true)}
+            />
           )}
 
           {/* CASE 4: 토목&조경팀 일정표 */}
           {activeMenu === '토목&조경팀 일정표' && (
-            <PersonalScheduleView department="토목&조경팀" />
+            <PersonalScheduleView
+              department="토목&조경팀"
+              onOpenPrintModal={() => setIsPrintModalOpen(true)}
+            />
           )}
 
           {/* CASE 5: 회의록 (작성 및 목록 2단 분기) */}

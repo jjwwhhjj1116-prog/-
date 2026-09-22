@@ -224,7 +224,7 @@ const loadStoredMeetings = (): MeetingRecord[] => {
     const saved = localStorage.getItem(MINUTES_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed;
       }
     }
@@ -357,10 +357,28 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     });
   }, [meetings, listDeptFilter, listSearch]);
 
-  // 회의록 삭제 핸들러
-  const handleDeleteMeeting = (meetingId: string) => {
-    if (!confirm('해당 회의록을 목록에서 삭제하시겠습니까?')) return;
-    setMeetings((prev) => prev.filter((m) => m.id !== meetingId));
+  // 회의록 삭제 핸들러 (이벤트 버블링 차단 및 로컬스토리지 즉시 동기화)
+  const handleDeleteMeeting = (meetingId: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    const target = meetings.find((m) => m.id === meetingId);
+    const title = target?.title || '해당 회의록';
+    if (!window.confirm(`정말로 [${title}] 회의록을 목록에서 완전히 삭제하시겠습니까?`)) {
+      return;
+    }
+    setMeetings((prev) => {
+      const updated = prev.filter((m) => m.id !== meetingId);
+      try {
+        localStorage.setItem(MINUTES_STORAGE_KEY, JSON.stringify(updated));
+      } catch (err) {
+        console.error(err);
+      }
+      return updated;
+    });
+    setAiToast('🗑️ 회의록이 목록에서 안전하게 삭제되었습니다.');
+    setTimeout(() => setAiToast(null), 3500);
   };
 
   // 현재 활성 회의록
@@ -563,65 +581,82 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
   };
 
   // 엑셀 내보내기 (.xlsx) - [회사 공식 회의록 양식 100% 동일 좌표 생성]
-  const handleExportExcel = () => {
-    if (!currentMeeting) return;
+  const handleExportMeetingExcel = (target: MeetingRecord) => {
+    if (!target) return;
 
     // AOA (Array of Arrays) 매트릭스 생성: Row 1 ~ Row 44
-    // 엑셀 행 번호: 1-indexed (Row 1은 인덱스 0, Row 44는 인덱스 43)
-    // 컬럼: A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7
     const rows: any[][] = [];
     for (let r = 0; r < 45; r++) {
       rows.push(new Array(9).fill(''));
     }
+
+    const isCurrent = target.id === currentMeeting?.id;
+    const authorAffiliation = (isCurrent ? formAuthorAffiliation : '') || target.authorAffiliation || '기술본부 마감팀';
+    const authorPosition = (isCurrent ? formAuthorPosition : '') || target.authorPosition || '실장';
+    const authorName = target.author || '조한빈';
+    const meetingDate = (isCurrent ? formDate : target.meetingDate || '').slice(0, 10).replace(/-/g, '.');
+    const startTime = (isCurrent ? formStartTime : target.startTime) || '14:00';
+    const endTime = (isCurrent ? formEndTime : target.endTime) || '15:30';
+    const location = (isCurrent ? formLocation : target.location) || '컨코스트 본사 대회의실';
+    const clientName = (isCurrent ? formClientName : target.clientName) || '발주처';
+    const reportingDept = (isCurrent ? formReportingDept : target.reportingDept) || '기술본부 마감팀';
+    const referenceDept = (isCurrent ? formReferenceDept : target.referenceDept) || '개발 TF';
+    const attendeesInternal = (isCurrent ? formAttendeesInternal : target.attendeesInternal?.join(', ')) || '';
+    const attendeesExternal = (isCurrent ? formAttendeesExternal : target.attendeesExternal?.join(', ')) || '';
+    const title = (isCurrent ? formTitle : target.title) || '';
+    const attachedFile = (isCurrent ? formAttachedFile : target.attachedFileName) || '없음';
+    const notesAndInstructions = (isCurrent ? formNotesAndInstructions : target.notesAndInstructions) || '';
+    const summary = (isCurrent ? formSummary : target.summary) || '';
+    const decisions = isCurrent ? formDecisions.split('\n').filter(Boolean) : (target.decisions || []);
 
     // Row 2: 대제목
     rows[1][2] = '회   의   록';
 
     // Row 4: 작성자
     rows[3][1] = '작 성 자';
-    rows[3][2] = formAuthorAffiliation || currentMeeting.authorAffiliation || '기술본부 마감팀';
-    rows[3][4] = formAuthorPosition || currentMeeting.authorPosition || '실장';
-    rows[3][6] = currentMeeting.author || '조한빈';
+    rows[3][2] = authorAffiliation;
+    rows[3][4] = authorPosition;
+    rows[3][6] = authorName;
 
     // Row 5: 회의일시
     rows[4][1] = '회의일시';
-    rows[4][2] = formDate.slice(0, 10).replace(/-/g, '.');
+    rows[4][2] = meetingDate;
     rows[4][4] = '시 간';
-    rows[4][5] = formStartTime || '14:00';
+    rows[4][5] = startTime;
     rows[4][6] = '~';
-    rows[4][7] = formEndTime || '15:30';
+    rows[4][7] = endTime;
 
     // Row 6: 회의장소
     rows[5][1] = '회의장소';
-    rows[5][2] = formLocation || currentMeeting.location || '컨코스트 본사 대회의실';
+    rows[5][2] = location;
 
     // Row 7: 거래처명
     rows[6][1] = '거 래 처 명';
-    rows[6][2] = formClientName || currentMeeting.clientName || '삼성물산(주)';
+    rows[6][2] = clientName;
 
     // Row 8: 보고부서
     rows[7][1] = '보 고 부 서';
-    rows[7][2] = formReportingDept || currentMeeting.reportingDept || '기술본부 마감팀';
+    rows[7][2] = reportingDept;
 
     // Row 9: 참조부서
     rows[8][1] = '참 조 부 서';
-    rows[8][2] = formReferenceDept || currentMeeting.referenceDept || '개발 TF';
+    rows[8][2] = referenceDept;
 
     // Row 10: 참석자 (컨코스트)
     rows[9][1] = '참석자 (컨코스트)';
-    rows[9][2] = formAttendeesInternal || currentMeeting.attendeesInternal.join(', ');
+    rows[9][2] = attendeesInternal;
 
     // Row 11: 참석자 (거 래 처)
     rows[10][1] = '참석자 (거 래 처)';
-    rows[10][2] = formAttendeesExternal || currentMeeting.attendeesExternal.join(', ');
+    rows[10][2] = attendeesExternal;
 
     // Row 13: 회의명
     rows[12][1] = '회  의  명';
-    rows[12][2] = formTitle || currentMeeting.title;
+    rows[12][2] = title;
 
     // Row 15: 첨부파일
     rows[14][1] = '첨 부 파 일';
-    rows[14][2] = formAttachedFile || currentMeeting.attachedFileName || '없음';
+    rows[14][2] = attachedFile;
 
     // Row 16: 회의내용 및 지시사항 헤더
     rows[15][1] = '회의내용 및 지시사항';
@@ -629,27 +664,28 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     // Row 17 ~ Row 43: 본문 내용 줄별 분할 삽입
     // 본문 내용 우선순위: 1) 작성된 notesAndInstructions, 2) 요약 및 결정사항, 3) rawTranscript
     let bodyLines: string[] = [];
-    if (formNotesAndInstructions && formNotesAndInstructions.trim()) {
-      bodyLines = formNotesAndInstructions.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (notesAndInstructions && notesAndInstructions.trim()) {
+      bodyLines = notesAndInstructions.split('\n').map((l) => l.trim()).filter(Boolean);
     } else {
-      if (formSummary) {
+      if (summary) {
         bodyLines.push('[핵심 요약]');
-        formSummary.split('\n').forEach((l) => l.trim() && bodyLines.push(`- ${l.trim()}`));
+        summary.split('\n').forEach((l) => l.trim() && bodyLines.push(`- ${l.trim()}`));
       }
-      if (formDecisions) {
+      if (decisions.length > 0) {
         bodyLines.push('');
         bodyLines.push('[주요 결정사항]');
-        formDecisions.split('\n').forEach((l) => l.trim() && bodyLines.push(`✓ ${l.trim()}`));
+        decisions.forEach((l) => l.trim() && bodyLines.push(`✓ ${l.trim()}`));
       }
-      if (currentMeeting.actionItems && currentMeeting.actionItems.length > 0) {
+      const actions = isCurrent ? currentMeeting.actionItems : (target.actionItems || []);
+      if (actions && actions.length > 0) {
         bodyLines.push('');
         bodyLines.push('[공종별 실행 과제 (Action Items)]');
-        currentMeeting.actionItems.forEach((act, idx) => {
+        actions.forEach((act, idx) => {
           bodyLines.push(`${idx + 1}. [${act.roleName}] ${act.title} (담당: ${act.assigneeName}, 기한: ${act.dueDate}, 상태: ${act.status})`);
         });
       }
-      if (bodyLines.length === 0 && formTranscript) {
-        bodyLines = formTranscript.split('\n').map((l) => l.trim()).filter(Boolean);
+      if (bodyLines.length === 0 && (isCurrent ? formTranscript : target.rawTranscript)) {
+        bodyLines = ((isCurrent ? formTranscript : target.rawTranscript) || '').split('\n').map((l) => l.trim()).filter(Boolean);
       }
     }
 
@@ -715,8 +751,14 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
 
     XLSX.utils.book_append_sheet(wb, ws, '회의록');
 
-    const safeProjCode = (currentMeeting.projectCode || 'PROJECT').replace(/[^a-zA-Z0-9_-]/g, '');
+    const safeProjCode = (target.projectCode || 'PROJECT').replace(/[^a-zA-Z0-9_-]/g, '');
     XLSX.writeFile(wb, `회의록_${safeProjCode}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  const handleExportExcel = () => {
+    if (currentMeeting) {
+      handleExportMeetingExcel(currentMeeting);
+    }
   };
 
   // 엑셀 가져오기 (.xlsx) - [회사 공식 서식 셀 좌표 기반 100% 자동 파싱 및 AI 연동]
@@ -1036,7 +1078,8 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                           <div className="flex items-center justify-center gap-1.5">
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setSelectedProjectCode(m.projectCode || m.projectId);
                                 setCurrentMeetingId(m.id);
                                 setActiveSubTab('write');
@@ -1048,23 +1091,24 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                             </button>
                             <button
                               type="button"
-                              onClick={() => {
-                                setSelectedProjectCode(m.projectCode || m.projectId);
-                                setCurrentMeetingId(m.id);
-                                handleExportExcel();
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleExportMeetingExcel(m);
                               }}
-                              className="p-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-emerald-600 hover:bg-slate-200 border border-slate-300 dark:border-slate-700 transition cursor-pointer"
+                              className="px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold transition cursor-pointer flex items-center gap-1"
                               title="공식 엑셀 서식 다운로드"
                             >
-                              <FileSpreadsheet size={13} />
+                              <FileSpreadsheet size={12} />
+                              <span>엑셀</span>
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDeleteMeeting(m.id)}
-                              className="p-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-rose-500 hover:bg-rose-100 border border-slate-300 dark:border-slate-700 transition cursor-pointer"
-                              title="회의록 삭제"
+                              onClick={(e) => handleDeleteMeeting(m.id, e)}
+                              className="px-2 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-800 text-[11px] font-bold transition cursor-pointer flex items-center gap-1"
+                              title="회의록 목록에서 영구 삭제"
                             >
-                              <Trash2 size={13} />
+                              <Trash2 size={12} />
+                              <span>삭제</span>
                             </button>
                           </div>
                         </td>
