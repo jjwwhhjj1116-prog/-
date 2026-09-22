@@ -267,11 +267,18 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           for (let i = 0; i < binaryString.length; i++) {
             bytes[i] = binaryString.charCodeAt(i);
           }
+          const origName = file.original_name || 'download.xlsx';
+          const ext = origName.includes('.') ? origName.slice(origName.lastIndexOf('.')) : '';
+          const safeAscii = `file_${String(file.id || '').slice(0, 8)}${ext}`;
+          const encodedName = encodeURIComponent(origName).replace(/['()]/g, escape);
+          const mimeType = file.mime_type || (origName.endsWith('.xlsx') ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/octet-stream');
+
           return new Response(bytes, {
             headers: {
-              'Content-Type': file.mime_type || 'application/octet-stream',
-              'Content-Disposition': `attachment; filename="${encodeURIComponent(file.original_name)}"`,
+              'Content-Type': mimeType,
+              'Content-Disposition': `attachment; filename="${safeAscii}"; filename*=UTF-8''${encodedName}`,
               'Access-Control-Allow-Origin': '*',
+              'Access-Control-Expose-Headers': 'Content-Disposition',
             },
           });
         }

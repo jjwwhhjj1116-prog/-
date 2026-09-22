@@ -13,6 +13,10 @@ import {
   fetchVaultFiles,
   uploadVaultFile,
   downloadVaultFile,
+  isGoogleDriveConnected,
+  requestGoogleDriveAuth,
+  clearGoogleDriveAuth,
+  GOOGLE_CLIENT_ID,
 } from '../services/googleDriveService';
 import {
   UploadCloud,
@@ -21,7 +25,6 @@ import {
   CheckCircle2,
   Download,
   ExternalLink,
-  ShieldCheck,
   FolderOpen,
   Clock,
   User,
@@ -29,6 +32,10 @@ import {
   Building2,
   HardDrive,
   Folder,
+  LogIn,
+  LogOut,
+  HelpCircle,
+  X,
 } from 'lucide-react';
 
 export const DriveView: React.FC = () => {
@@ -90,6 +97,39 @@ export const DriveView: React.FC = () => {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Google Drive 실제 OAuth 연동 상태
+  const [isDriveConnected, setIsDriveConnected] = useState<boolean>(() => isGoogleDriveConnected());
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [showGcpGuide, setShowGcpGuide] = useState(false);
+
+  const handleConnectDrive = async () => {
+    setIsAuthenticating(true);
+    setUploadError(null);
+    try {
+      await requestGoogleDriveAuth();
+      setIsDriveConnected(true);
+      setUploadNotice('Google Drive 회사 계정이 성공적으로 연동되었습니다.');
+      setTimeout(() => setUploadNotice(null), 4000);
+    } catch (err: any) {
+      console.error('Drive Auth failed:', err);
+      const msg = err.message || String(err);
+      if (msg.includes('origin_mismatch') || msg.includes('승인된 원본')) {
+        setShowGcpGuide(true);
+      } else {
+        setUploadError(`Google 계정 연결 실패: ${msg}`);
+      }
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  const handleDisconnectDrive = () => {
+    clearGoogleDriveAuth();
+    setIsDriveConnected(false);
+    setUploadNotice('Google Drive 연동이 해제되었습니다.');
+    setTimeout(() => setUploadNotice(null), 3000);
+  };
 
   // 대분류 폴더 변경 시 서브타이틀 및 팀 자동 동기화
   const handleMainFolderSelect = (folder: MainFolderType) => {
@@ -246,36 +286,73 @@ export const DriveView: React.FC = () => {
 
   return (
     <div className="space-y-5 animate-fadeIn pb-12">
-      {/* 1. 상단 컴팩트 헤더 바 (쓸모없는 거대 배너 완전 삭제, 핵심 정보만 고대비로 표시) */}
+      {/* 1. 상단 컴팩트 헤더 바 (Google Drive 실제 OAuth 연동 상태 제어) */}
       <div className="bg-slate-900 border-2 border-slate-800 rounded-xl px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm font-bold">
             <HardDrive className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-base font-black text-white tracking-tight">
                 기술본부 Google Drive 자료실
               </h2>
-              <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/40">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                회사 계정 연동됨
-              </span>
+              {isDriveConnected ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-400 bg-emerald-950/80 px-2.5 py-0.5 rounded-full border border-emerald-500/40">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  실제 계정 연동 완료 (Google Drive)
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[11px] font-black text-amber-400 bg-amber-950/80 px-2.5 py-0.5 rounded-full border border-amber-500/40">
+                  <AlertCircle className="w-3 h-3 text-amber-400" />
+                  Google OAuth 미연동 (D1 백업 보관 모드)
+                </span>
+              )}
             </div>
-            <p className="text-xs font-semibold text-slate-300">
+            <p className="text-xs font-semibold text-slate-300 mt-0.5">
               기술본부 자료실 &gt; [{currentProject?.code}] &gt; <span className="text-amber-400 font-bold">{selectedMainFolder}</span> {selectedMainFolder !== '01.접수자료' && <>&gt; <span className="text-emerald-400 font-bold">{selectedRole}</span></>} &gt; <span className="text-white font-bold underline">{selectedSubtitle}</span>
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 self-end sm:self-center">
-          <span className="text-xs font-medium text-slate-400">
-            회사 저장소: <strong className="text-slate-200">concost_dt@gmail.com</strong>
-          </span>
-          <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/30 flex items-center gap-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            보안 인증
-          </span>
+        <div className="flex items-center gap-2.5 self-end sm:self-center flex-wrap">
+          {isDriveConnected ? (
+            <>
+              <span className="text-xs font-medium text-slate-400">
+                저장소: <strong className="text-slate-200">concost_dt@gmail.com</strong>
+              </span>
+              <button
+                type="button"
+                onClick={handleDisconnectDrive}
+                className="text-xs font-bold text-rose-300 hover:text-rose-200 bg-rose-950/60 hover:bg-rose-900/80 px-2.5 py-1 rounded-md border border-rose-600/40 flex items-center gap-1 transition-all"
+                title="Google Drive 계정 연결 해제"
+              >
+                <LogOut className="w-3 h-3" />
+                연동 해제
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={handleConnectDrive}
+                disabled={isAuthenticating}
+                className="text-xs font-black text-black bg-emerald-400 hover:bg-emerald-300 disabled:bg-slate-700 disabled:text-slate-400 px-3 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 transition-all animate-pulse hover:animate-none"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                {isAuthenticating ? '인증 진행 중...' : '회사 Google Drive 로그인'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowGcpGuide(true)}
+                className="text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg border border-slate-700 flex items-center gap-1 transition-all"
+                title="OAuth origin_mismatch 설정 안내"
+              >
+                <HelpCircle className="w-3.5 h-3.5 text-blue-400" />
+                연동 설정 안내
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -714,6 +791,119 @@ export const DriveView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* 5. Google OAuth 설정 안내 모달 (origin_mismatch 오류 해결 가이드) */}
+      {showGcpGuide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-slate-900 border-2 border-blue-500/50 rounded-2xl max-w-xl w-full p-6 shadow-2xl relative space-y-4">
+            <button
+              type="button"
+              onClick={() => setShowGcpGuide(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400">
+                <HelpCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-white">
+                  Google Drive 실제 계정 연동 가이드
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Google OAuth 보안 정책 (origin_mismatch 해결 방법)
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-amber-950/40 border border-amber-500/40 rounded-xl p-3.5 text-xs text-amber-200 leading-relaxed">
+              <strong>현재 브라우저에 <span className="text-amber-400 underline">authError=origin_mismatch</span> 가 뜬 이유:</strong>
+              <p className="mt-1 text-slate-300">
+                Google은 등록되지 않은 웹사이트 주소에서의 OAuth 인증 요청을 원천 차단합니다. 
+                현재 배포된 도메인(<strong>https://concost-tech-scheduler.pages.dev</strong>)을 Google Cloud Console의 승인된 원본에 1회 등록해주셔야 실제 회사 드라이브로 다이렉트 업로드가 가능합니다.
+              </p>
+            </div>
+
+            <div className="space-y-2.5 text-xs text-slate-300">
+              <div className="flex items-start gap-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-black text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                  1
+                </span>
+                <div>
+                  <strong className="text-white block">Google Cloud Console 접속</strong>
+                  <a
+                    href="https://console.cloud.google.com/apis/credentials"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-400 hover:underline flex items-center gap-1 mt-0.5"
+                  >
+                    console.cloud.google.com/apis/credentials <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-black text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                  2
+                </span>
+                <div>
+                  <strong className="text-white block">OAuth 2.0 클라이언트 ID 선택</strong>
+                  <span className="text-slate-400 text-[11px] break-all">
+                    클라이언트 ID: <code className="text-amber-300">{GOOGLE_CLIENT_ID}</code>
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-black text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                  3
+                </span>
+                <div className="w-full">
+                  <strong className="text-white block">[승인된 자바스크립트 원본]에 배포 URL 추가 후 저장</strong>
+                  <div className="mt-1 flex items-center justify-between bg-slate-900 px-2.5 py-1.5 rounded border border-slate-700">
+                    <code className="text-emerald-400 font-mono text-[11px]">
+                      https://concost-tech-scheduler.pages.dev
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText('https://concost-tech-scheduler.pages.dev');
+                        alert('배포 도메인 URL이 복사되었습니다. Google Cloud Console에 붙여넣어주세요.');
+                      }}
+                      className="text-[11px] text-blue-400 hover:text-white px-2 py-0.5 bg-blue-950 rounded border border-blue-800 hover:bg-blue-800 ml-2"
+                    >
+                      URL 복사
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowGcpGuide(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold"
+              >
+                닫기
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGcpGuide(false);
+                  handleConnectDrive();
+                }}
+                className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black flex items-center gap-1.5 shadow-md shadow-emerald-500/20"
+              >
+                <LogIn className="w-4 h-4" />
+                등록 완료 후 로그인 시도
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
