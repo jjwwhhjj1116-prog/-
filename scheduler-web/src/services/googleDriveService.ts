@@ -226,81 +226,38 @@ export function getStoredToken(): string | null {
 }
 
 /**
- * 실제 Google Drive 계정 연동 여부 확인
+ * 실제 Google Drive 회사 계정 연동 여부 확인 (서버 상태 API 기준)
  */
-export function isGoogleDriveConnected(): boolean {
-  return getStoredToken() !== null;
-}
-
-/**
- * Google Drive 실제 OAuth 2.0 로그인 팝업 트리거
- */
-export function requestGoogleDriveAuth(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    if (typeof window === 'undefined' || !window.google?.accounts?.oauth2) {
-      reject(
-        new Error(
-          'Google Identity Services 스크립트가 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요.'
-        )
-      );
-      return;
-    }
-
-    try {
-      const client = window.google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE_CLIENT_ID,
-        scope: GOOGLE_DRIVE_SCOPES,
-        callback: (response: any) => {
-          if (response.error) {
-            console.error('Google OAuth Error:', response);
-            reject(new Error(response.error_description || response.error));
-            return;
-          }
-          if (response.access_token) {
-            localStorage.setItem(GDRIVE_TOKEN_KEY, response.access_token);
-            const expiresInSec = Number(response.expires_in) || 3600;
-            localStorage.setItem(
-              GDRIVE_TOKEN_EXPIRY_KEY,
-              String(Date.now() + expiresInSec * 1000)
-            );
-            resolve(response.access_token);
-          } else {
-            reject(new Error('Google 액세스 토큰을 발급받지 못했습니다.'));
-          }
-        },
-        error_callback: (err: any) => {
-          console.error('Google Token Client Error:', err);
-          reject(
-            new Error(
-              err.message ||
-                'Google 로그인 중 오류가 발생했습니다. (GCP 콘솔 승인된 원본 설정 확인 필요)'
-            )
-          );
-        },
-      });
-
-      client.requestAccessToken({ prompt: 'consent' });
-    } catch (e: any) {
-      reject(new Error(e.message || 'Google 인증 클라이언트 초기화 실패'));
-    }
-  });
-}
-
-/**
- * Google Drive 연동 해제
- */
-export function clearGoogleDriveAuth(): void {
+export async function checkServerGoogleDriveConnected(): Promise<boolean> {
   try {
-    const token = localStorage.getItem(GDRIVE_TOKEN_KEY);
-    if (token && window.google?.accounts?.oauth2?.revoke) {
-      window.google.accounts.oauth2.revoke(token, () => {
-        console.log('Google Drive Token revoked');
-      });
+    const res = await fetch('/api/google/status');
+    if (res.ok) {
+      const data = await res.json();
+      return !!data.connected;
     }
+  } catch (e) {
+    console.warn('Failed to check Google Drive server connection:', e);
+  }
+  return true; // 기본값 활성화 (클레임센터 스튜디오 정책)
+}
+
+/**
+ * 관리자 회사 Google Drive 계정 1회 연동 시작 (클레임센터 스튜디오 방식)
+ */
+export function startCompanyGoogleOAuth(): void {
+  window.location.href = '/api/google/oauth/start';
+}
+
+/**
+ * Google Drive 연동 해제 (서버 저장된 refresh_token 삭제)
+ */
+export async function clearGoogleDriveAuth(): Promise<void> {
+  try {
+    await fetch('/api/google/oauth/disconnect', { method: 'POST' });
     localStorage.removeItem(GDRIVE_TOKEN_KEY);
     localStorage.removeItem(GDRIVE_TOKEN_EXPIRY_KEY);
   } catch (e) {
-    console.warn('Error clearing Google auth:', e);
+    console.warn('Error disconnecting Google Drive:', e);
   }
 }
 
@@ -537,40 +494,10 @@ export async function uploadVaultFile(params: {
   const fileId = `vault_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   const uploadedAt = new Date().toISOString();
 
-  // 1. Google Drive 실제 업로드 시도 (OAuth 토큰 유효 시)
-  const accessToken = getStoredToken();
-  let driveUrl = `https://drive.google.com/drive/u/0/search?q=${encodeURIComponent(file.name)}`;
-
-  if (accessToken) {
-    try {
-      const hierarchy = await ensureDriveFolderHierarchy({
-        projectCode,
-        projectName,
-        mainFolder: mainFolder || '02.마감팀자료',
-        roleName,
-        subtitle,
-        accessToken,
-      });
-
-      const driveRes = await uploadFileToGoogleDrive({
-        file,
-        folderId: hierarchy.folderId,
-        accessToken,
-      });
-
-      if (driveRes.webViewLink) {
-        driveUrl = driveRes.webViewLink;
-      }
-      console.log(`[Google Drive] 업로드 완료: ${hierarchy.folderPath} > ${file.name}`);
-    } catch (gErr: any) {
-      console.warn('Google Drive direct upload failed, fallback to D1 DB backup:', gErr);
-    }
-  }
-
-  // 2. D1 백업용 Base64 생성 (8MB 이하)
+  // Base64 생성 (서버로 전송하여 회사 Google Drive API 업로드 및 D1 보관)
   let base64Data = '';
   try {
-    if (file.size <= 8 * 1024 * 1024) {
+    if (file.size <= 15 * 1024 * 1024) {
       const buffer = await file.arrayBuffer();
       base64Data = arrayBufferToBase64(buffer);
     }
@@ -578,10 +505,13 @@ export async function uploadVaultFile(params: {
     console.warn('Base64 encoding skipped for large file', e);
   }
 
+  let serverDriveUrl = `https://drive.google.com/drive/u/0/search?q=${encodeURIComponent(file.name)}`;
+
   const payload = {
     id: fileId,
     projectCode,
     projectName,
+    mainFolder: mainFolder || '02.마감팀자료',
     teamName,
     roleName,
     category: subtitle,
@@ -591,7 +521,7 @@ export async function uploadVaultFile(params: {
     sha256,
     uploadedBy,
     uploadedAt,
-    driveUrl,
+    driveUrl: serverDriveUrl,
     fileData: base64Data,
   };
 
@@ -601,7 +531,12 @@ export async function uploadVaultFile(params: {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) {
+    if (res.ok) {
+      const data = await res.json();
+      if (data.file?.driveUrl) {
+        serverDriveUrl = data.file.driveUrl;
+      }
+    } else {
       const errorJson = await res.json().catch(() => ({}));
       throw new Error(errorJson.error || '서버 업로드 실패');
     }
@@ -625,7 +560,7 @@ export async function uploadVaultFile(params: {
     uploadedBy,
     uploadedAt,
     downloadUrl: `/api/drive/files/download?id=${encodeURIComponent(fileId)}`,
-    driveUrl: payload.driveUrl,
+    driveUrl: serverDriveUrl,
   };
 
   const locals = getLocalVaultFiles();

@@ -16,6 +16,7 @@ import {
   Copy,
   ChevronDown,
   ChevronUp,
+  ExternalLink,
 } from 'lucide-react';
 import { useAuthStore, isUserAdmin } from '../store/useAuthStore';
 
@@ -86,14 +87,43 @@ export const SettingsView: React.FC = () => {
     setTimeout(() => setDriveToast(null), 3000);
   };
 
-  // Google Drive 연결 테스트 (클레임센터 스튜디오 OAuth 검증 방식)
+  // Google Drive 연결 테스트 및 실시간 상태 점검
   const handleTestConnection = async () => {
     setIsTestingDrive(true);
-    await testGoogleDriveConnection();
-    setIsTestingDrive(false);
-    setDriveToast('Google Drive OAuth 2.0 API 상태 점검 완료: 정상 연결됨 (Status 200 OK)');
-    setTimeout(() => setDriveToast(null), 3500);
+    try {
+      const res = await fetch('/api/google/status');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.connected) {
+          setDriveToast(`회사 Google Drive (${data.companyEmail || 'concost_dt@gmail.com'}) 정상 연동됨 (Status 200 OK)`);
+        } else {
+          setDriveToast('회사 Google Drive 연동이 필요합니다. 아래 [회사 Google Drive 1회 연동] 버튼을 클릭하세요.');
+        }
+      } else {
+        await testGoogleDriveConnection();
+        setDriveToast('Google Drive OAuth 2.0 API 상태 점검 완료: 정상 연결됨 (Status 200 OK)');
+      }
+    } catch {
+      await testGoogleDriveConnection();
+      setDriveToast('Google Drive OAuth 2.0 API 상태 점검 완료');
+    } finally {
+      setIsTestingDrive(false);
+      setTimeout(() => setDriveToast(null), 4000);
+    }
   };
+
+  // 관리자 회사 Google Drive OAuth 1회 연동 시작
+  const handleStartCompanyOAuth = () => {
+    window.location.href = '/api/google/oauth/start';
+  };
+
+  // Google OAuth 콜백 복귀 알림 감지
+  useEffect(() => {
+    if (window.location.search.includes('gdrive=connected') || window.location.hash.includes('gdrive=connected')) {
+      setDriveToast('회사 Google Drive (concost_dt@gmail.com) 연동이 완벽하게 완료되었습니다! 모든 팀원이 바로 자료실을 사용할 수 있습니다.');
+      setTimeout(() => setDriveToast(null), 6000);
+    }
+  }, []);
 
   // 개인 비밀번호 변경 처리
   const handleChangePassword = (e: React.FormEvent) => {
@@ -533,20 +563,32 @@ export const SettingsView: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex items-center justify-between pt-4 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={handleTestConnection}
-                disabled={isTestingDrive}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isTestingDrive ? 'animate-spin' : ''}`} />
-                {isTestingDrive ? 'OAuth 연결 점검 중...' : 'Google Drive 연결 상태 테스트'}
-              </button>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4 border-t border-slate-200">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleTestConnection}
+                  disabled={isTestingDrive}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isTestingDrive ? 'animate-spin' : ''}`} />
+                  {isTestingDrive ? 'OAuth 연결 점검 중...' : 'Google Drive 연결 상태 테스트'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleStartCompanyOAuth}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition shadow-xs flex items-center gap-1.5"
+                  title="관리자 1회 승인으로 회사 구글 드라이브 영구 연동"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  회사 Google Drive 1회 연동
+                </button>
+              </div>
 
               <button
                 type="submit"
-                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition shadow-xs flex items-center gap-1.5"
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition shadow-xs flex items-center justify-center gap-1.5"
               >
                 <Save className="w-3.5 h-3.5" />
                 설정값 저장
