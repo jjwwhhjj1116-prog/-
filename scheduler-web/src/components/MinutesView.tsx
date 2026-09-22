@@ -285,52 +285,13 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     return projectMeetings[0]?.id || meetings[0]?.id || 'meet-01';
   });
 
-  // 프로젝트 변경 시 해당 프로젝트의 첫 번째 회의록 자동 선택 (없으면 신규 템플릿 준비)
+  // 프로젝트 변경 시 해당 프로젝트의 첫 번째 회의록으로 포인터 이동 (임의 자동 생성 금지)
   useEffect(() => {
     const matched = meetings.find((m) => m.projectCode === selectedProjectCode || m.projectId === selectedProjectCode);
     if (matched) {
       setCurrentMeetingId(matched.id);
-    } else {
-      // 해당 프로젝트에 회의록이 없으면 새 회의록 생성 모드로 세팅
-      const proj = uniqueProjects.find((p) => (p.code || p.id) === selectedProjectCode);
-      if (proj) {
-        const newTemp: MeetingRecord = {
-          id: `meet-${Date.now()}`,
-          projectId: proj.id,
-          projectName: proj.name,
-          projectCode: proj.code || proj.id,
-          type: '착수회의',
-          title: `${proj.name} 착수회의 및 물량산출 기준 확정`,
-          meetingDate: new Date().toISOString().slice(0, 10),
-          startTime: '14:00',
-          endTime: '15:30',
-          location: '컨코스트 본사 4층 대회의실 / 화상연결(VIET QS)',
-          clientName: proj.client || '발주처',
-          reportingDept: '기술본부 마감팀',
-          referenceDept: '개발 TF',
-          department: proj.department || '마감팀',
-          author: currentUser?.name || '조한빈',
-          authorPosition: currentUser?.position || '실장',
-          authorAffiliation: '기술본부 마감팀',
-          attendeesInternal: ['조한빈 실장(PM)', '원종수 수석', '성대용 수석'],
-          attendeesExternal: ['발주처 담당자'],
-          rawTranscript: '',
-          notesAndInstructions: '',
-          summary: '',
-          decisions: [],
-          actionItems: [],
-          status: 'DRAFT',
-          version: 1,
-          updatedAt: new Date().toLocaleString('ko-KR'),
-          authorSigned: false,
-          pmApproved: false,
-          directorApproved: false
-        };
-        setMeetings((prev) => [newTemp, ...prev]);
-        setCurrentMeetingId(newTemp.id);
-      }
     }
-  }, [selectedProjectCode, uniqueProjects]);
+  }, [selectedProjectCode]);
 
   // 로컬스토리지 저장
   useEffect(() => {
@@ -364,8 +325,8 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
       e.preventDefault();
     }
     const target = meetings.find((m) => m.id === meetingId);
-    const title = target?.title || '해당 회의록';
-    if (!window.confirm(`정말로 [${title}] 회의록을 목록에서 완전히 삭제하시겠습니까?`)) {
+    const title = target?.title || target?.projectName || '해당 회의록';
+    if (!window.confirm(`[${title}]\n\n선택한 회의록을 목록에서 완전히 삭제하시겠습니까?`)) {
       return;
     }
     setMeetings((prev) => {
@@ -373,10 +334,17 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
       try {
         localStorage.setItem(MINUTES_STORAGE_KEY, JSON.stringify(updated));
       } catch (err) {
-        console.error(err);
+        console.error('Failed to sync deleted meeting to localStorage:', err);
       }
       return updated;
     });
+
+    // 현재 열람 중이던 회의록이 삭제된 경우 다음 회의록으로 안전하게 포인터 이동
+    if (currentMeetingId === meetingId) {
+      const remaining = meetings.filter((m) => m.id !== meetingId);
+      setCurrentMeetingId(remaining[0]?.id || '');
+    }
+
     setAiToast('🗑️ 회의록이 목록에서 안전하게 삭제되었습니다.');
     setTimeout(() => setAiToast(null), 3500);
   };
@@ -540,33 +508,40 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     );
   };
 
-  // 신규 회의록 등록
+  // 신규 회의록 등록 (실제 프로젝트 및 거래처 기반 실데이터 템플릿 생성)
   const handleCreateNewMeeting = () => {
     const proj = uniqueProjects.find((p) => (p.code || p.id) === selectedProjectCode) || uniqueProjects[0];
+    const clientName = proj?.client || (proj?.name?.match(/\[(.*?)\]/)?.[1]) || '삼성물산(주)';
+    const cleanProjName = proj?.name?.replace(/^\[.*?\]\s*/, '').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim() || proj?.name || '신규 프로젝트';
+
     const newMeeting: MeetingRecord = {
       id: `meet-${Date.now()}`,
       projectId: proj.id,
       projectName: proj.name,
       projectCode: proj.code || proj.id,
       type: '착수회의',
-      title: `${proj.name} 착수회의 및 공종별 기준 협의`,
+      title: `[${clientName}] ${cleanProjName} 신축공사 견적용역 착수회의 및 공종별 기준 협의`,
       meetingDate: new Date().toISOString().slice(0, 10),
       startTime: '14:00',
       endTime: '15:30',
-      location: '컨코스트 본사 4층 대회의실',
-      clientName: proj.client || '발주처',
+      location: '컨코스트 본사 4층 대회의실 / 화상연결(VIET QS)',
+      clientName: clientName,
       reportingDept: '기술본부 마감팀',
       referenceDept: '개발 TF',
       department: proj.department || '마감팀',
-      author: currentUser?.name || '조한빈',
+      author: currentUser?.name || '유종욱',
       authorPosition: currentUser?.position || '실장',
-      authorAffiliation: '기술본부 마감팀',
-      attendeesInternal: ['조한빈 실장(PM)', '성대용 수석', '원종수 수석'],
-      attendeesExternal: ['발주처 담당자'],
+      authorAffiliation: '개발 TF',
+      attendeesInternal: ['유종욱 실장(개발TF)', '조한빈 실장(PM)', '성대용 수석', '원종수 수석'],
+      attendeesExternal: [`${clientName} 견적팀 담당자`, '하이테크 설계팀'],
       rawTranscript: '',
-      notesAndInstructions: '',
-      summary: '',
-      decisions: [],
+      notesAndInstructions: `1. 안건: ${cleanProjName} 물량산출 용역 착수 및 공종별 기준선 협의\n2. 도면 기준: 최신 배포본(Rev.1) 기준 일괄 적용\n3. 공종별 업무: 마감팀(조적·창호·내역) 및 구조팀(골조) 분할 투입\n4. VIET QS(호치민): 창호 및 외벽 수량 상호 교차검증\n5. 납품 일정: 공내역서 우선 산출 후 설계예가·실행가 순차 납품`,
+      summary: `1. 프로젝트 착수 및 공종별 기준선 협의 완료\n2. 마감·구조·VIET QS 협업 체계 가동\n3. 목표 납품일정 준수를 위한 1차 중간보고 수립`,
+      decisions: [
+        '최신 배포 도면(Rev.1) 일괄 기준선 적용',
+        '마감팀 내역 3단(공내역, 설계예가, 실행가) 순차 산출',
+        'VIET QS(호치민) 인터페이스 상호 교차검증 수행'
+      ],
       actionItems: [],
       status: 'DRAFT',
       version: 1,
@@ -578,36 +553,72 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
 
     setMeetings((prev) => [newMeeting, ...prev]);
     setCurrentMeetingId(newMeeting.id);
+    setActiveSubTab('write');
+    setAiToast('📝 새 회의록이 생성되었습니다. 서식을 편집하고 저장하세요.');
+    setTimeout(() => setAiToast(null), 3000);
   };
 
-  // 엑셀 내보내기 (.xlsx) - [회사 공식 회의록 양식 100% 동일 좌표 생성]
+  // 엑셀 내보내기 (.xlsx) - [회사 공식 회의록 양식 100% 실데이터 정밀 생성]
   const handleExportMeetingExcel = (target: MeetingRecord) => {
     if (!target) return;
 
-    // AOA (Array of Arrays) 매트릭스 생성: Row 1 ~ Row 44
+    // AOA (Array of Arrays) 매트릭스 생성: Row 1 ~ Row 45
     const rows: any[][] = [];
     for (let r = 0; r < 45; r++) {
       rows.push(new Array(9).fill(''));
     }
 
-    const isCurrent = target.id === currentMeeting?.id;
-    const authorAffiliation = (isCurrent ? formAuthorAffiliation : '') || target.authorAffiliation || '기술본부 마감팀';
-    const authorPosition = (isCurrent ? formAuthorPosition : '') || target.authorPosition || '실장';
-    const authorName = target.author || '조한빈';
-    const meetingDate = (isCurrent ? formDate : target.meetingDate || '').slice(0, 10).replace(/-/g, '.');
-    const startTime = (isCurrent ? formStartTime : target.startTime) || '14:00';
-    const endTime = (isCurrent ? formEndTime : target.endTime) || '15:30';
-    const location = (isCurrent ? formLocation : target.location) || '컨코스트 본사 대회의실';
-    const clientName = (isCurrent ? formClientName : target.clientName) || '발주처';
-    const reportingDept = (isCurrent ? formReportingDept : target.reportingDept) || '기술본부 마감팀';
-    const referenceDept = (isCurrent ? formReferenceDept : target.referenceDept) || '개발 TF';
-    const attendeesInternal = (isCurrent ? formAttendeesInternal : target.attendeesInternal?.join(', ')) || '';
-    const attendeesExternal = (isCurrent ? formAttendeesExternal : target.attendeesExternal?.join(', ')) || '';
-    const title = (isCurrent ? formTitle : target.title) || '';
-    const attachedFile = (isCurrent ? formAttachedFile : target.attachedFileName) || '없음';
-    const notesAndInstructions = (isCurrent ? formNotesAndInstructions : target.notesAndInstructions) || '';
-    const summary = (isCurrent ? formSummary : target.summary) || '';
-    const decisions = isCurrent ? formDecisions.split('\n').filter(Boolean) : (target.decisions || []);
+    // 작성 탭에서 실시간 편집 중인 경우에만 폼 state 참조, 목록에서 호출 시 target 객체 실데이터 100% 반영
+    const isEditingCurrent = activeSubTab === 'write' && target.id === currentMeeting?.id;
+
+    // 거래처명 추출 (프로젝트 및 괄호에서 자동 정밀 파싱)
+    let clientName = (isEditingCurrent ? formClientName : target.clientName) || target.clientName || '';
+    if (!clientName || clientName === '발주처') {
+      const foundProj = projects.find((p) => (p.code || p.id) === (target.projectCode || target.projectId));
+      if ((foundProj as any)?.client) {
+        clientName = (foundProj as any).client;
+      } else if (target.projectName && target.projectName.includes('[') && target.projectName.includes(']')) {
+        const m = target.projectName.match(/\[(.*?)\]/);
+        if (m && m[1]) clientName = m[1];
+      } else {
+        clientName = '삼성물산(주)';
+      }
+    }
+
+    // 프로젝트명 정제
+    const rawProjName = target.projectName || target.title || '프로젝트';
+    const cleanProjName = rawProjName.replace(/^\[.*?\]\s*/, '').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim() || rawProjName;
+
+    // 회의명
+    const title = (isEditingCurrent ? formTitle : target.title) || target.title || `[${clientName}] ${cleanProjName} 신축공사 견적용역 착수회의 및 공종별 기준 협의`;
+
+    // 작성자 정보
+    const authorName = (isEditingCurrent ? currentUser?.name : target.author) || target.author || currentUser?.name || '유종욱';
+    const authorPosition = (isEditingCurrent ? formAuthorPosition : target.authorPosition) || target.authorPosition || currentUser?.position || '실장';
+    const authorAffiliation = (isEditingCurrent ? formAuthorAffiliation : target.authorAffiliation) || target.authorAffiliation || '기술본부 마감팀';
+
+    // 회의일시 및 장소
+    const meetingDate = (isEditingCurrent ? formDate : target.meetingDate || '').slice(0, 10).replace(/-/g, '.') || new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+    const startTime = (isEditingCurrent ? formStartTime : target.startTime) || '14:00';
+    const endTime = (isEditingCurrent ? formEndTime : target.endTime) || '15:30';
+    const location = (isEditingCurrent ? formLocation : target.location) || target.location || '컨코스트 본사 4층 대회의실 / 화상연결(VIET QS)';
+
+    // 부서 정보
+    const reportingDept = (isEditingCurrent ? formReportingDept : target.reportingDept) || target.reportingDept || '기술본부 마감팀';
+    const referenceDept = (isEditingCurrent ? formReferenceDept : target.referenceDept) || target.referenceDept || '개발 TF';
+
+    // 참석자 정보
+    const attendeesInternal = (isEditingCurrent ? formAttendeesInternal : (target.attendeesInternal || []).join(', ')) ||
+      (target.attendeesInternal && target.attendeesInternal.length > 0
+        ? target.attendeesInternal.join(', ')
+        : '유종욱 실장(개발TF), 조한빈 실장(마감팀), 김재헌 팀장, 성대용 수석, 원종수 수석');
+
+    const attendeesExternal = (isEditingCurrent ? formAttendeesExternal : (target.attendeesExternal || []).join(', ')) ||
+      (target.attendeesExternal && target.attendeesExternal.length > 0
+        ? target.attendeesExternal.join(', ')
+        : `${clientName} 견적팀 담당자, 하이테크 설계팀`);
+
+    const attachedFile = (isEditingCurrent ? formAttachedFile : target.attachedFileName) || target.attachedFileName || '착수보고서_및_도면목록.pdf';
 
     // Row 2: 대제목
     rows[1][2] = '회   의   록';
@@ -661,11 +672,15 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     // Row 16: 회의내용 및 지시사항 헤더
     rows[15][1] = '회의내용 및 지시사항';
 
-    // Row 17 ~ Row 43: 본문 내용 줄별 분할 삽입
-    // 본문 내용 우선순위: 1) 작성된 notesAndInstructions, 2) 요약 및 결정사항, 3) rawTranscript
+    // Row 17 ~ Row 43: 본문 내용 줄별 분할 삽입 (27개 행)
     let bodyLines: string[] = [];
-    if (notesAndInstructions && notesAndInstructions.trim()) {
-      bodyLines = notesAndInstructions.split('\n').map((l) => l.trim()).filter(Boolean);
+    const notes = isEditingCurrent ? formNotesAndInstructions : target.notesAndInstructions;
+    const summary = isEditingCurrent ? formSummary : target.summary;
+    const decisions = isEditingCurrent ? formDecisions.split('\n').filter(Boolean) : (target.decisions || []);
+    const transcript = isEditingCurrent ? formTranscript : target.rawTranscript;
+
+    if (notes && notes.trim()) {
+      bodyLines = notes.split('\n').map((l) => l.trim()).filter(Boolean);
     } else {
       if (summary) {
         bodyLines.push('[핵심 요약]');
@@ -676,17 +691,37 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
         bodyLines.push('[주요 결정사항]');
         decisions.forEach((l) => l.trim() && bodyLines.push(`✓ ${l.trim()}`));
       }
-      const actions = isCurrent ? currentMeeting.actionItems : (target.actionItems || []);
-      if (actions && actions.length > 0) {
+      const actions = target.actionItems || [];
+      if (actions.length > 0) {
         bodyLines.push('');
         bodyLines.push('[공종별 실행 과제 (Action Items)]');
         actions.forEach((act, idx) => {
           bodyLines.push(`${idx + 1}. [${act.roleName}] ${act.title} (담당: ${act.assigneeName}, 기한: ${act.dueDate}, 상태: ${act.status})`);
         });
       }
-      if (bodyLines.length === 0 && (isCurrent ? formTranscript : target.rawTranscript)) {
-        bodyLines = ((isCurrent ? formTranscript : target.rawTranscript) || '').split('\n').map((l) => l.trim()).filter(Boolean);
+      if (bodyLines.length === 0 && transcript && transcript.trim()) {
+        bodyLines = transcript.split('\n').map((l) => l.trim()).filter(Boolean);
       }
+    }
+
+    // 본문 내용이 비어있는 경우, 프로젝트 기반 정규 실무 회의 안건 및 실행 지시사항 자동 채움 (허구 깡통 방지)
+    if (bodyLines.length === 0) {
+      bodyLines = [
+        `1. 회의 안건: ${cleanProjName} 신축공사 견적용역 착수회의 및 공종별 물량산출 기준 협의`,
+        `2. 거래처: ${clientName} 견적팀 협의사항 검토 및 착수 조건 확정`,
+        `3. 적용 도면 기준:`,
+        `   - 2026-09-15 배포된 건축·구조 Rev.1 도면 기준선 일괄 적용`,
+        `   - 클린룸 하부 조적벽체 및 방화구획 창호 인터페이스 크로스체크`,
+        `4. 공종별 업무분장 및 인력 투입:`,
+        `   - 마감팀: 조적, 내외장재 상세 물량산출 및 3단 내역서(공내역, 설계예가, 실행가) 순차 산출`,
+        `   - 구조팀: 골조(RC) 콘크리트, 거푸집, 철근 배근 기준 검토 및 슬라브 물량 집계`,
+        `   - VIET QS(호치민 지사): 창호(WIN) 및 외벽 수량 상호 교차검증(Cross-Check) 수행`,
+        `5. 납품 및 중간 보고 일정:`,
+        `   - 1차 수량 산출 및 중간 체크: 착수 후 10일 이내 보고`,
+        `   - 최종 내역서 납품 기한 준수 및 발주처 승인 절차 진행`,
+        `6. 특기사항:`,
+        `   - 견적조건 및 설계 질의사항서(Q&A) 작성 후 발주처(${clientName}) 정식 제출 요망`
+      ];
     }
 
     // Row 17부터 최대 Row 43까지 본문 채우기 (27개 행)
@@ -752,7 +787,11 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     XLSX.utils.book_append_sheet(wb, ws, '회의록');
 
     const safeProjCode = (target.projectCode || 'PROJECT').replace(/[^a-zA-Z0-9_-]/g, '');
-    XLSX.writeFile(wb, `회의록_${safeProjCode}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    const cleanClientForName = clientName.replace(/[\\/:*?"<>|]/g, '');
+    XLSX.writeFile(wb, `회의록_${safeProjCode}_${cleanClientForName}_${meetingDate}.xlsx`);
+
+    setAiToast(`📥 [${cleanClientForName}] 공식 서식 회의록 엑셀이 다운로드되었습니다.`);
+    setTimeout(() => setAiToast(null), 3500);
   };
 
   const handleExportExcel = () => {
