@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useProjectStore, TEAM_ROLES, type Department } from '../store/useProjectStore';
 import {
-  SUBTITLES,
+  MAIN_FOLDERS,
+  FOLDER_SUBTITLES,
   SUBTITLE_METAS,
+  type MainFolderType,
   type SubtitleType,
   type TechVaultFile,
   ACCEPT_FILE_TYPES,
@@ -25,8 +27,8 @@ import {
   User,
   AlertCircle,
   Building2,
-  Users,
   HardDrive,
+  Folder,
 } from 'lucide-react';
 
 export const DriveView: React.FC = () => {
@@ -58,11 +60,13 @@ export const DriveView: React.FC = () => {
   const [selectedProjectCode, setSelectedProjectCode] = useState<string>(() => uniqueProjects[0]?.code || '');
   const currentProject = uniqueProjects.find((p) => p.code === selectedProjectCode) || uniqueProjects[0];
 
-  // 2. 소속팀 선택 상태
-  const availableTeams: Department[] = currentProject?.departments?.length ? currentProject.departments : ['마감팀', '구조팀'];
-  const [selectedTeam, setSelectedTeam] = useState<Department>(() => availableTeams[0] || '마감팀');
+  // 2. 3대 대분류 폴더 선택 상태 (01.접수자료, 02.마감자료, 03.구조자료)
+  const [selectedMainFolder, setSelectedMainFolder] = useState<MainFolderType>('02.마감자료');
 
-  // 3. 공종 선택 상태
+  // 3. 소속팀 선택 상태 (대분류와 연동)
+  const [selectedTeam, setSelectedTeam] = useState<Department>(() => '마감팀');
+
+  // 4. 공종 선택 상태
   const availableRoles = useMemo(() => {
     return TEAM_ROLES[selectedTeam] || ['공종'];
   }, [selectedTeam]);
@@ -72,8 +76,8 @@ export const DriveView: React.FC = () => {
     return roles.find((r) => r !== 'PM') || roles[0] || '조적';
   });
 
-  // 4. 서브타이틀 선택 상태 (기본: 1.프로그램파일(FIN))
-  const [selectedSubtitle, setSelectedSubtitle] = useState<SubtitleType>('1.프로그램파일(FIN)');
+  // 5. 세분화 서브타이틀 선택 상태 (기본: 1.프로그램파일 (FIN))
+  const [selectedSubtitle, setSelectedSubtitle] = useState<SubtitleType>('1.프로그램파일 (FIN)');
 
   // 파일 목록 상태
   const [allFiles, setAllFiles] = useState<TechVaultFile[]>([]);
@@ -86,6 +90,22 @@ export const DriveView: React.FC = () => {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 대분류 폴더 변경 시 서브타이틀 및 팀 자동 동기화
+  const handleMainFolderSelect = (folder: MainFolderType) => {
+    setSelectedMainFolder(folder);
+    const nextSubs = FOLDER_SUBTITLES[folder] || [];
+    if (nextSubs.length > 0) {
+      setSelectedSubtitle(nextSubs[0]);
+    }
+    if (folder === '02.마감자료') {
+      handleTeamSelect('마감팀');
+    } else if (folder === '03.구조자료') {
+      handleTeamSelect('구조팀');
+    } else {
+      setSelectedRole('공통');
+    }
+  };
 
   // 프로젝트 변경 시 팀 자동 맞춤
   const handleProjectSelect = (code: string) => {
@@ -125,33 +145,37 @@ export const DriveView: React.FC = () => {
     }
   }, [selectedProjectCode]);
 
-  // 서브타이틀별 파일 카운트 계산
+  // 대분류별/서브타이틀별 파일 카운트 계산
   const subtitleCounts = useMemo(() => {
-    const counts: Record<string, number> = {
-      '1.프로그램파일(FIN)': 0,
-      '2.CAD작업도면': 0,
-      '3.질의사항&견적조건': 0,
-      '4.기타': 0,
-    };
+    const counts: Record<string, number> = {};
+    const currentSubs = FOLDER_SUBTITLES[selectedMainFolder] || [];
+    currentSubs.forEach((sub) => {
+      counts[sub] = 0;
+    });
+
     allFiles.forEach((f) => {
-      if (counts[f.subtitle] !== undefined) {
-        counts[f.subtitle] += 1;
+      const normalizedSub = f.subtitle === '1.프로그램파일(FIN)' ? '1.프로그램파일 (FIN)' : f.subtitle === '4.기타' ? '5.기타' : f.subtitle;
+      const fileMainFolder = f.mainFolder || (f.teamName === '구조팀' ? '03.구조자료' : f.subtitle.includes('도면 및 발주처') ? '01.접수자료' : '02.마감자료');
+      if (fileMainFolder === selectedMainFolder && counts[normalizedSub] !== undefined) {
+        counts[normalizedSub] += 1;
       }
     });
     return counts;
-  }, [allFiles]);
+  }, [allFiles, selectedMainFolder]);
 
   // 현재 필터된 파일 목록
   const currentSubtitleFiles = useMemo(() => {
     return allFiles.filter((f) => {
-      const matchSub = f.subtitle === selectedSubtitle;
-      if (!matchSub) return false;
+      const normalizedSub = f.subtitle === '1.프로그램파일(FIN)' ? '1.프로그램파일 (FIN)' : f.subtitle === '4.기타' ? '5.기타' : f.subtitle;
+      const fileMainFolder = f.mainFolder || (f.teamName === '구조팀' ? '03.구조자료' : f.subtitle.includes('도면 및 발주처') ? '01.접수자료' : '02.마감자료');
+      if (fileMainFolder !== selectedMainFolder) return false;
+      if (normalizedSub !== selectedSubtitle) return false;
       if (!searchQuery.trim()) return true;
       return f.originalName.toLowerCase().includes(searchQuery.toLowerCase()) ||
              f.uploadedBy.toLowerCase().includes(searchQuery.toLowerCase()) ||
              f.roleName.toLowerCase().includes(searchQuery.toLowerCase());
     });
-  }, [allFiles, selectedSubtitle, searchQuery]);
+  }, [allFiles, selectedMainFolder, selectedSubtitle, searchQuery]);
 
   // 파일 업로드 처리
   const handleUploadFiles = async (fileList: FileList | File[]) => {
@@ -171,8 +195,9 @@ export const DriveView: React.FC = () => {
         const uploaded = await uploadVaultFile({
           projectCode: selectedProjectCode,
           projectName,
-          teamName: selectedTeam,
-          roleName: selectedRole,
+          mainFolder: selectedMainFolder,
+          teamName: selectedMainFolder === '03.구조자료' ? '구조팀' : selectedMainFolder === '01.접수자료' ? '발주처' : '마감팀',
+          roleName: selectedMainFolder === '01.접수자료' ? '공통' : selectedRole,
           subtitle: selectedSubtitle,
           file,
           uploadedBy: userName,
@@ -186,7 +211,7 @@ export const DriveView: React.FC = () => {
 
     setIsUploading(false);
     if (successCount > 0) {
-      setUploadNotice(`${successCount}개 파일이 Google Drive [${selectedSubtitle}] 폴더에 안전 저장되었습니다.`);
+      setUploadNotice(`${successCount}개 파일이 Google Drive [${selectedMainFolder} > ${selectedSubtitle}] 폴더에 안전 저장되었습니다.`);
       setTimeout(() => setUploadNotice(null), 5000);
     }
     if (fileInputRef.current) {
@@ -212,7 +237,12 @@ export const DriveView: React.FC = () => {
     }
   };
 
-  const activeMeta = SUBTITLE_METAS[selectedSubtitle];
+  const activeMeta = SUBTITLE_METAS[selectedSubtitle] || {
+    code: 'FILE',
+    title: selectedSubtitle,
+    description: '관련 보관 자료',
+    icon: 'FILE',
+  };
 
   return (
     <div className="space-y-5 animate-fadeIn pb-12">
@@ -233,7 +263,7 @@ export const DriveView: React.FC = () => {
               </span>
             </div>
             <p className="text-xs font-semibold text-slate-300">
-              기술본부 자료실 &gt; [{currentProject?.code}] &gt; <span className="text-blue-400 font-bold">{selectedTeam}</span> &gt; <span className="text-emerald-400 font-bold">{selectedRole}</span> &gt; <span className="text-white font-bold underline">{selectedSubtitle}</span>
+              기술본부 자료실 &gt; [{currentProject?.code}] &gt; <span className="text-amber-400 font-bold">{selectedMainFolder}</span> {selectedMainFolder !== '01.접수자료' && <>&gt; <span className="text-emerald-400 font-bold">{selectedRole}</span></>} &gt; <span className="text-white font-bold underline">{selectedSubtitle}</span>
             </p>
           </div>
         </div>
@@ -249,14 +279,82 @@ export const DriveView: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. 대상 프로젝트 및 팀/공종 선택 바 (고대비: 화이트/블루/에메랄드/블랙) */}
+      {/* 2. 최우선 3대 대분류 폴더 선택 바 (01.접수자료 / 02.마감자료 / 03.구조자료) */}
+      <div className="bg-slate-900 border-2 border-slate-700 rounded-2xl p-4 shadow-lg space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-black text-white flex items-center gap-2">
+            <Folder className="w-4 h-4 text-amber-400" />
+            <span>대분류 폴더 선택</span>
+            <span className="text-[11px] font-normal text-slate-400">
+              (업로드 및 조회할 자료실의 1단계 최상위 폴더를 지정합니다)
+            </span>
+          </label>
+          <span className="text-[11px] font-bold text-amber-400 bg-amber-950/80 px-2.5 py-0.5 rounded-full border border-amber-500/40">
+            현재 폴더: {selectedMainFolder}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {MAIN_FOLDERS.map((folder) => {
+            const isSelected = selectedMainFolder === folder;
+            const subCount = FOLDER_SUBTITLES[folder].length;
+            const desc =
+              folder === '01.접수자료'
+                ? '도면 및 발주처 제공자료 (현장설명서/입찰안내서)'
+                : folder === '02.마감자료'
+                ? '마감팀 산출자료 (FIN, CAD, 질의사항, VIETQS, 기타)'
+                : '구조팀 산출자료 (FIN, CAD, 질의사항, VIETQS, 기타)';
+
+            return (
+              <button
+                key={folder}
+                type="button"
+                onClick={() => handleMainFolderSelect(folder)}
+                className={`p-3.5 rounded-xl border-2 text-left transition-all relative flex flex-col justify-between ${
+                  isSelected
+                    ? 'bg-amber-950/40 border-amber-400 shadow-lg shadow-amber-500/20 ring-2 ring-amber-400/50 scale-[1.01]'
+                    : 'bg-slate-950 border-slate-700 hover:border-slate-500 text-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <span className="flex items-center gap-2 font-black text-sm text-white">
+                    <span className={`text-base ${isSelected ? 'scale-110' : ''}`}>
+                      {folder === '01.접수자료' ? '📥' : folder === '02.마감자료' ? '🏢' : '🏗️'}
+                    </span>
+                    {folder}
+                  </span>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      isSelected
+                        ? 'bg-amber-400 text-black border-amber-300'
+                        : 'bg-slate-800 text-slate-400 border-slate-700'
+                    }`}
+                  >
+                    하위 {subCount}개 세부분류
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-snug line-clamp-2">
+                  {desc}
+                </p>
+                {isSelected && (
+                  <div className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-400 text-black font-black text-[10px] flex items-center justify-center border-2 border-slate-900">
+                    ✓
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 3. 대상 프로젝트 및 공종 선택 바 */}
       <div className="bg-slate-900 border-2 border-slate-700/80 rounded-xl p-4 shadow-md space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-          {/* 1) 프로젝트 선택 (5칸) */}
-          <div className="md:col-span-5">
+          {/* 1) 프로젝트 선택 (7칸) */}
+          <div className="md:col-span-7">
             <label className="block text-xs font-black text-white mb-1.5 flex items-center gap-1.5">
               <Building2 className="w-3.5 h-3.5 text-blue-400" />
-              1. 대상 프로젝트 선택
+              <span>대상 프로젝트 선택</span>
             </label>
             <div className="relative">
               <select
@@ -276,111 +374,112 @@ export const DriveView: React.FC = () => {
             </div>
           </div>
 
-          {/* 2) 소속팀 선택 (4칸) */}
-          <div className="md:col-span-4">
-            <label className="block text-xs font-black text-white mb-1.5 flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5 text-emerald-400" />
-              2. 소속 부서(팀) 선택
-            </label>
-            <div className="grid grid-cols-3 gap-1.5">
-              {(['마감팀', '구조팀', '토목&조경팀'] as Department[]).map((team) => {
-                const isSelected = selectedTeam === team;
-                return (
-                  <button
-                    key={team}
-                    type="button"
-                    onClick={() => handleTeamSelect(team)}
-                    className={`py-2 px-1 text-xs font-black rounded-lg border-2 transition-all text-center ${
-                      isSelected
-                        ? 'bg-blue-600 text-white border-blue-400 shadow-md shadow-blue-500/20 scale-[1.02]'
-                        : 'bg-slate-950 text-slate-300 border-slate-700 hover:border-slate-500 hover:text-white'
-                    }`}
-                  >
-                    {team}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 3) 공종 선택 (3칸) */}
-          <div className="md:col-span-3">
+          {/* 2) 담당 공종 선택 (5칸) */}
+          <div className="md:col-span-5">
             <label className="block text-xs font-black text-white mb-1.5 flex items-center gap-1.5">
               <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
-              3. 담당 공종 선택
+              <span>
+                {selectedMainFolder === '01.접수자료'
+                  ? '자료 성격'
+                  : `${selectedMainFolder.replace(/^\d+\./, '')} 세부 공종`}
+              </span>
             </label>
-            <div className="relative">
-              <select
-                value={selectedRole}
-                onChange={(e) => setSelectedRole(e.target.value)}
-                className="w-full bg-slate-950 border-2 border-slate-600 rounded-lg px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-blue-400 appearance-none cursor-pointer shadow-inner"
-              >
-                {availableRoles.map((role) => (
-                  <option key={role} value={role} className="bg-slate-900 text-white font-bold">
-                    {role} {role === 'PM' ? '(총괄)' : '공종'}
-                  </option>
-                ))}
-              </select>
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-amber-400 font-bold text-xs">
-                ▼
+            {selectedMainFolder === '01.접수자료' ? (
+              <div className="w-full bg-slate-950 border-2 border-slate-700 rounded-lg px-3.5 py-2.5 text-xs font-bold text-amber-300 flex items-center justify-between">
+                <span>공통 발주처 제공자료 (도면/시방/질의)</span>
+                <span className="text-[10px] bg-amber-900/60 text-amber-200 px-2 py-0.5 rounded border border-amber-600/40">
+                  전체 공종 공통
+                </span>
               </div>
-            </div>
+            ) : (
+              <div className="relative">
+                <select
+                  value={selectedRole}
+                  onChange={(e) => setSelectedRole(e.target.value)}
+                  className="w-full bg-slate-950 border-2 border-slate-600 rounded-lg px-3.5 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-blue-400 appearance-none cursor-pointer shadow-inner"
+                >
+                  {availableRoles.map((role) => (
+                    <option key={role} value={role} className="bg-slate-900 text-white font-bold">
+                      {role} {role === 'PM' ? '(총괄)' : '공종'}
+                    </option>
+                  ))}
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-amber-400 font-bold text-xs">
+                  ▼
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* 3. 4대 서브타이틀 카드에셋 선택창 (★흰색, 초록, 검은색, 파랑색 초고대비 명품 UI★) */}
+      {/* 4. 세분화 서브타이틀 폴더 카드 선택창 */}
       <div className="space-y-2.5">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-black text-white flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-blue-500" />
-            <span>4대 필수 서브타이틀 폴더 선택</span>
+            <span>[{selectedMainFolder}] 세분화 폴더 목록</span>
             <span className="text-xs font-medium text-emerald-400">
-              (선택한 폴더로 자동 분류 저장됩니다)
+              (업로드 및 열람할 하위 폴더를 클릭하세요)
             </span>
           </h3>
           <span className="text-xs font-bold text-white bg-slate-800 px-2.5 py-1 rounded-md border border-slate-700">
-            총 <strong className="text-blue-400">{allFiles.length}</strong>개 파일 보관 중
+            현재 폴더 보관: <strong className="text-blue-400">{allFiles.filter((f) => {
+              const fileMainFolder = f.mainFolder || (f.teamName === '구조팀' ? '03.구조자료' : f.subtitle.includes('도면 및 발주처') ? '01.접수자료' : '02.마감자료');
+              return fileMainFolder === selectedMainFolder;
+            }).length}</strong>건 / 전체 {allFiles.length}건
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-          {SUBTITLES.map((subKey, idx) => {
-            const meta = SUBTITLE_METAS[subKey];
+        <div className={`grid gap-3.5 ${
+          selectedMainFolder === '01.접수자료'
+            ? 'grid-cols-1'
+            : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-5'
+        }`}>
+          {FOLDER_SUBTITLES[selectedMainFolder].map((subKey, idx) => {
+            const meta = SUBTITLE_METAS[subKey] || {
+              code: 'ETC',
+              title: subKey,
+              description: '관련 자료',
+              icon: 'FILE',
+            };
             const isSelected = selectedSubtitle === subKey;
             const count = subtitleCounts[subKey] || 0;
 
-            // 각 서브타이틀 고유 테마 (초록, 파랑, 화이트, 블랙 기준)
-            const themeConfig = [
-              // 1. FIN: 블루 & 화이트
+            // 서브타이틀별 테마 설정
+            const themeList = [
               {
                 activeBorder: 'border-blue-500 bg-blue-950/70 shadow-lg shadow-blue-500/20 ring-2 ring-blue-400',
                 inactiveBorder: 'border-slate-700 bg-slate-900 hover:border-blue-500/60',
                 badgeBg: isSelected ? 'bg-blue-600 text-white' : 'bg-blue-950 text-blue-300 border border-blue-800',
                 tagColor: 'text-blue-400',
               },
-              // 2. CAD: 에메랄드 초록 & 화이트
               {
                 activeBorder: 'border-emerald-500 bg-emerald-950/70 shadow-lg shadow-emerald-500/20 ring-2 ring-emerald-400',
                 inactiveBorder: 'border-slate-700 bg-slate-900 hover:border-emerald-500/60',
                 badgeBg: isSelected ? 'bg-emerald-600 text-white' : 'bg-emerald-950 text-emerald-300 border border-emerald-800',
                 tagColor: 'text-emerald-400',
               },
-              // 3. Q&A: 사이언/스카이블루 & 화이트
               {
                 activeBorder: 'border-sky-500 bg-sky-950/70 shadow-lg shadow-sky-500/20 ring-2 ring-sky-400',
                 inactiveBorder: 'border-slate-700 bg-slate-900 hover:border-sky-500/60',
                 badgeBg: isSelected ? 'bg-sky-600 text-white' : 'bg-sky-950 text-sky-300 border border-sky-800',
                 tagColor: 'text-sky-400',
               },
-              // 4. 기타: 화이트 & 다크블랙
+              {
+                activeBorder: 'border-rose-500 bg-rose-950/70 shadow-lg shadow-rose-500/20 ring-2 ring-rose-400',
+                inactiveBorder: 'border-slate-700 bg-slate-900 hover:border-rose-500/60',
+                badgeBg: isSelected ? 'bg-rose-600 text-white' : 'bg-rose-950 text-rose-300 border border-rose-800',
+                tagColor: 'text-rose-400',
+              },
               {
                 activeBorder: 'border-purple-500 bg-purple-950/70 shadow-lg shadow-purple-500/20 ring-2 ring-purple-400',
                 inactiveBorder: 'border-slate-700 bg-slate-900 hover:border-purple-500/60',
                 badgeBg: isSelected ? 'bg-purple-600 text-white' : 'bg-purple-950 text-purple-300 border border-purple-800',
                 tagColor: 'text-purple-400',
               },
-            ][idx];
+            ];
+            const themeConfig = themeList[idx % themeList.length];
 
             return (
               <button
@@ -393,21 +492,21 @@ export const DriveView: React.FC = () => {
               >
                 {/* 왼쪽 고대비 아이콘 뱃지 */}
                 <div
-                  className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm shrink-0 shadow-md transition-all ${
+                  className={`w-11 h-11 rounded-xl flex items-center justify-center font-black text-xs shrink-0 shadow-md transition-all ${
                     themeConfig.badgeBg
                   }`}
                 >
                   {meta.icon}
                 </div>
 
-                {/* 오른쪽 텍스트 & 카운트 (선명한 화이트 & 고대비) */}
+                {/* 오른쪽 텍스트 & 카운트 */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-1 mb-1">
-                    <span className={`text-[11px] font-black uppercase tracking-wider ${themeConfig.tagColor}`}>
-                      SUBTITLE {meta.code}
+                  <div className="flex items-center justify-between gap-1 mb-0.5">
+                    <span className={`text-[10px] font-black uppercase tracking-wider ${themeConfig.tagColor}`}>
+                      {meta.code}
                     </span>
                     <span
-                      className={`text-xs font-black px-2 py-0.5 rounded-full border ${
+                      className={`text-[11px] font-black px-2 py-0.2 rounded-full border ${
                         count > 0
                           ? 'bg-emerald-500 text-black border-emerald-400 shadow-sm'
                           : 'bg-slate-800 text-slate-400 border-slate-700'
@@ -417,18 +516,18 @@ export const DriveView: React.FC = () => {
                     </span>
                   </div>
 
-                  <strong className="block text-sm font-black text-white truncate leading-snug">
+                  <strong className="block text-xs font-black text-white truncate leading-snug">
                     {meta.title}
                   </strong>
 
-                  <p className="text-[11px] font-medium text-slate-300 truncate mt-0.5">
+                  <p className="text-[10px] font-medium text-slate-300 truncate mt-0.5">
                     {meta.description}
                   </p>
                 </div>
 
                 {/* 선택 완료 체크 표시 */}
                 {isSelected && (
-                  <div className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-emerald-500 text-black flex items-center justify-center font-black text-xs shadow-md border-2 border-slate-950">
+                  <div className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-emerald-400 text-black flex items-center justify-center font-black text-[10px] shadow-md border-2 border-slate-950">
                     ✓
                   </div>
                 )}
@@ -470,7 +569,7 @@ export const DriveView: React.FC = () => {
           </strong>
           <p className="text-xs font-semibold text-slate-300 max-w-xl leading-relaxed">
             파일을 끌어다 놓거나 아래 버튼을 누르세요 · FIN, DWG, PDF, Excel, 압축파일 지원<br />
-            저장 경로: <span className="text-emerald-400 font-bold">기술본부 자료실/{currentProject?.name}/{selectedTeam}/{selectedRole}/{selectedSubtitle}</span>
+            저장 경로: <span className="text-emerald-400 font-bold">기술본부 자료실/{currentProject?.name}/{selectedMainFolder}/{selectedMainFolder !== '01.접수자료' ? `${selectedRole}/` : ''}{selectedSubtitle}</span>
           </p>
         </div>
 

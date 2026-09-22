@@ -14,45 +14,105 @@
 
 export const ROOT_FOLDER_NAME = '기술본부 자료실';
 
+// 3대 대분류 폴더
+export const MAIN_FOLDERS = [
+  '01.접수자료',
+  '02.마감자료',
+  '03.구조자료',
+] as const;
+
+export type MainFolderType = typeof MAIN_FOLDERS[number];
+
+// 세분화된 서브타이틀 폴더 목록
 export const SUBTITLES = [
-  '1.프로그램파일(FIN)',
+  '1.도면 및 발주처 제공자료',
+  '1.프로그램파일 (FIN)',
   '2.CAD작업도면',
   '3.질의사항&견적조건',
-  '4.기타'
+  '4.VIETQS 작업자료',
+  '5.기타',
+  // 하위 호환성
+  '1.프로그램파일(FIN)',
+  '4.기타',
 ] as const;
 
 export type SubtitleType = typeof SUBTITLES[number];
 
+// 각 대분류별 세분화 매핑
+export const FOLDER_SUBTITLES: Record<MainFolderType, readonly SubtitleType[]> = {
+  '01.접수자료': [
+    '1.도면 및 발주처 제공자료',
+  ],
+  '02.마감자료': [
+    '1.프로그램파일 (FIN)',
+    '2.CAD작업도면',
+    '3.질의사항&견적조건',
+    '4.VIETQS 작업자료',
+    '5.기타',
+  ],
+  '03.구조자료': [
+    '1.프로그램파일 (FIN)',
+    '2.CAD작업도면',
+    '3.질의사항&견적조건',
+    '4.VIETQS 작업자료',
+    '5.기타',
+  ],
+};
+
 export interface SubtitleMeta {
   code: string;
-  title: SubtitleType;
+  title: string;
   description: string;
   icon: string;
 }
 
-export const SUBTITLE_METAS: Record<SubtitleType, SubtitleMeta> = {
-  '1.프로그램파일(FIN)': {
+export const SUBTITLE_METAS: Record<string, SubtitleMeta> = {
+  '1.도면 및 발주처 제공자료': {
+    code: 'SPEC',
+    title: '1.도면 및 발주처 제공자료',
+    description: '발주처 원본 도면, 현장설명서, 입찰안내서, 지침자료',
+    icon: 'DOC',
+  },
+  '1.프로그램파일 (FIN)': {
     code: 'FIN',
-    title: '1.프로그램파일(FIN)',
-    description: '물량산출 프로그램 FIN 원본, 데이터 백업 파일',
+    title: '1.프로그램파일 (FIN)',
+    description: '물량산출 프로그램 FIN 원본, 산출 데이터 백업 파일',
     icon: 'FIN',
   },
   '2.CAD작업도면': {
     code: 'CAD',
     title: '2.CAD작업도면',
-    description: '건축/구조 도면 원본 (DWG, DXF, PDF 등)',
+    description: '건축/구조 산출 작업도면 (DWG, DXF, PDF 등)',
     icon: 'CAD',
   },
   '3.질의사항&견적조건': {
     code: 'Q&A',
     title: '3.질의사항&견적조건',
-    description: '설계 질의회신서, 견적조건표, 단가 비교 자료',
+    description: '설계 질의회신서, 견적조건표, 단가 비교 및 특기시방',
     icon: 'Q&A',
+  },
+  '4.VIETQS 작업자료': {
+    code: 'VIETQS',
+    title: '4.VIETQS 작업자료',
+    description: '베트남 VIETQS 외주 및 협업 산출자료, 1차/2차 검토본',
+    icon: 'VN',
+  },
+  '5.기타': {
+    code: 'ETC',
+    title: '5.기타',
+    description: '현장사진, 참고자료, 압축파일(ZIP, 7Z), 회의록 등',
+    icon: 'ETC',
+  },
+  '1.프로그램파일(FIN)': {
+    code: 'FIN',
+    title: '1.프로그램파일 (FIN)',
+    description: '물량산출 프로그램 FIN 원본, 산출 데이터 백업 파일',
+    icon: 'FIN',
   },
   '4.기타': {
     code: 'ETC',
-    title: '4.기타',
-    description: '현장사진, 참고자료, 압축파일(ZIP, 7Z)',
+    title: '5.기타',
+    description: '현장사진, 참고자료, 압축파일(ZIP, 7Z), 회의록 등',
     icon: 'ETC',
   },
 };
@@ -61,6 +121,7 @@ export interface TechVaultFile {
   id: string;
   projectCode: string;
   projectName: string;
+  mainFolder?: MainFolderType;
   teamName: string;
   roleName: string;
   subtitle: SubtitleType;
@@ -195,13 +256,14 @@ export async function fetchVaultFiles(projectCode?: string): Promise<TechVaultFi
 export async function uploadVaultFile(params: {
   projectCode: string;
   projectName: string;
+  mainFolder?: MainFolderType;
   teamName: string;
   roleName: string;
   subtitle: SubtitleType;
   file: File;
   uploadedBy: string;
 }): Promise<TechVaultFile> {
-  const { projectCode, projectName, teamName, roleName, subtitle, file, uploadedBy } = params;
+  const { projectCode, projectName, mainFolder, teamName, roleName, subtitle, file, uploadedBy } = params;
   const sha256 = await calculateSha256(file);
   const fileId = `vault_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   const uploadedAt = new Date().toISOString();
@@ -251,6 +313,7 @@ export async function uploadVaultFile(params: {
     id: fileId,
     projectCode,
     projectName,
+    mainFolder,
     teamName,
     roleName,
     subtitle,
