@@ -257,6 +257,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
   }, [initialTab]);
 
   const [meetings, setMeetings] = useState<MeetingRecord[]>(loadStoredMeetings);
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<MeetingRecord | null>(null);
 
   // 고유 프로젝트 목록 (코드 기준 중복 제거)
   const uniqueProjects = useMemo(() => {
@@ -318,17 +319,8 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     });
   }, [meetings, listDeptFilter, listSearch]);
 
-  // 회의록 삭제 핸들러 (이벤트 버블링 차단 및 로컬스토리지 즉시 동기화)
-  const handleDeleteMeeting = (meetingId: string, e?: React.MouseEvent) => {
-    if (e) {
-      e.stopPropagation();
-      e.preventDefault();
-    }
-    const target = meetings.find((m) => m.id === meetingId);
-    const title = target?.title || target?.projectName || '해당 회의록';
-    if (!window.confirm(`[${title}]\n\n선택한 회의록을 목록에서 완전히 삭제하시겠습니까?`)) {
-      return;
-    }
+  // 회의록 영구 삭제 실행기 (로컬스토리지 즉시 동기화 및 포인터 안전 이동)
+  const executeDeleteMeeting = (meetingId: string) => {
     setMeetings((prev) => {
       const updated = prev.filter((m) => m.id !== meetingId);
       try {
@@ -339,12 +331,12 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
       return updated;
     });
 
-    // 현재 열람 중이던 회의록이 삭제된 경우 다음 회의록으로 안전하게 포인터 이동
     if (currentMeetingId === meetingId) {
       const remaining = meetings.filter((m) => m.id !== meetingId);
       setCurrentMeetingId(remaining[0]?.id || '');
     }
 
+    setDeleteConfirmTarget(null);
     setAiToast('🗑️ 회의록이 목록에서 안전하게 삭제되었습니다.');
     setTimeout(() => setAiToast(null), 3500);
   };
@@ -1142,8 +1134,12 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                             </button>
                             <button
                               type="button"
-                              onClick={(e) => handleDeleteMeeting(m.id, e)}
-                              className="px-2 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-800 text-[11px] font-bold transition cursor-pointer flex items-center gap-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                setDeleteConfirmTarget(m);
+                              }}
+                              className="px-2 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-800 text-[11px] font-bold transition cursor-pointer flex items-center gap-1 active:scale-95"
                               title="회의록 목록에서 영구 삭제"
                             >
                               <Trash2 size={12} />
@@ -1852,6 +1848,59 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
         onChange={handleFileUpload}
         className="hidden"
       />
+      {/* 회의록 영구 삭제 확인 커스텀 모달 (브라우저 confirm 차단 완전 방지) */}
+      {deleteConfirmTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white dark:bg-slate-900 border-2 border-rose-500 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-950 flex items-center justify-center shrink-0">
+                <Trash2 size={22} className="text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white">
+                  회의록 영구 삭제
+                </h3>
+                <p className="text-xs text-slate-500">
+                  선택한 회의록을 목록에서 완전히 삭제합니다.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-xs space-y-1">
+              <div className="font-bold text-slate-900 dark:text-white line-clamp-2">
+                {deleteConfirmTarget.title || deleteConfirmTarget.projectName}
+              </div>
+              <div className="text-slate-500 text-[11px]">
+                프로젝트 코드: {deleteConfirmTarget.projectCode} · 작성자: {deleteConfirmTarget.author} ({deleteConfirmTarget.authorPosition || '실장'})
+              </div>
+            </div>
+
+            <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+              ※ 삭제 후에는 로컬 저장소에서 영구히 지워지며 복구할 수 없습니다.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmTarget(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => executeDeleteMeeting(deleteConfirmTarget.id)}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-md transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 size={14} />
+                <span>영구 삭제</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 엑셀 가져오기 숨김 input 복원 */}
       <input
         ref={excelImportRef}
         type="file"
