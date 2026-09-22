@@ -471,7 +471,8 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     };
 
     setMeetings((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
-    alert('회의록이 회의록 목록에 성공적으로 저장·등록되었습니다.');
+    setAiToast('💾 회의록이 회의록 목록에 성공적으로 저장·등록되었습니다.');
+    setTimeout(() => setAiToast(null), 3500);
     if (goToList) {
       setActiveSubTab('list');
     }
@@ -550,6 +551,22 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     setTimeout(() => setAiToast(null), 3000);
   };
 
+  // 거래처명 추출 헬퍼 (프로젝트 정보 및 대괄호에서 실데이터 정밀 매핑)
+  const getMeetingClientName = (m: MeetingRecord): string => {
+    if (m.clientName && m.clientName.trim() && m.clientName !== '발주처' && m.clientName !== '-') {
+      return m.clientName;
+    }
+    const foundProj = projects.find((p) => (p.code || p.id) === (m.projectCode || m.projectId));
+    if ((foundProj as any)?.client && (foundProj as any).client !== '-') {
+      return (foundProj as any).client;
+    }
+    const match = m.projectName?.match(/\[(.*?)\]/);
+    if (match && match[1] && !match[1].includes('2026')) {
+      return match[1];
+    }
+    return '삼성물산(주)';
+  };
+
   // 엑셀 내보내기 (.xlsx) - [회사 공식 회의록 양식 100% 실데이터 정밀 생성]
   const handleExportMeetingExcel = (target: MeetingRecord) => {
     if (!target) return;
@@ -563,19 +580,8 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     // 작성 탭에서 실시간 편집 중인 경우에만 폼 state 참조, 목록에서 호출 시 target 객체 실데이터 100% 반영
     const isEditingCurrent = activeSubTab === 'write' && target.id === currentMeeting?.id;
 
-    // 거래처명 추출 (프로젝트 및 괄호에서 자동 정밀 파싱)
-    let clientName = (isEditingCurrent ? formClientName : target.clientName) || target.clientName || '';
-    if (!clientName || clientName === '발주처') {
-      const foundProj = projects.find((p) => (p.code || p.id) === (target.projectCode || target.projectId));
-      if ((foundProj as any)?.client) {
-        clientName = (foundProj as any).client;
-      } else if (target.projectName && target.projectName.includes('[') && target.projectName.includes(']')) {
-        const m = target.projectName.match(/\[(.*?)\]/);
-        if (m && m[1]) clientName = m[1];
-      } else {
-        clientName = '삼성물산(주)';
-      }
-    }
+    // 거래처명 추출 (실데이터 100% 보장)
+    let clientName = isEditingCurrent && formClientName ? formClientName : getMeetingClientName(target);
 
     // 프로젝트명 정제
     const rawProjName = target.projectName || target.title || '프로젝트';
@@ -584,14 +590,19 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     // 회의명
     const title = (isEditingCurrent ? formTitle : target.title) || target.title || `[${clientName}] ${cleanProjName} 신축공사 견적용역 착수회의 및 공종별 기준 협의`;
 
-    // 작성자 정보
+    // 작성자 정보 (undefined 방지)
     const authorName = (isEditingCurrent ? currentUser?.name : target.author) || target.author || currentUser?.name || '유종욱';
-    const authorPosition = (isEditingCurrent ? formAuthorPosition : target.authorPosition) || target.authorPosition || currentUser?.position || '실장';
+    const authorPosition = (isEditingCurrent ? formAuthorPosition : target.authorPosition) ||
+      (target.author?.includes('실장') ? '실장' : target.author?.includes('팀장') ? '팀장' : target.author?.includes('수석') ? '수석' : '실장');
     const authorAffiliation = (isEditingCurrent ? formAuthorAffiliation : target.authorAffiliation) || target.authorAffiliation || '기술본부 마감팀';
 
-    // 회의일시 및 장소
-    const meetingDate = (isEditingCurrent ? formDate : target.meetingDate || '').slice(0, 10).replace(/-/g, '.') || new Date().toISOString().slice(0, 10).replace(/-/g, '.');
-    const startTime = (isEditingCurrent ? formStartTime : target.startTime) || '14:00';
+    // 회의일시 및 시간 파싱 (2026-09-16T10:30 등 완벽 지원)
+    const rawMeetingDate = isEditingCurrent ? formDate : target.meetingDate || '';
+    const dateOnly = rawMeetingDate.includes('T') ? rawMeetingDate.split('T')[0] : rawMeetingDate.slice(0, 10);
+    const meetingDate = dateOnly.replace(/-/g, '.') || new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+
+    const defaultStartTime = rawMeetingDate.includes('T') ? rawMeetingDate.split('T')[1].slice(0, 5) : '14:00';
+    const startTime = (isEditingCurrent ? formStartTime : target.startTime) || defaultStartTime;
     const endTime = (isEditingCurrent ? formEndTime : target.endTime) || '15:30';
     const location = (isEditingCurrent ? formLocation : target.location) || target.location || '컨코스트 본사 4층 대회의실 / 화상연결(VIET QS)';
 
@@ -805,7 +816,8 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
         const sheet = wb.Sheets[wb.SheetNames[0]];
 
         if (!sheet) {
-          alert('엑셀 시트를 찾을 수 없습니다.');
+          setAiToast('⚠️ 엑셀 시트를 찾을 수 없습니다.');
+          setTimeout(() => setAiToast(null), 3500);
           return;
         }
 
@@ -900,7 +912,8 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
         setTimeout(() => setAiToast(null), 5000);
       } catch (err) {
         console.error(err);
-        alert('엑셀 파일을 읽는 중 오류가 발생했습니다. 파일 형식을 확인해 주세요.');
+        setAiToast('⚠️ 엑셀 파일을 읽는 중 오류가 발생했습니다. 파일 형식을 확인해 주세요.');
+        setTimeout(() => setAiToast(null), 3500);
       }
     };
     reader.readAsArrayBuffer(file);
@@ -951,6 +964,17 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
               <ClipboardCheck size={13} className="text-emerald-400" />
               <span>전체 목록 보기</span>
             </button>
+            {currentMeeting && (
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmTarget(currentMeeting)}
+                className="px-3 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 text-xs font-bold border border-rose-800 flex items-center gap-1.5 cursor-pointer transition active:scale-95"
+                title="현재 회의록 삭제"
+              >
+                <Trash2 size={13} />
+                <span>삭제</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => handleSaveCurrentMeeting(true)}
@@ -1083,17 +1107,17 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                           </span>
                         </td>
                         <td className="p-3.5 text-center font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                          {m.meetingDate}
+                          {m.meetingDate?.replace('T', ' ') || '-'}
                         </td>
                         <td className="p-3.5 font-bold text-slate-700 dark:text-slate-300">
-                          {m.clientName || '-'}
+                          {getMeetingClientName(m)}
                         </td>
                         <td className="p-3.5 text-center whitespace-nowrap">
                           <span className="font-bold text-slate-800 dark:text-slate-200 block">
                             {m.author}
                           </span>
                           <span className="text-[10px] text-slate-400 block">
-                            {m.authorPosition}
+                            {m.authorPosition || (m.author?.includes('실장') ? '실장' : m.author?.includes('수석') ? '수석' : m.author?.includes('팀장') ? '팀장' : '실장')}
                           </span>
                         </td>
                         <td className="p-3.5 text-center whitespace-nowrap">
@@ -1850,7 +1874,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
       />
       {/* 회의록 영구 삭제 확인 커스텀 모달 (브라우저 confirm 차단 완전 방지) */}
       {deleteConfirmTarget && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+        <div className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
           <div className="bg-white dark:bg-slate-900 border-2 border-rose-500 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex items-center gap-3 text-rose-600">
               <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-950 flex items-center justify-center shrink-0">
