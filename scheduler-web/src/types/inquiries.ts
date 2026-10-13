@@ -1,6 +1,18 @@
 import type { Department } from '../store/useProjectStore';
 
 export type InquiryStatus = 'DRAFT' | 'REGISTERED';
+export interface InquiryRound {
+    projectId: string;
+    department: Department;
+    roundNumber: number;
+    status: 'DRAFT' | 'SENT';
+    revision: number;
+    createdAt: string;
+    updatedAt: string;
+    sentAt?: string;
+    sentBy?: string;
+    sentByName?: string;
+}
 export type InquiryImageField = 'question' | 'answer' | 'review';
 export interface InquiryImagePoint {
     col: number;
@@ -42,11 +54,17 @@ export interface Inquiry {
     notes: string;
     images: InquiryImage[];
     status: InquiryStatus;
+    roundNumber?: number;
+    deletedAt?: string;
+    deletedBy?: string;
+    deletedByName?: string;
     authorId: string;
     authorName: string;
     createdAt: string;
     updatedAt: string;
     registeredAt?: string;
+    updatedBy?: string;
+    updatedByName?: string;
     revision: number;
     sourceSheet?: string;
     sourceRow?: number;
@@ -67,6 +85,8 @@ export type InquiryUnassignedImage = Omit<InquiryImage, 'field'> & {
 
 export interface InquiryImportResult {
     inquiries: Inquiry[];
+    // Imported dispatch metadata is a preview; it never marks central rounds sent.
+    rounds?: InquiryRound[];
     warnings: string[];
     // Images outside the inquiry table stay unassigned for human review.
     unassignedImages: InquiryUnassignedImage[];

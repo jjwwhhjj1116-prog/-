@@ -10,6 +10,8 @@ interface Env {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   INTAKE_SYNC_TOKEN?: string;
+  GEMINI_API_KEY?: string;
+  GEMINI_MODEL?: string;
 }
 
 function getGoogleClientId(env: Env): string {

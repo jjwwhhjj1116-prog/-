@@ -12,6 +12,7 @@ import {
   Trees,
   Plus,
   FileSignature,
+  FileQuestion,
   HardDrive,
   FileSearch,
   UserCheck,
@@ -56,9 +57,7 @@ export type NavCategory =
   | '마감팀 일정표'
   | '구조팀 일정표'
   | '토목&조경팀 일정표'
-  | '마감팀 프로젝트 질의사항'
-  | '구조팀 프로젝트 질의사항'
-  | '토목&조경팀 프로젝트 질의사항'
+  | '프로젝트 질의사항'
   | '회의록'
   | '회의록 작성'
   | '회의록 목록'
@@ -95,12 +94,21 @@ export default function App() {
 
   // 기본 활성 메뉴: 프로젝트 일정표
   const [activeMenu, setActiveMenu] = useState<NavCategory>('프로젝트 일정표');
+  const [inquiryDepartment,setInquiryDepartment]=useState<Department>('마감팀');
   const [inquiryVisited,setInquiryVisited]=useState<Department[]>([]);
-  const [inquiryContext,setInquiryContext]=useState<Partial<Record<Department,{projectId?:string;trade?:string}>>>({});
-  const openInquiries=(department:Department,projectId?:string,trade?:string)=>{
-    setInquiryContext(old=>({...old,[department]:{projectId,trade}}));
+  const [inquiryContext,setInquiryContext]=useState<Partial<Record<Department,{projectId?:string;projectCode?:string;trade?:string;version:number}>>>({});
+  const selectInquiryDepartment=(department:Department,projectCode?:string)=>{
+    if(projectCode){
+      const target=projects.find(project=>project.department===department&&project.code===projectCode);
+      setInquiryContext(old=>({...old,[department]:{...old[department],projectId:target?.id||'',projectCode,version:(old[department]?.version||0)+1}}));
+    }
+    setInquiryDepartment(department);
     setInquiryVisited(old=>old.includes(department)?old:[...old,department]);
-    setActiveMenu(`${department} 프로젝트 질의사항` as NavCategory);setFilterDepartment(department);
+    setActiveMenu('프로젝트 질의사항');
+  };
+  const openInquiries=(department:Department,projectId?:string,trade?:string)=>{
+    setInquiryContext(old=>({...old,[department]:{projectId,projectCode:projects.find(project=>project.id===projectId)?.code,trade,version:(old[department]?.version||0)+1}}));
+    selectInquiryDepartment(department);setFilterDepartment(department);
   };
   const [mobileNavOpen,setMobileNavOpen]=useState(false);
   useEffect(()=>setMobileNavOpen(false),[activeMenu,actorId]);
@@ -283,6 +291,7 @@ export default function App() {
     structSchedule: lang === 'vi' ? 'Tiến độ Đội Kết cấu' : '구조팀 일정표',
     civilSchedule: lang === 'vi' ? 'Tiến độ Hạ tầng & Cảnh quan' : '토목&조경팀 일정표',
     minutes: lang === 'vi' ? 'Biên bản họp' : '회의록',
+    projectInquiries: lang === 'vi' ? 'Câu hỏi dự án' : '프로젝트 질의사항',
     workLog: lang === 'vi' ? 'Nhật ký công việc' : '업무일지',
     drive: lang === 'vi' ? 'Kho tài liệu (Google Drive)' : '자료실(google드라이브)',
     qcLink: lang === 'vi' ? 'Hệ thống liên kết (Kiểm tra QC)' : '검토 (QC Studio 연계)',
@@ -548,7 +557,6 @@ export default function App() {
               </button>
 
               {/* 구조팀 일정표 */}
-              <button aria-label="마감팀 프로젝트 질의사항" onClick={()=>openInquiries('마감팀')} className={`ml-4 w-[calc(100%-1rem)] rounded-lg px-3 py-2 text-left text-xs font-semibold ${activeMenu==='마감팀 프로젝트 질의사항'?'bg-blue-50 text-blue-900 dark:bg-blue-950 dark:text-blue-100':'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'}`}>{lang==='vi'?'Câu hỏi dự án':'프로젝트 질의사항'}</button>
               <button
                 onClick={() => {
                   setActiveMenu('구조팀 일정표');
@@ -568,7 +576,6 @@ export default function App() {
               </button>
 
               {/* 토목&조경팀 일정표 */}
-              <button aria-label="구조팀 프로젝트 질의사항" onClick={()=>openInquiries('구조팀')} className={`ml-4 w-[calc(100%-1rem)] rounded-lg px-3 py-2 text-left text-xs font-semibold ${activeMenu==='구조팀 프로젝트 질의사항'?'bg-blue-50 text-blue-900 dark:bg-blue-950 dark:text-blue-100':'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'}`}>{lang==='vi'?'Câu hỏi dự án':'프로젝트 질의사항'}</button>
               <button
                 onClick={() => {
                   setActiveMenu('토목&조경팀 일정표');
@@ -586,7 +593,6 @@ export default function App() {
                 </div>
                 <ChevronRight size={14} className="opacity-60" />
               </button>
-              <button aria-label="토목&조경팀 프로젝트 질의사항" onClick={()=>openInquiries('토목&조경팀')} className={`ml-4 w-[calc(100%-1rem)] rounded-lg px-3 py-2 text-left text-xs font-semibold ${activeMenu==='토목&조경팀 프로젝트 질의사항'?'bg-blue-50 text-blue-900 dark:bg-blue-950 dark:text-blue-100':'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'}`}>{lang==='vi'?'Câu hỏi dự án':'프로젝트 질의사항'}</button>
             </div>
           </div>
 
@@ -652,6 +658,17 @@ export default function App() {
                   </button>
                 </div>
               </div>
+
+              <button
+                type="button"
+                aria-label={t.projectInquiries}
+                aria-current={activeMenu==='프로젝트 질의사항'?'page':undefined}
+                onClick={()=>selectInquiryDepartment(inquiryVisited.length?inquiryDepartment:currentUser.department==='구조팀'?'구조팀':currentUser.department==='토목&조경팀'?'토목&조경팀':'마감팀')}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${activeMenu==='프로젝트 질의사항'?'bg-[#00338d] text-white shadow-sm':'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50'}`}
+              >
+                <FileQuestion size={16}/>
+                <span>{t.projectInquiries}</span>
+              </button>
 
               <div className="mt-3 space-y-1">
                 <button onClick={()=>setActiveMenu('할 일')} className={`w-full flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold ${activeMenu==='할 일'?'bg-blue-700 text-white':'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}><ClipboardCheck size={17}/>할 일 (TO DO)</button>
@@ -1034,7 +1051,7 @@ export default function App() {
           )}
 
           {/* CASE 5: 회의록 (작성 및 목록 2단 분기) */}
-          {inquiryVisited.map(department=><div key={`${actorId}:${department}`} hidden={activeMenu!==`${department} 프로젝트 질의사항`}><ProjectInquiries department={department} initialProjectId={inquiryContext[department]?.projectId} initialTrade={inquiryContext[department]?.trade} visible={activeMenu===`${department} 프로젝트 질의사항`}/></div>)}
+          {inquiryVisited.map(department=><div key={`${actorId}:${department}`} hidden={activeMenu!=='프로젝트 질의사항'||inquiryDepartment!==department}><ProjectInquiries department={department} onDepartmentChange={selectInquiryDepartment} initialProjectId={inquiryContext[department]?.projectId} initialProjectCode={inquiryContext[department]?.projectCode} initialContextVersion={inquiryContext[department]?.version} initialTrade={inquiryContext[department]?.trade} visible={activeMenu==='프로젝트 질의사항'&&inquiryDepartment===department}/></div>)}
           {(activeMenu === '회의록' || activeMenu === '회의록 작성') && (
             <MinutesView initialTab="write" />
           )}

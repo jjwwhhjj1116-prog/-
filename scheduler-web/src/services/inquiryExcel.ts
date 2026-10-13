@@ -1,12 +1,31 @@
 import type { Workbook, Worksheet, Cell } from 'exceljs';
 import type { Department } from '../store/useProjectStore';
-import type { Inquiry, InquiryImage, InquiryImagePoint, InquiryImportResult, InquiryUnassignedImage } from '../types/inquiries';
+import type { Inquiry, InquiryImage, InquiryImagePoint, InquiryImportResult, InquiryUnassignedImage, InquiryRound } from '../types/inquiries';
+import { inquiryRoundNumber } from '../utils/inquiryRounds.ts';
 
 const HEADERS = ['No', '분야', '관련도면', '부위', '질의사항', '산출사항', '답변사항(발주처확인)', '비고(최종확정날짜)'];
 const WIDTHS = [1, 9, 13.125, 21.75, 22.25, 63.375, 65.625, 45.625, 17.25];
 // Source Excel photographs remain lossless; central registration applies its
 // separate 1MiB/four-photo limit without altering this local import/export.
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+const METADATA_MARKER = 'CONCOST_INQUIRIES_METADATA_V1';
+
+function roundNumber(value: unknown): number {
+    if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > 999) throw new Error('질의사항 차수 메타데이터를 확인해 주세요.');
+    return value as number;
+}
+function roundSnapshot(value: unknown): InquiryRound {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('질의사항 발송 상태 메타데이터를 확인해 주세요.');
+    const record = value as Record<string, unknown>;
+    if (!['마감팀', '구조팀', '토목&조경팀'].includes(String(record.department)) || !['DRAFT', 'SENT'].includes(String(record.status)) || !Number.isInteger(record.revision) || (record.revision as number) < 0) throw new Error('질의사항 발송 상태 메타데이터를 확인해 주세요.');
+    const text = (key: string, max = 200) => {
+        if (typeof record[key] !== 'string' || (record[key] as string).length > max) throw new Error('질의사항 발송 상태 메타데이터를 확인해 주세요.');
+        return record[key] as string;
+    };
+    return { projectId: text('projectId'), department: record.department as Department, roundNumber: roundNumber(record.roundNumber), status: record.status as InquiryRound['status'],
+        revision: record.revision as number, createdAt: text('createdAt'), updatedAt: text('updatedAt'),
+        ...(record.sentAt !== undefined ? { sentAt: text('sentAt') } : {}), ...(record.sentBy !== undefined ? { sentBy: text('sentBy') } : {}), ...(record.sentByName !== undefined ? { sentByName: text('sentByName') } : {}) };
+}
 type XmlNode = { name: string; attrs: Record<string, string>; text: string; children: XmlNode[] };
 type RawImage = Omit<InquiryImage, 'field'> & { sourceSheet: string; sourceRow: number };
 
@@ -172,9 +191,32 @@ export async function readInquiryExcel(data: ArrayBuffer | Uint8Array, options: 
     const { default: ExcelJS } = await import('exceljs');
     const book = new ExcelJS.Workbook(); await book.xlsx.load(bytes as unknown as Parameters<typeof book.xlsx.load>[0]);
     const result: InquiryImportResult = { inquiries: [], warnings: [], unassignedImages: [] };
+    const metadataSheets = book.worksheets.filter(sheet => sheet.getCell('A1').text === METADATA_MARKER);
+    const metadataRows = new Map<string, number>(), rounds: InquiryRound[] = [];
+    for (const sheet of metadataSheets) {
+        if (sheet.rowCount > 10000) throw new Error('질의사항 메타데이터 행 수가 너무 많습니다.');
+        for (let row = 2; row <= sheet.rowCount; row++) {
+            const kind = sheet.getCell(row, 1).text;
+            if (kind === 'ROW') {
+                const name = sheet.getCell(row, 2).text, start = sheet.getCell(row, 3).value;
+                if (!name || !book.getWorksheet(name) || !Number.isInteger(start) || (start as number) < 1 || (start as number) > 10000) throw new Error('질의사항 행 메타데이터 연결을 확인해 주세요.');
+                const key = JSON.stringify([name, start]);
+                if (metadataRows.has(key)) throw new Error('질의사항 행 메타데이터가 중복되었습니다.');
+                metadataRows.set(key, roundNumber(sheet.getCell(row, 4).value));
+            } else if (kind === 'ROUND') {
+                const json = sheet.getCell(row, 2).text;
+                if (json.length > 5000) throw new Error('질의사항 발송 상태 메타데이터가 너무 큽니다.');
+                let snapshot: unknown; try { snapshot = JSON.parse(json); } catch { throw new Error('질의사항 발송 상태 메타데이터를 확인해 주세요.'); }
+                const item = roundSnapshot(snapshot);
+                if (rounds.some(old => old.projectId === item.projectId && old.department === item.department && old.roundNumber === item.roundNumber)) throw new Error('질의사항 발송 상태 메타데이터가 중복되었습니다.');
+                rounds.push(item);
+            } else if (kind) throw new Error('지원하지 않는 질의사항 메타데이터입니다.');
+        }
+    }
     const images = await rawWorkbookImages(bytes, book, result.warnings);
     const assigned = new Set<string>(), now = new Date().toISOString();
     for (const sheet of book.worksheets) {
+        if (metadataSheets.includes(sheet)) continue;
         if (sheet.rowCount > 10000) throw new Error(`${sheet.name}: 질의사항 행 수가 너무 많습니다.`);
         let headerRow = 0, firstCol = 0;
         for (let row = 1; row <= Math.min(sheet.rowCount, 20) && !headerRow; row++) for (let col = 1; col <= 12; col++) {
@@ -208,7 +250,7 @@ export async function readInquiryExcel(data: ArrayBuffer | Uint8Array, options: 
             });
             result.inquiries.push({ id: crypto.randomUUID(), projectId: options.projectId, department,
                 no: values[0], trade: values[1], drawingNumbers: values[2] ? values[2].split(/\r?\n/) : [], classification: values[3], question: values[4], answer: values[5], review: values[6], notes: values[7],
-                group: groups.get(start) ?? '', images: pictures, status: 'DRAFT', authorId: options.authorId, authorName: options.authorName, createdAt: now, updatedAt: now, revision: 0,
+                group: groups.get(start) ?? '', roundNumber: metadataRows.get(JSON.stringify([sheet.name, start])) ?? inquiryRoundNumber({ group: groups.get(start) ?? '' }), images: pictures, status: 'DRAFT', authorId: options.authorId, authorName: options.authorName, createdAt: now, updatedAt: now, revision: 0,
                 sourceSheet: sheet.name, sourceRow: start, excelLayout: { rowSpan: end - start + 1, rowHeights: Array.from({ length: end - start + 1 }, (_, j) => sheet.getRow(start + j).height ?? 15),
                     columnWidths: Array.from({ length: 9 }, (_, col) => sheet.getColumn(col + 1).width ?? WIDTHS[col]), reviewHeader: headers[6], headers,
                     mergedColumns: Array.from({ length: 8 }, (_, col) => firstCol + col).filter(col => sheet.getCell(start, col).isMerged) } });
@@ -217,10 +259,18 @@ export async function readInquiryExcel(data: ArrayBuffer | Uint8Array, options: 
     result.unassignedImages = images.filter(image => !assigned.has(image.id));
     if (result.unassignedImages.length) result.warnings.push(`표 밖 사진 ${result.unassignedImages.length}장은 질문에 자동 배정하지 않았습니다. 미연결 사진에서 확인해 주세요.`);
     if (!result.inquiries.length) throw new Error('가져올 질의사항 행이 없습니다. No·분야·질의사항 열을 확인해 주세요.');
+    for (const [key] of metadataRows) {
+        const [name, start] = JSON.parse(key);
+        if (!result.inquiries.some(row => row.sourceSheet === name && row.sourceRow === start)) throw new Error('질의사항 행 메타데이터가 원본 표와 일치하지 않습니다.');
+    }
+    if (rounds.some(round => !result.inquiries.some(row => row.department === round.department && inquiryRoundNumber(row) === round.roundNumber))) throw new Error('질의사항 발송 상태 메타데이터가 원본 팀·차수와 일치하지 않습니다.');
+    // These are historical workbook snapshots only. Import never performs a
+    // central send/reopen operation or transfers the source record ownership.
+    if (rounds.length) result.rounds = rounds;
     return result;
 }
 
-export interface InquiryExcelOptions { projectName: string; department?: Department; unassignedImages?: InquiryUnassignedImage[] }
+export interface InquiryExcelOptions { projectName: string; department?: Department; unassignedImages?: InquiryUnassignedImage[]; rounds?: InquiryRound[] }
 function addPicture(book: Workbook, sheet: Worksheet, image: Omit<InquiryImage, 'field'>, anchor: InquiryImage['sourceAnchor']): void {
     if (!anchor) throw new Error('사진 위치 정보가 없습니다.');
     if (!image.dataUrl.startsWith(`data:${image.mimeType};base64,`)) throw new Error('사진 형식과 실제 파일이 일치하지 않습니다.');
@@ -232,7 +282,7 @@ function addPicture(book: Workbook, sheet: Worksheet, image: Omit<InquiryImage, 
 
 export async function buildInquiryWorkbookBuffer(inquiries: Inquiry[], options: InquiryExcelOptions): Promise<Uint8Array> {
     const { default: ExcelJS } = await import('exceljs'); const book = new ExcelJS.Workbook();
-    const rows = inquiries.filter(item => !options.department || item.department === options.department);
+    const rows = inquiries.filter(item => !item.deletedAt && (!options.department || item.department === options.department));
     const sheets = new Map<string, Worksheet>();
     const pictureLabels = new Map<string, { name: string; caption?: string }[]>();
     const putPicture = (sheet: Worksheet, image: Omit<InquiryImage, 'field'>, anchor: InquiryImage['sourceAnchor']) => {
@@ -251,7 +301,7 @@ export async function buildInquiryWorkbookBuffer(inquiries: Inquiry[], options: 
         sheet.getRow(2).height = 40.5; sheet.pageSetup.printTitlesRow = '1:2';
         return sheet;
     };
-    const nextRows = new Map<string, number>(), lastGroups = new Map<string, string>();
+    const nextRows = new Map<string, number>(), lastGroups = new Map<string, string>(), metadataRows: (string | number)[][] = [];
     for (const item of rows) {
         const name = nameFor(item), sheet = getSheet(name, item); let row = nextRows.get(name) ?? 3;
         if (item.group && lastGroups.get(name) !== item.group) {
@@ -259,6 +309,7 @@ export async function buildInquiryWorkbookBuffer(inquiries: Inquiry[], options: 
             lastGroups.set(name, item.group);
         }
         const span = Math.max(1, Math.min(1000, item.excelLayout?.rowSpan ?? (item.images.length ? 2 : 1)));
+        metadataRows.push(['ROW', name, row, item.roundNumber === undefined ? inquiryRoundNumber(item) : roundNumber(item.roundNumber)]);
         for (let offset = 0; offset < span; offset++) sheet.getRow(row + offset).height = item.excelLayout?.rowHeights[offset] ?? 90;
         const values = [item.no, item.trade, item.drawingNumbers.join('\n'), item.classification, item.question, item.answer, item.review, item.notes];
         values.forEach((value, col) => {
@@ -280,6 +331,21 @@ export async function buildInquiryWorkbookBuffer(inquiries: Inquiry[], options: 
         putPicture(getSheet(name), image, image.sourceAnchor);
     }
     if (!sheets.size) getSheet(`질의사항(${(options.department ?? '마감팀').replace('팀', '')})`);
+    // A hidden worksheet survives a native Excel save without changing the
+    // original visible eight columns, merged cells or photograph positions.
+    const snapshots = (options.rounds ?? []).filter(round => (!options.department || round.department === options.department) && rows.some(row => row.department === round.department && inquiryRoundNumber(row) === round.roundNumber));
+    if (metadataRows.length || snapshots.length) {
+        let name = '_CONCOST_INQUIRIES'; while (book.getWorksheet(name)) name += '_';
+        const metadata = book.addWorksheet(name, { state: 'veryHidden' });
+        metadata.addRow([METADATA_MARKER]);
+        for (const row of metadataRows) metadata.addRow(row);
+        const seen = new Set<string>();
+        for (const round of snapshots) {
+            const snapshot = roundSnapshot(round), key = JSON.stringify([snapshot.projectId, snapshot.department, snapshot.roundNumber]);
+            if (seen.has(key)) throw new Error('질의사항 발송 상태 메타데이터가 중복되었습니다.');
+            seen.add(key); metadata.addRow(['ROUND', JSON.stringify(snapshot)]);
+        }
+    }
     const output = new Uint8Array(await book.xlsx.writeBuffer());
     if (!pictureLabels.size) return output;
     // ExcelJS does not expose picture alternative text. Keep captions and names

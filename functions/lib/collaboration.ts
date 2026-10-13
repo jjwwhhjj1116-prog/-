@@ -10,7 +10,7 @@ import {projectInquiryRoute} from './projectInquiries.ts';
 import {applyProjectDates} from '../../scheduler-web/src/utils/projectScheduleDates.ts';
 // A small, versioned collaboration API. D1 is the shared source; cookies identify the actor.
 export type StudioUser = { id:string; name:string; department:string; position:string; profile:string; login?:string; salt?:string; password_hash?:string };
-type Environment = { DB: D1Database; CIVIL_APPROVER_ID?: string };
+type Environment = { DB: D1Database; CIVIL_APPROVER_ID?: string; GEMINI_API_KEY?: string; GEMINI_MODEL?: string };
 type Archive = (meeting: Record<string, any>, revision:number) => Promise<string>;
 const archiveReceiptsSql='(SELECT json_group_array(json_array(id,meeting_id,revision,recipient_id,stage,read_at,decision,decided_at)) FROM (SELECT * FROM studio_reviews WHERE meeting_id=? AND revision=? ORDER BY id))';
 const archiveReceiptsSnapshot=(receipts:Record<string,unknown>[])=>JSON.stringify(receipts.map(row=>[row.id,row.meeting_id,row.revision,row.recipient_id,row.stage,row.read_at,row.decision,row.decided_at]));

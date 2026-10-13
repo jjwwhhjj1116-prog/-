@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import crypto from 'node:crypto';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import ExcelJS from 'exceljs';
 import { readInquiryExcel, buildInquiryWorkbookBuffer, inquiryImageBytes } from '../src/services/inquiryExcel.ts';
 
@@ -43,7 +45,48 @@ await test('질의 Excel: 외부주소·SVG·위장 형식·손상 파일·빈 �
  const empty=new ExcelJS.Workbook();empty.addWorksheet('빈시트');await assert.rejects(readInquiryExcel(new Uint8Array(await empty.xlsx.writeBuffer()),options),/가져올/);
 });
 
+await test('질의 Excel 차수: 1/2/3차·반복No·공종·원group·8열과사진 왕복',async()=>{
+ const rows=[1,2,3].map(roundNumber=>({...item('마감팀'),roundNumber,group:'원본 그룹은 그대로',images:[image('question',`${roundNumber}차.png`)]}));
+ const data=await buildInquiryWorkbookBuffer(rows,{projectName:'차수104'}),read=await readInquiryExcel(data,options);
+ assert.deepEqual(read.inquiries.map(row=>row.roundNumber),[1,2,3]);
+ for(let n=0;n<rows.length;n++)for(const field of ['no','trade','classification','drawingNumbers','question','answer','review','notes','group'])assert.deepEqual(read.inquiries[n][field],rows[n][field]);
+ assert.ok(read.inquiries.every(row=>row.id!==rows.find(old=>old.roundNumber===row.roundNumber).id&&row.status==='DRAFT'&&row.revision===0&&row.authorId===options.authorId));
+ assert.deepEqual(read.inquiries.map(row=>row.images[0].dataUrl),rows.map(row=>row.images[0].dataUrl));
+ const book=new ExcelJS.Workbook();await book.xlsx.load(data);assert.equal(book.worksheets[0].getCell('B2').text,'No');assert.equal(book.worksheets[0].getCell('I2').text,'비고(최종확정날짜)');
+ assert.equal(book.worksheets.filter(sheet=>sheet.state==='visible').length,1);
+});
+await test('질의 Excel 차수: metadata 없는 기존1/2/3차 group 인식·문자열 보존',async()=>{
+ const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('질의사항(구조)');
+ sheet.addRow(['No','분야','관련도면','부위','질의사항','산출사항','답변사항','비고']);
+ for(const round of [1,2,3]){const heading=sheet.addRow([`${round} 차 질의사항`]);sheet.mergeCells(heading.number,1,heading.number,8);sheet.addRow(['1','철골-수직','','','원문','','','']);}
+ const result=await readInquiryExcel(new Uint8Array(await book.xlsx.writeBuffer()),options);
+ assert.deepEqual(result.inquiries.map(row=>row.roundNumber),[1,2,3]);assert.deepEqual(result.inquiries.map(row=>row.group),['1 차 질의사항','2 차 질의사항','3 차 질의사항']);
+});
+await test('질의 Excel 발송상태: 3팀 공유라운드 SENT snapshot은 미리보기정보로 보존·자동등록0',async()=>{
+ const rows=['마감팀','구조팀','토목&조경팀'].map(department=>({...item(department),roundNumber:2}));
+ const rounds=rows.map(row=>({projectId:'source-project',department:row.department,roundNumber:2,status:'SENT',revision:4,createdAt:'2026-10-12T00:00:00Z',updatedAt:'2026-10-13T00:00:00Z',sentAt:'2026-10-13T00:00:00Z',sentBy:'source-author',sentByName:'합성 관리자'}));
+ const input=structuredClone({rows,rounds}),data=await buildInquiryWorkbookBuffer(rows,{projectName:'발송104',rounds});
+ const restored=await readInquiryExcel(data,options);
+ assert.deepEqual(restored.rounds,rounds);
+ assert.ok(restored.inquiries.every(row=>row.projectId===options.projectId&&row.authorId===options.authorId&&row.status==='DRAFT'&&row.revision===0));
+ assert.deepEqual({rows,rounds},input);
+ const scoped=await readInquiryExcel(await buildInquiryWorkbookBuffer(rows,{projectName:'팀필터',department:'구조팀',rounds}),options);
+ assert.deepEqual(scoped.rounds,[rounds[1]]);assert.equal(scoped.inquiries.length,1);assert.equal(scoped.inquiries[0].department,'구조팀');
+});
+await test('질의 Excel metadata: 잘못된차수/상태·중복연결·다른팀 상태는 수용하지 않음',async()=>{
+ const data=await buildInquiryWorkbookBuffer([{...item('마감팀'),roundNumber:2}],{projectName:'손상검수'}),book=new ExcelJS.Workbook();await book.xlsx.load(data);
+ const metadata=book.worksheets.find(sheet=>sheet.getCell('A1').text==='CONCOST_INQUIRIES_METADATA_V1');assert.ok(metadata);
+ const bad=new ExcelJS.Workbook();await bad.xlsx.load(data);const sheet=bad.getWorksheet(metadata.name);const row=sheet.getRow(2);assert.equal(row.getCell(1).text,'ROW');row.getCell(4).value=1000;
+ await assert.rejects(readInquiryExcel(new Uint8Array(await bad.xlsx.writeBuffer()),options),/차수|메타/);
+ await assert.rejects(buildInquiryWorkbookBuffer([{...item('마감팀'),roundNumber:0}],{projectName:'잘못된차수'}),/차수/);
+ await assert.rejects(buildInquiryWorkbookBuffer([{...item('마감팀'),roundNumber:1}],{projectName:'잘못된상태',rounds:[{projectId:'x',department:'마감팀',roundNumber:1,status:'UNKNOWN',revision:1,createdAt:'x',updatedAt:'x'}]}),/상태|메타/);
+ const duplicate=new ExcelJS.Workbook();await duplicate.xlsx.load(data);const duplicateSheet=duplicate.getWorksheet(metadata.name);duplicateSheet.addRow(duplicateSheet.getRow(2).values.slice(1));await assert.rejects(readInquiryExcel(new Uint8Array(await duplicate.xlsx.writeBuffer()),options),/중복/);
+ const foreign=new ExcelJS.Workbook();await foreign.xlsx.load(data);foreign.getWorksheet(metadata.name).addRow(['ROUND',JSON.stringify({projectId:'x',department:'구조팀',roundNumber:2,status:'SENT',revision:1,createdAt:'2026-10-13',updatedAt:'2026-10-13'})]);await assert.rejects(readInquiryExcel(new Uint8Array(await foreign.xlsx.writeBuffer()),options),/팀|차수|메타/);
+ const nativeSave=new ExcelJS.Workbook();await nativeSave.xlsx.load(data);const saved=await readInquiryExcel(new Uint8Array(await nativeSave.xlsx.writeBuffer()),options);assert.equal(saved.inquiries[0].roundNumber,2);
+});
+
 const source=process.argv.find(a=>a.startsWith('--source='))?.slice(9);
+const outputDirectory=process.argv.find(a=>a.startsWith('--output-dir='))?.slice(13)||fileURLToPath(new URL('../../private-provisioning/qa-inquiry103-20261013/',import.meta.url));
 if(source){
  const before=await fs.readFile(source);assert.equal(digest(before),'c74828a900e1ee9347272795c535217af2e6d437aa6e118c2723433ca82c6d9b');
  const imported=await readInquiryExcel(before,options);
@@ -65,10 +108,10 @@ if(source){
    assert.equal(b.images.length,a.images.length);for(let k=0;k<a.images.length;k++){assert.equal(b.images[k].dataUrl,a.images[k].dataUrl);assert.equal(b.images[k].field,a.images[k].field);for(const point of ['tl','br'])if(a.images[k].sourceAnchor[point])for(const key of ['nativeCol','nativeRow','nativeColOff','nativeRowOff'])assert.equal(b.images[k].sourceAnchor[point][key],a.images[k].sourceAnchor[point][key]);}
   }
   for(let i=0;i<42;i++){assert.equal(reopened.unassignedImages[i].dataUrl,imported.unassignedImages[i].dataUrl);assert.deepEqual(reopened.unassignedImages[i].sourceAnchor,imported.unassignedImages[i].sourceAnchor);}
-  await fs.writeFile(new URL('../../private-provisioning/qa-inquiry103-20261013/inquiry-roundtrip.xlsx',import.meta.url),out);
+  await fs.mkdir(outputDirectory,{recursive:true});await fs.writeFile(path.join(outputDirectory,'inquiry-roundtrip.xlsx'),out);
   assert.equal(digest(await fs.readFile(source)),digest(before));
  });
 }
 const summary={kind:source?'SOURCE_XLSX_TEXT_IMAGE_ROUNDTRIP':'SYNTHETIC_INQUIRY_XLSX',pass:results.length,fail:0,results};
-if(source)await fs.writeFile(new URL('../../private-provisioning/qa-inquiry103-20261013/excel-test-result.json',import.meta.url),JSON.stringify(summary,null,2));
+if(source)await fs.writeFile(path.join(outputDirectory,'excel-test-result.json'),JSON.stringify(summary,null,2));
 console.log(JSON.stringify(summary));
