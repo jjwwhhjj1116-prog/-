@@ -132,6 +132,19 @@
     @apply bg-white hover:bg-slate-50 text-slate-700 font-medium px-3 py-1.5 rounded-lg border border-slate-300 transition-all shadow-sm active:scale-95 flex items-center justify-center gap-1.5;
   }
 
+  /* 월말 이후 여백 없이, 긴 목록에서도 가로 스크롤바와 날짜를 함께 유지한다. */
+  .schedule-calendar-scrollport {
+    max-height: clamp(12rem, 60dvh, 44rem);
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .schedule-calendar-scrollport:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: -2px;
+  }
+
   /* 테이블 및 그리드 스크롤바 */
   .custom-scrollbar::-webkit-scrollbar {
     height: 8px;
@@ -155,6 +168,7 @@
    사이드바, 헤더, 제어 버튼 완벽 숨김 & 30일 전체 타임라인 100% 폭 최적화
    ========================================================= */
 @media print {
+  .schedule-calendar-scrollport { max-height: none; overflow: visible; scrollbar-gutter: auto; }
   @page {
     size: A4 landscape;
     margin: 5mm 5mm 5mm 5mm;
@@ -249,3 +263,15 @@
     color: #ffffff !important;
   }
 }
+
+/* Native date/select controls follow the active theme. */
+:root { color-scheme: light; }
+.dark { color-scheme: dark; }
+@media print {
+  .page-break-sheet:last-child { break-after: auto !important; page-break-after: auto !important; }
+  #printable-schedule-modal .line-clamp-1 { -webkit-line-clamp: unset; overflow: visible; }
+}
+
+/* Display translations never change controlled form values. Focus reveals the original for editing. */
+[data-vietnamese-value=true] { color: transparent !important; -webkit-text-fill-color: transparent !important; }
+@media print { .vietnamese-field-preview { display: none !important; } [data-vietnamese-value=true] { color: inherit !important; -webkit-text-fill-color: currentColor !important; } }

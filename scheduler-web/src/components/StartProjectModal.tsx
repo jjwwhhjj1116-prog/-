@@ -1,3 +1,6 @@
+import {translatedAlert} from '../services/translationService';
+import { useAuthStore } from '../store/useAuthStore';
+import { canManageSchedule } from '../utils/schedulePermissions';
 import React, { useState } from 'react';
 import { X, Check } from 'lucide-react';
 import { useProjectStore, type ProjectRole, type RoleName, ROLE_NAMES } from '../store/useProjectStore';
@@ -8,14 +11,16 @@ interface StartProjectModalProps {
 }
 
 export default function StartProjectModal({ onClose, projectId }: StartProjectModalProps) {
-  const { personnel, updateProject, projects } = useProjectStore();
+  const { personnel, updateProject, updateProjectSubTasks, projects } = useProjectStore();
+  const currentUser = useAuthStore(state => state.currentUser);
   const project = projects.find(p => p.id === projectId);
   
-  if (!project) return null;
+
 
   // Initialize roles from the project (if any already exist) or empty object.
   // We will store the full ProjectRole objects locally before submitting.
-  const [localRoles, setLocalRoles] = useState<Partial<Record<RoleName, ProjectRole>>>(project.roles || {});
+  const [localRoles, setLocalRoles] = useState<Partial<Record<RoleName, ProjectRole>>>(project?.roles || {});
+  if (!project) return null;
 
   const handleRoleChange = (role: RoleName, field: keyof ProjectRole, value: string) => {
     setLocalRoles(prev => {
@@ -44,19 +49,25 @@ export default function StartProjectModal({ onClose, projectId }: StartProjectMo
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManageSchedule(currentUser, project.department)) { void translatedAlert('해당 팀 실장·팀장만 일정을 조정할 수 있습니다.'); return; }
     
     // Ensure that any assigned role has valid dates
     const hasInvalidDates = Object.values(localRoles).some(
-      r => r && (!r.startDate || !r.endDate)
+      r => r && (!r.startDate || !r.endDate || r.startDate > r.endDate)
     );
     if (hasInvalidDates) {
-      alert('배정된 인원의 투입일과 종료일을 모두 입력해주세요.');
+      void translatedAlert('배정된 인원의 투입일과 종료일을 모두 입력해주세요.');
       return;
     }
 
+    const tasks = Object.fromEntries(Object.entries(localRoles).filter(([, role]) => role).map(([roleName, role]) => [roleName, {
+      ...(project.subTasks[roleName] ?? {roleName, status: '예정' as const, memo: ''}), ...role!,
+      personIds: role!.personId === project.subTasks[roleName]?.personId
+        ? project.subTasks[roleName]?.personIds : (role!.personId ? [role!.personId] : [])
+    }]));
+    updateProjectSubTasks(projectId, tasks);
     updateProject(projectId, {
-      status: '진행중',
-      roles: localRoles
+      status: '진행중'
     });
     
     onClose();
@@ -65,9 +76,9 @@ export default function StartProjectModal({ onClose, projectId }: StartProjectMo
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-[#111] border border-gray-700 rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl">
-        <div className="flex justify-between items-center p-5 border-b border-gray-800 bg-gray-900/50">
+        <div className="relative flex justify-between items-center p-5 pr-16 border-b border-gray-800 bg-gray-900/50">
           <h2 className="text-xl font-bold text-white flex items-center gap-2">프로젝트 착수 및 인원 배정</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+          <button type="button" onClick={onClose} aria-label="프로젝트 착수 및 인원 배정 닫기" className="absolute top-3 right-3 p-2 text-gray-400 hover:text-white transition-colors">
             <X size={24} />
           </button>
         </div>

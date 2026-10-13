@@ -1,0 +1,108 @@
+import {createServer} from 'vite';
+import assert from 'node:assert/strict';
+import {database} from './d1.mjs';
+import {tokenHash} from '../../functions/lib/collaboration.ts';
+const {DB,db}=database();
+const server=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom'});
+try{
+ const {onRequest}=await server.ssrLoadModule('../functions/api/[[route]].ts');
+ let response=await onRequest({request:new Request('https://example.invalid/api/drive/files'),env:{DB}});
+ assert.equal(response.status,401);
+ const profile={id:'qa',name:'검수',email:'employee@example.invalid'};
+ db.prepare('INSERT INTO studio_users VALUES (?,?,?,?,?,?,?,?,?,1)').run('qa','qa',profile.email,'검수','마감팀','선임',JSON.stringify(profile),'salt','hash');
+ db.prepare('INSERT INTO studio_sessions VALUES (?,?,?)').run(await tokenHash('qa-cookie'),'qa',Date.now()+60000);
+ response=await onRequest({request:new Request('https://example.invalid/api/google/oauth/start',{headers:{Cookie:'studio_session=qa-cookie'}}),env:{DB}});
+ assert.equal(response.status,403);
+ profile.email='yjw@con-cost.com';db.prepare('UPDATE studio_users SET profile=? WHERE id=?').run(JSON.stringify(profile),'qa');
+ response=await onRequest({request:new Request('https://example.invalid/api/google/oauth/start',{headers:{Cookie:'studio_session=qa-cookie'}}),env:{DB,GOOGLE_CLIENT_ID:'qa-client'}});
+ assert.equal(response.status,302);const state=new URL(response.headers.get('location')).searchParams.get('state');assert.ok(state);
+ response=await onRequest({request:new Request('https://example.invalid/api/google/oauth/callback',{method:'POST',headers:{Cookie:'studio_session=qa-cookie','Content-Type':'application/json'},body:JSON.stringify({code:'qa',state:'wrong'})}),env:{DB}});
+ assert.equal(response.status,403);
+ response=await onRequest({request:new Request('https://example.invalid/api/collaboration/notifications',{headers:{Cookie:'studio_session=qa-cookie'}}),env:{DB}});
+ assert.equal(response.status,200);assert.equal((await response.json()).unreadCount,0);
+ const intake={id:'intake_1437',no:1437,code:'TK-2026088',targetDepartments:['마감팀','구조팀','토목&조경팀']};
+ db.prepare('INSERT INTO studio_intake_documents VALUES (?,?,?,?)').run(intake.id,intake.no,JSON.stringify(intake),new Date().toISOString());
+ db.prepare('INSERT INTO studio_intake_sync VALUES (?,?,?,?)').run('groupware',new Date().toISOString(),1,null);
+ const intakeCall=method=>onRequest({request:new Request('https://example.invalid/api/intake',{method,headers:{Cookie:'studio_session=qa-cookie'}}),env:{DB}});
+ const intakeResponse=await intakeCall('GET');assert.equal(intakeResponse.status,200);assert.equal(intakeResponse.headers.get('Cache-Control'),'no-store');
+ const intakeData=await intakeResponse.json();assert.deepEqual(intakeData.intakeList,[intake]);assert.equal(intakeData.sync.item_count,1);
+ assert.equal((await intakeCall('POST')).status,405);
+ console.log('PASS live intake document and sync status, read-only browser access');
+ const collectorToken='synthetic-collector-token-with-at-least-32-characters';
+ const collected={...intake,id:'intake_1438',no:1438,code:'TK-2026089',name:'합성 수주',scopeVerified:true};
+ const syncCall=(body,token=collectorToken,settings={INTAKE_SYNC_TOKEN:collectorToken})=>onRequest({request:new Request('https://example.invalid/api/intake/sync',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',Cookie:'studio_session=qa-cookie'},body:JSON.stringify(body)}),env:{DB,...settings}});
+ assert.equal((await syncCall({items:[collected]},'wrong')).status,401);
+ assert.equal((await syncCall({items:[collected]},collectorToken,{})).status,503);
+ for(const bad of [{...collected,scopeVerified:false},{...collected,id:'wrong'},{...collected,targetDepartments:['개발 TF']}])assert.equal((await syncCall({items:[bad]})).status,400);
+ assert.equal((await syncCall({items:[collected,collected]})).status,400);
+ assert.equal(db.prepare('SELECT COUNT(*) AS n FROM studio_intake_documents').get().n,1);
+ assert.equal((await syncCall({items:[collected]})).status,200);
+ assert.equal(db.prepare('SELECT COUNT(*) AS n FROM studio_intake_documents').get().n,2);
+ assert.deepEqual(JSON.parse(db.prepare('SELECT data FROM studio_intake_documents WHERE id=?').get(collected.id).data).targetDepartments,collected.targetDepartments);
+ const successAt=db.prepare('SELECT last_success FROM studio_intake_sync').get().last_success;
+ assert.equal((await syncCall({lastError:'그룹웨어 로그인 응답 HTTP 500'})).status,200);
+ assert.equal(db.prepare('SELECT last_success FROM studio_intake_sync').get().last_success,successAt);
+ assert.equal(db.prepare('SELECT COUNT(*) AS n FROM studio_intake_documents').get().n,2);
+ assert.equal((await syncCall({items:[collected],lastError:'ambiguous'})).status,200);
+ assert.equal(db.prepare('SELECT last_error FROM studio_intake_sync').get().last_error,null);
+ console.log('PASS collector-only authentication, scope validation, retained documents and failure status');
+ const originalFetch=globalThis.fetch;
+ let aboutStatus=200,mediaStatus=200,mediaBody='abc',mediaCalls=0;
+ globalThis.fetch=async(url)=>{if(String(url).includes('/about?'))return aboutStatus===200?Response.json({storageQuota:{limit:'15000000000',usage:'1000000000'},user:{emailAddress:'qa@example.invalid'}}):new Response(null,{status:aboutStatus});if(String(url).includes('?fields=size'))return mediaStatus===200?Response.json({size:3,sha256Checksum:mediaBody==='abc'?'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad':'0'.repeat(64)}):new Response(null,{status:mediaStatus});if(String(url).includes('?alt=media')){mediaCalls++;assert.equal(String(url),'https://www.googleapis.com/drive/v3/files/fixture-file?alt=media');return new Response(mediaBody,{status:mediaStatus});}return Response.json({access_token:'synthetic-google-token',expires_in:3600,files:[{id:'fixture-folder'}],id:'fixture-file',webViewLink:'https://drive.google.com/file/d/fixture-file/view'});};
+ try{
+ db.exec("CREATE TABLE IF NOT EXISTS company_google_credentials (id TEXT PRIMARY KEY,refresh_token TEXT,access_token TEXT,expires_at INTEGER,updated_at TEXT)");
+ db.prepare('INSERT INTO company_google_credentials VALUES (?,?,?,?,?)').run('company_concost_drive','synthetic-refresh','synthetic-access',Date.now()+3600000,'qa');
+ const status=()=>onRequest({request:new Request('https://example.invalid/api/google/status',{headers:{Cookie:'studio_session=qa-cookie'}}),env:{DB}});
+ let connection=await status();assert.equal(connection.headers.get('Cache-Control'),'no-store');let info=await connection.json();assert.equal(info.connected,true);assert.equal(info.storageQuota.usage,'1000000000');assert.equal(info.companyEmail,'qa@example.invalid');
+ aboutStatus=403;info=await (await status()).json();assert.equal(info.connected,false);assert.equal(info.status,'UNAVAILABLE');assert.equal(info.storageQuota,null);aboutStatus=200;
+ console.log('PASS Drive live connection status, quota and provider rejection');
+ const body={id:'vault-test',projectCode:'QA',projectName:'합성 검수',mainFolder:'03.구조자료',teamName:'구조팀',roleName:'보',category:'1.납품자료',originalName:'qa.txt',mimeType:'text/plain',byteSize:3,sha256:'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',fileData:'YWJj',uploadedBy:'가짜 작성자'};
+ const call=async(data)=>onRequest({request:new Request('https://example.invalid/api/drive/files',{method:'POST',headers:{Cookie:'studio_session=qa-cookie','Content-Type':'application/json'},body:JSON.stringify(data)}),env:{DB,GOOGLE_CLIENT_ID:'qa',GOOGLE_CLIENT_SECRET:'qa'}});
+ assert.equal((await call({...body,byteSize:4})).status,400);
+ assert.equal((await call(body)).status,200);
+ assert.equal((await call(body)).status,409);
+ const list=await onRequest({request:new Request('https://example.invalid/api/drive/files?projectCode=QA',{headers:{Cookie:'studio_session=qa-cookie'}}),env:{DB}});
+ const record=(await list.json()).files[0];assert.equal(record.team_name,'구조팀');assert.equal(record.role_name,'보');assert.equal(record.main_folder,'03.구조자료');assert.equal(record.uploaded_by,'검수');
+ assert.equal(db.prepare('SELECT file_data FROM drive_evidence WHERE id=?').get('vault-test').file_data,'');
+ const download=()=>onRequest({request:new Request('https://example.invalid/api/drive/files/download?id=vault-test',{headers:{Cookie:'studio_session=qa-cookie'}}),env:{DB}});
+ let dl=await download();assert.equal(dl.status,200);assert.equal(await dl.text(),'abc');assert.equal(dl.headers.get('X-Storage-Source'),'GOOGLE_DRIVE');assert.equal(dl.headers.get('Cache-Control'),'no-store');assert.equal(mediaCalls,1);
+ // DB copy must never mask a missing, forbidden or changed Drive original.
+ db.prepare('UPDATE drive_evidence SET file_data=? WHERE id=?').run('YWJj','vault-test');
+ mediaStatus=404;assert.equal((await download()).status,404);
+ mediaStatus=403;assert.equal((await download()).status,502);
+ mediaStatus=200;mediaBody='xyz';assert.equal((await download()).status,409);
+ db.prepare('UPDATE drive_evidence SET drive_url=? WHERE id=?').run('https://attacker.invalid/file/d/id/view','vault-test');
+ const before=mediaCalls;assert.equal((await download()).status,409);assert.equal(mediaCalls,before);
+ // A virtual 15GB response must return immediately without buffering its body.
+ db.prepare('UPDATE drive_evidence SET drive_url=?,byte_size=?,sha256=? WHERE id=?').run('https://drive.google.com/file/d/fixture-file/view',15_000_000_000,'a'.repeat(64),'vault-test');
+ let bodyRequested=0;
+ globalThis.fetch=async(url,init)=>{
+  if(String(url).includes('?fields=size'))return Response.json({size:'15000000000',sha256Checksum:'a'.repeat(64)});
+  bodyRequested++;
+  if(init.headers.Range)return new Response('abc',{status:206,headers:{'Content-Range':'bytes 100-102/15000000000','Content-Length':'3'}});
+  return new Response(new ReadableStream({start(c){c.enqueue(new Uint8Array(1024));}}));
+ };
+ const head=await onRequest({request:new Request('https://example.invalid/api/drive/files/download?id=vault-test',{method:'HEAD',headers:{Cookie:'studio_session=qa-cookie'}}),env:{DB}});assert.equal(head.status,200);assert.equal(bodyRequested,0);assert.equal(head.headers.get('Content-Length'),'15000000000');
+ const streamed=await Promise.race([download(),new Promise((_,reject)=>setTimeout(()=>reject(new Error('download buffered instead of streaming')),1500))]);
+ assert.equal(streamed.status,200);const reader=streamed.body.getReader();assert.equal((await reader.read()).value.length,1024);await reader.cancel();
+ const partial=await onRequest({request:new Request('https://example.invalid/api/drive/files/download?id=vault-test',{headers:{Cookie:'studio_session=qa-cookie',Range:'bytes=100-102'}}),env:{DB}});assert.equal(partial.status,206);assert.equal(await partial.text(),'abc');assert.equal(partial.headers.get('Content-Range'),'bytes 100-102/15000000000');
+ console.log('PASS 15GB virtual download starts without buffering, HEAD checks and range forwarding');
+ console.log('PASS Drive original download, integrity, provider errors, no DB fallback and URL restriction (mock Google)');
+ console.log('PASS Drive upload byte validation, uploader identity, duplicate preservation and classification round trip (mock Google)');
+ db.prepare("INSERT INTO studio_drive_uploads (id,user_id,resume_key,metadata,google_id,created_at) VALUES (?,?,?,?,?,?)").run('vault-test','qa','qa-resume','{}','fixture-file','qa');
+ let providerDeletes=0,deleteStatus=503;
+ globalThis.fetch=async(url,init)=>{assert.equal(String(url),'https://www.googleapis.com/drive/v3/files/fixture-file');assert.equal(init.method,'DELETE');providerDeletes++;return new Response(null,{status:deleteStatus});};
+ const remove=()=>onRequest({request:new Request('https://example.invalid/api/drive/files?id=vault-test',{method:'DELETE',headers:{Cookie:'studio_session=qa-cookie'}}),env:{DB}});
+ profile.email='employee@example.invalid';db.prepare('UPDATE studio_users SET profile=? WHERE id=?').run(JSON.stringify(profile),'qa');
+ assert.equal((await remove()).status,403);assert.equal(providerDeletes,0);
+ profile.email='yjw@con-cost.com';db.prepare('UPDATE studio_users SET profile=? WHERE id=?').run(JSON.stringify(profile),'qa');
+ assert.equal((await remove()).status,502);assert.ok(db.prepare('SELECT id FROM drive_evidence WHERE id=?').get('vault-test'));
+ deleteStatus=404;assert.equal((await remove()).status,502);assert.ok(db.prepare('SELECT id FROM drive_evidence WHERE id=?').get('vault-test'));
+ deleteStatus=204;assert.equal((await remove()).status,200);assert.equal(providerDeletes,3);
+ for(const [table,column] of [['drive_evidence','id'],['studio_vault_metadata','file_id'],['studio_drive_uploads','id']])assert.equal(db.prepare(`SELECT ${column} FROM ${table} WHERE ${column}=?`).get('vault-test'),undefined);
+ console.log('PASS admin Drive original deletion; provider failure preserves metadata and resume record');
+ }finally{globalThis.fetch=originalFetch;}
+ console.log('PASS actual Worker route: legacy authentication, OAuth administrator/state, collaboration dispatch');
+}finally{await server.close();db.close();}
+
+

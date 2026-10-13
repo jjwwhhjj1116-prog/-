@@ -18,23 +18,23 @@ interface LoginScreenProps {
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const { login, quickLogin, loginError, clearError, users } = useAuthStore();
-  const [idInput, setIdInput] = useState('yjw@con-cost.com');
-  const [pwInput, setPwInput] = useState('dbwhddnr1!');
+  const [idInput, setIdInput] = useState('');
+  const [pwInput, setPwInput] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [isQuickSelectOpen, setIsQuickSelectOpen] = useState(false);
   const [selectedDept, setSelectedDept] = useState<string>('전체');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
-    if (login(idInput, pwInput)) {
+    if (await login(idInput, pwInput)) {
       if (onLoginSuccess) onLoginSuccess();
     }
   };
 
   const handleQuickPick = (userId: string) => {
-    quickLogin(userId);
-    if (onLoginSuccess) onLoginSuccess();
+    if(import.meta.env.DEV){quickLogin(userId);if(onLoginSuccess)onLoginSuccess();return;}
+    const user=users.find(u=>u.id===userId);setIdInput(user?.idPrefix||'');setPwInput('');setIsQuickSelectOpen(false);
   };
 
   const filteredUsers = users.filter((u) => {
@@ -43,7 +43,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   });
 
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-slate-900 font-sans select-none animate-fadeIn">
+    <div data-no-field-translate className="min-h-screen w-full flex flex-col lg:flex-row bg-slate-900 font-sans select-none animate-fadeIn">
       {/* ========================================================================= */}
       {/* 1. 좌측 브랜드 비주얼 패널 (클레임센터 스튜디오 1:1 완벽 구현) */}
       {/* ========================================================================= */}
@@ -211,14 +211,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           {/* 하단 관리자 및 전체 사내 계정 퀵 선택 */}
           <div className="mt-6 pt-5 border-t border-slate-100 text-center">
             <p className="text-[11px] text-slate-500 mb-2">
-              최고 관리자 또는 본인 사내 계정으로 바로 로그인하시겠습니까?
+              최고 관리자 또는 본인 사내 계정으로 계정을 선택하시겠습니까? 선택 후 비밀번호를 입력해 주세요.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-2">
               <button
                 type="button"
                 onClick={() => {
                   setIdInput('yjw@con-cost.com');
-                  setPwInput('dbwhddnr1!');
+                  setPwInput('');
                 }}
                 className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg transition"
               >
@@ -228,7 +228,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 type="button"
                 onClick={() => {
                   setIdInput('yjpark@con-cost.com');
-                  setPwInput('1706');
+                  setPwInput('');
                 }}
                 className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg transition"
               >

@@ -1,3 +1,4 @@
+import { projectProgress, percentLabel } from '../utils/scheduleProgress';
 import React from 'react';
 import {
   X,
@@ -10,6 +11,8 @@ import {
 import { useProjectStore, TEAM_ROLES, type SubTaskSchedule } from '../store/useProjectStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { VIET_TEAMS_DATA } from '../data/vietTeams';
+import { assignmentPersonId } from '../utils/personalWork';
+import { projectPMId } from '../utils/pendingAssignment';
 
 interface ProjectIntegratedModalProps {
   projectCode: string;
@@ -34,41 +37,36 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
 
   if (!baseProject) return null;
 
-  // 담당자 이름 매핑 헬퍼 (한국 본사 인원 또는 베트남 팀 유닛)
+  const directory = [...new Map(users.map(user => [user.id, user])).values()];
+  // PM·공종·후속 업무는 같은 현재 명부를 사용하며 공식 ID의 과거 이름도 보존한다.
+  const assigneeName = (id: string, showPosition = true, fallbackPosition = '담당'): string => {
+    const viet = VIET_TEAMS_DATA.find((vt) => vt.id === id || vt.code === id || vt.name === id || vt.displayName === id);
+    if (viet) return `🇻🇳 ${viet.displayName}`;
+    const personId = directory.some(person => person.id === id) ? id : assignmentPersonId(id, directory);
+    const user = directory.find(person => person.id === personId);
+    if (user) return showPosition ? `${user.name} (${user.position || fallbackPosition})` : user.name;
+
+    // 기존 직접 입력 팀 코드 표시를 유지한다.
+    if (id === 'WIN') return '🇻🇳 베트남 창호팀';
+    if (id === 'EXT') return '🇻🇳 베트남 외부팀';
+    if (id === 'IN1') return '🇻🇳 베트남 내부1팀';
+    if (id === 'IN2') return '🇻🇳 베트남 내부2팀';
+    if (id === 'VERT') return '🇻🇳 베트남 수직팀';
+    if (id === 'HORIZ') return '🇻🇳 베트남 수평팀';
+
+    return id;
+  };
   const getAssigneeNames = (sub?: SubTaskSchedule): string => {
     if (!sub) return '미배정';
-    const ids = sub.personIds && sub.personIds.length > 0 ? sub.personIds : sub.personId ? [sub.personId] : [];
-    if (ids.length === 0) return '미배정';
-
-    return ids
-      .map((id) => {
-        // 1. 한국 본사 유저 확인
-        const user = users.find((u) => u.id === id || u.name === id);
-        if (user) return `${user.name} (${user.position || '담당'})`;
-
-        // 2. 베트남 팀 유닛 확인
-        const viet = VIET_TEAMS_DATA.find((vt) => vt.id === id || vt.code === id || vt.name === id);
-        if (viet) return `🇻🇳 ${viet.displayName}`;
-
-        // 3. 직접 입력값 (예: '원종수', '성대용', 'WIN' 등)
-        if (id === 'WIN') return '🇻🇳 베트남 창호팀';
-        if (id === 'EXT') return '🇻🇳 베트남 외부팀';
-        if (id === 'IN1') return '🇻🇳 베트남 내부1팀';
-        if (id === 'IN2') return '🇻🇳 베트남 내부2팀';
-        if (id === 'VERT') return '🇻🇳 베트남 수직팀';
-        if (id === 'HORIZ') return '🇻🇳 베트남 수평팀';
-
-        return id;
-      })
-      .join(' · ');
+    if (sub.scopeExcluded) return '용역 범위 없음';
+    const ids = sub.personIds ?? (sub.personId ? [sub.personId] : []);
+    return ids.length ? ids.map(id => assigneeName(id)).join(' · ') : '미배정';
   };
 
   // PM 이름 헬퍼
   const getPmName = (pmId?: string): string => {
     if (!pmId) return 'PM 미지정';
-    const user = users.find((u) => u.id === pmId || u.name === pmId);
-    if (user) return `${user.name} (${user.position || '실장'})`;
-    return pmId;
+    return assigneeName(pmId, true, '실장');
   };
 
   // 공종별 상태 뱃지 스타일
@@ -90,8 +88,8 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
       <div className="bg-slate-900 border-2 border-slate-700 rounded-3xl max-w-6xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-white">
         
         {/* 1. 모달 상단 헤더: 프로젝트 통합 메타데이터 */}
-        <div className="p-6 border-b-2 border-slate-800 bg-slate-950 flex flex-col gap-4">
-          <div className="flex items-start justify-between gap-4">
+        <div className="relative p-6 border-b-2 border-slate-800 bg-slate-950 flex flex-col gap-4">
+          <div className="flex items-start justify-between gap-4 pr-10">
             <div>
               <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                 <span className="text-xs font-mono font-black bg-blue-600 text-white px-2.5 py-1 rounded-md">
@@ -99,17 +97,17 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
                 </span>
                 {finishProject && (
                   <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
-                    마감팀 공정률 {finishProject.progress}%
+                    마감팀 실제 {percentLabel(projectProgress(finishProject).actual)} / 계획 {percentLabel(projectProgress(finishProject).planned)}
                   </span>
                 )}
                 {structProject && (
                   <span className="text-xs font-bold px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800">
-                    구조팀 공정률 {structProject.progress}%
+                    구조팀 실제 {percentLabel(projectProgress(structProject).actual)} / 계획 {percentLabel(projectProgress(structProject).planned)}
                   </span>
                 )}
                 {civilProject && (
                   <span className="text-xs font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
-                    토목&조경팀 공정률 {civilProject.progress}%
+                    토목&조경팀 실제 {percentLabel(projectProgress(civilProject).actual)} / 계획 {percentLabel(projectProgress(civilProject).planned)}
                   </span>
                 )}
                 <span className="text-xs font-medium text-slate-400">
@@ -123,8 +121,10 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
             </div>
 
             <button
+              type="button"
+              aria-label="프로젝트 통합 현황 닫기"
               onClick={onClose}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer shrink-0"
+              className="absolute top-3 right-3 p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer shrink-0"
               title="닫기"
             >
               <X className="w-5 h-5" />
@@ -132,34 +132,34 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
           </div>
 
           {/* 프로젝트 스펙 요약 바 */}
-          <div className={`grid grid-cols-2 ${civilProject ? 'sm:grid-cols-5' : 'sm:grid-cols-4'} gap-2 pt-2 border-t border-slate-850 text-xs`}>
+          <div className={`grid grid-cols-2 ${civilProject ? 'sm:grid-cols-5' : 'sm:grid-cols-4'} gap-2 pt-2 border-t border-slate-800 text-xs`}>
             <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
               <span className="text-slate-400 block text-[11px]">발주처</span>
-              <strong className="font-bold text-slate-200 truncate block">{baseProject.client || '삼성물산(주)'}</strong>
+              <strong className="font-bold text-slate-200 truncate block">{baseProject.client || '미기재'}</strong>
             </div>
             <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
               <span className="text-slate-400 block text-[11px]">연면적 / 용도</span>
               <strong className="font-bold text-slate-200 truncate block">
-                {baseProject.area || '444,688평'} · {baseProject.usage || '반도체공장'}
+                {baseProject.area || '미기재'} · {baseProject.usage || '미기재'}
               </strong>
             </div>
             <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
               <span className="text-slate-400 block text-[11px]">마감팀 PM</span>
               <strong className="font-bold text-blue-400 truncate block">
-                {finishProject ? getPmName(finishProject.pmId) : '해당 없음'}
+                {finishProject ? getPmName(projectPMId(finishProject)) : '해당 없음'}
               </strong>
             </div>
             <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
               <span className="text-slate-400 block text-[11px]">구조팀 PM</span>
               <strong className="font-bold text-purple-400 truncate block">
-                {structProject ? getPmName(structProject.pmId) : '해당 없음'}
+                {structProject ? getPmName(projectPMId(structProject)) : '해당 없음'}
               </strong>
             </div>
             {civilProject && (
               <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
                 <span className="text-slate-400 block text-[11px]">토목&조경팀 PM</span>
                 <strong className="font-bold text-emerald-400 truncate block">
-                  {getPmName(civilProject.pmId)}
+                  {getPmName(projectPMId(civilProject))}
                 </strong>
               </div>
             )}
@@ -177,6 +177,8 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
               </span>
             </span>
           </div>
+          {relatedProjects.some(project=>!projectPMId(project))&&<p role="status" className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 text-xs text-amber-200">신규 프로젝트 · PM 및 담당 인원 배정이 필요합니다. 해당 팀 실장·팀장이 팀 일정표에서 지정해 주세요.</p>}
+          {relatedProjects.some(project=>(project.postDeliveryTasks||[]).length>0)&&<section className="rounded-xl border border-violet-600/50 bg-violet-950/20 p-3"><h3 className="text-sm font-bold text-violet-200">납품 후 검토·수정 일정</h3><ul className="mt-2 space-y-1 text-xs text-slate-200">{relatedProjects.flatMap(project=>(project.postDeliveryTasks||[]).map(task=><li key={`${project.id}-${task.id}`}>{project.department} · {task.kind} · {task.startDate} ~ {task.endDate} · {task.memo} · 담당 {task.personIds.map(id=>assigneeName(id, false)).join(', ')}</li>))}</ul></section>}
 
           <div className={`grid grid-cols-1 ${civilProject ? 'xl:grid-cols-3 lg:grid-cols-2' : 'lg:grid-cols-2'} gap-6`}>
             
@@ -240,7 +242,7 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
                                   </span>
                                 )}
                               </div>
-                              {getStatusBadge(sub?.status)}
+                              {!sub?.scopeExcluded && getStatusBadge(sub?.status)}
                             </div>
 
                             <div className="flex items-center justify-between text-xs gap-2">
@@ -254,14 +256,14 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
                                 </strong>
                               </div>
 
-                              <div className="flex items-center gap-1 text-[11px] text-slate-400 shrink-0 font-mono">
+                              {!sub?.scopeExcluded && <div className="flex items-center gap-1 text-[11px] text-slate-400 shrink-0 font-mono">
                                 <Calendar className="w-3 h-3 text-slate-500" />
                                 <span>{sub?.startDate || finishProject.startDate} ~ {sub?.endDate || finishProject.endDate}</span>
-                              </div>
+                              </div>}
                             </div>
 
                             {sub?.memo && (
-                              <p className="text-[11px] text-slate-400 mt-1.5 bg-slate-950/60 p-1.5 rounded border border-slate-850 truncate">
+                              <p className="text-[11px] text-slate-400 mt-1.5 bg-slate-950/60 p-1.5 rounded border border-slate-800 truncate">
                                 💬 {sub.memo}
                               </p>
                             )}
@@ -350,7 +352,7 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
                                   </span>
                                 )}
                               </div>
-                              {getStatusBadge(sub?.status)}
+                              {!sub?.scopeExcluded && getStatusBadge(sub?.status)}
                             </div>
 
                             <div className="flex items-center justify-between text-xs gap-2">
@@ -364,14 +366,14 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
                                 </strong>
                               </div>
 
-                              <div className="flex items-center gap-1 text-[11px] text-slate-400 shrink-0 font-mono">
+                              {!sub?.scopeExcluded && <div className="flex items-center gap-1 text-[11px] text-slate-400 shrink-0 font-mono">
                                 <Calendar className="w-3 h-3 text-slate-500" />
                                 <span>{sub?.startDate || structProject.startDate} ~ {sub?.endDate || structProject.endDate}</span>
-                              </div>
+                              </div>}
                             </div>
 
                             {sub?.memo && (
-                              <p className="text-[11px] text-slate-400 mt-1.5 bg-slate-950/60 p-1.5 rounded border border-slate-850 truncate">
+                              <p className="text-[11px] text-slate-400 mt-1.5 bg-slate-950/60 p-1.5 rounded border border-slate-800 truncate">
                                 💬 {sub.memo}
                               </p>
                             )}
@@ -446,7 +448,7 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
                                   {roleName}
                                 </span>
                               </div>
-                              {getStatusBadge(sub?.status)}
+                              {!sub?.scopeExcluded && getStatusBadge(sub?.status)}
                             </div>
 
                             <div className="flex items-center justify-between text-xs gap-2">
@@ -460,14 +462,14 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
                                 </strong>
                               </div>
 
-                              <div className="flex items-center gap-1 text-[11px] text-slate-400 shrink-0 font-mono">
+                              {!sub?.scopeExcluded && <div className="flex items-center gap-1 text-[11px] text-slate-400 shrink-0 font-mono">
                                 <Calendar className="w-3 h-3 text-slate-500" />
                                 <span>{sub?.startDate || civilProject.startDate} ~ {sub?.endDate || civilProject.endDate}</span>
-                              </div>
+                              </div>}
                             </div>
 
                             {sub?.memo && (
-                              <p className="text-[11px] text-slate-400 mt-1.5 bg-slate-950/60 p-1.5 rounded border border-slate-850 truncate">
+                              <p className="text-[11px] text-slate-400 mt-1.5 bg-slate-950/60 p-1.5 rounded border border-slate-800 truncate">
                                 💬 {sub.memo}
                               </p>
                             )}
@@ -498,11 +500,11 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
           <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 text-xs space-y-3">
             <h4 className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
               <FileText className="w-4 h-4 text-blue-400" />
-              <span>그룹웨어 수주 특기사항 및 킥오프 회의록 요약</span>
+              <span>그룹웨어 수주 특기사항 및 세부 요청사항</span>
             </h4>
-            <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-850 text-slate-300 space-y-1.5 leading-relaxed">
-              <p><strong>견적조건 / 특기사항:</strong> {baseProject.notes || 'RC,내화피복,데크,PC,방수,코킹,금속,외장공사 / 공내역서 / AFC 작업'}</p>
-              <p><strong>수주 세부 요청사항:</strong> {baseProject.request || '평택 P5 FAB-2 물량산출 용역 킥오프 미팅 내용 참고'}</p>
+            <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800 text-slate-300 space-y-1.5 leading-relaxed">
+              <p><strong>견적조건 / 특기사항:</strong> {baseProject.notes || '미기재'}</p>
+              <p><strong>수주 세부 요청사항:</strong> {baseProject.request || '미기재'}</p>
             </div>
           </div>
 

@@ -15,9 +15,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (login(idInput, pwInput)) {
+    if (await login(idInput, pwInput)) {
       onClose();
     }
   };
@@ -28,10 +28,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto animate-fadeIn">
+    <div data-no-field-translate className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto animate-fadeIn">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* 상단 헤더 */}
-        <div className="bg-slate-900 text-white px-6 py-5 flex items-center justify-between border-b border-slate-800">
+        <div className="relative bg-slate-900 text-white px-6 py-5 pr-16 flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center text-orange-400">
               <Shield className="w-5 h-5" />
@@ -47,11 +47,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             </div>
           </div>
           <button
+            type="button"
+            aria-label="로그인 창 닫기"
             onClick={() => {
               clearError();
               onClose();
             }}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+            className="absolute top-3 right-3 text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-800 transition"
           >
             <X className="w-5 h-5" />
           </button>
@@ -74,7 +76,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               <button
                 type="button"
                 onClick={() => {
-                  login('yjw@con-cost.com', '1147');
+                  setIdInput(''); setPwInput('');
                   onClose();
                 }}
                 className="px-2.5 py-1 text-xs font-bold bg-[#00338d] text-white rounded-lg hover:bg-[#002266] transition shadow-2xs"
@@ -84,7 +86,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               <button
                 type="button"
                 onClick={() => {
-                  login('yjpark@con-cost.com', '1706');
+                  setIdInput(''); setPwInput('');
                   onClose();
                 }}
                 className="px-2.5 py-1 text-xs font-bold bg-slate-800 text-white rounded-lg hover:bg-black transition shadow-2xs"
@@ -164,7 +166,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
                 <Building2 className="w-3.5 h-3.5 text-blue-600" />
-                부서별 기술본부 인원 원클릭 간편 로그인
+                부서별 기술본부 인원 원클릭 계정 선택
               </h3>
               <div className="flex items-center gap-1">
                 {(['전체', '마감팀', '구조팀', '토목&조경팀', '개발 TF', '기술본부 총괄'] as const).map((dept) => (
@@ -189,8 +191,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 <button
                   key={u.id}
                   onClick={() => {
-                    quickLogin(u.id);
-                    onClose();
+                    if(import.meta.env.DEV){quickLogin(u.id);onClose();}else{setIdInput(u.idPrefix);setPwInput('');}
                   }}
                   className="flex items-center justify-between p-2.5 bg-white border border-slate-200 hover:border-blue-500 hover:bg-blue-50/50 rounded-xl text-left transition group shadow-2xs"
                 >

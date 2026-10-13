@@ -36,3 +36,11 @@ find_board_url.py
 # Wrangler
 .wrangler/
 OpenJev/  
+
+# Local credential provisioning; never commit generated password hashes.
+private-provisioning/
+
+# Local QA output and protected pre-change copies; never publish to the public remote.
+scheduler-web/test-results/
+scheduler-web/.playwright-cli/
+/original-before-*/

@@ -1,6 +1,11 @@
+import {usePersonalStore} from '../store/usePersonalStore';
+import {useLanguageStore} from '../store/useLanguageStore';
+import {leavesFor,assignedTasksForAliases,assignmentAliases} from '../utils/personalWork';
+import { compareStaff } from '../utils/staffOrder';
 import React, { useState, useMemo } from 'react';
 import {
   format,
+  parseISO,
   startOfMonth,
   endOfMonth,
   eachDayOfInterval,
@@ -10,7 +15,7 @@ import {
   subMonths,
   getDay,
 } from 'date-fns';
-import { ko } from 'date-fns/locale';
+import { ko, vi } from 'date-fns/locale';
 import {
   User,
   Building2,
@@ -23,19 +28,22 @@ import {
 } from 'lucide-react';
 import { useProjectStore, type Department } from '../store/useProjectStore';
 import { useAuthStore } from '../store/useAuthStore';
-import { VIET_TEAMS_DATA, type VietTeam } from '../data/vietTeams';
+import { type VietTeam } from '../data/vietTeams';
+import { resolveVietTeams, vietIndividuals } from '../utils/vietPersonnel';
 import { VietTeamModal } from './VietTeamModal';
 import ProjectCalendar from './ProjectCalendar';
 import { exportProjectsToExcel } from '../services/excelService';
 
-import { HOLIDAYS_2026 } from '../constants/holidays';
+import { HOLIDAYS } from '../constants/holidays';
 
 interface PersonalScheduleViewProps {
   department: Department;
-  onOpenPrintModal?: () => void;
+  onOpenPrintModal?: (date?: Date) => void;
 }
 
 interface AssignedTask {
+  id: string;
+  allocationId?:string;
   projectId: string;
   projectName: string;
   projectShortName: string;
@@ -52,7 +60,7 @@ interface AssignedTask {
 // 캘린더에 표시할 행 유닛: 한국 본사 개인 또는 베트남 팀 유닛
 interface ScheduleRowUnit {
   id: string;
-  type: 'KOREA_PERSON' | 'VIET_TEAM';
+  type: 'KOREA_PERSON' | 'VIET_TEAM' | 'VIET_PERSON';
   name: string;
   subTitle: string;
   badge: string;
@@ -61,8 +69,10 @@ interface ScheduleRowUnit {
 }
 
 export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ department, onOpenPrintModal }) => {
+  const lang=useLanguageStore(state=>state.lang);
   const { projects, setSelectedProjectId, personnel } = useProjectStore();
   const { users } = useAuthStore();
+  const leaves=usePersonalStore(s=>s.leaves);
   const [viewMode, setViewMode] = useState<'PERSONAL' | 'TEAM'>('TEAM');
   // 실시간 오늘 기준일 (2026-09-21)
   const [currentDate, setCurrentDate] = useState(() => {
@@ -72,6 +82,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
 
   // 지역 필터 (전체 / 한국 본사 / 베트남 팀)
   const [regionFilter, setRegionFilter] = useState<'ALL' | 'KOREA' | 'VIETNAM'>('ALL');
+  const [vietView, setVietView] = useState<'INDIVIDUAL' | 'TEAM'>('INDIVIDUAL');
 
   // 베트남 팀원 관리 모달 상태
   const [activeVietTeamModal, setActiveVietTeamModal] = useState<VietTeam | null>(null);
@@ -87,7 +98,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), now.getDate());
   }, []);
-  const cellWidth = 38; // 1일당 가로 픽셀
+  const cellWidth = 38; // 좁은 화면에서 유지할 1일당 최소 가로 픽셀
 
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
@@ -101,17 +112,17 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
     return users.filter((u) => {
       const isKorea = u.company === '컨코스트';
       if (!isKorea) return false;
+      if (u.active === false && !assignedTasksForAliases([u.id], projects.filter(p => p.department === department)).some(t => t.startDate <= monthEndStr && t.endDate >= monthStartStr)) return false;
       if (department === '마감팀') return u.department.includes('마감');
       if (department === '구조팀') return u.department.includes('구조');
       if (department === '토목&조경팀') return u.department.includes('토목') || u.department.includes('조경');
       return false;
-    });
-  }, [users, department]);
+    }).sort(compareStaff);
+  }, [users, department, projects, monthStartStr, monthEndStr]);
 
-  // 해당 부서 베트남 팀 목록 (사용자 요청: 마감 6개팀, 구조 2개팀, 토목 1개팀)
-  const vietTeams = useMemo(() => {
-    return VIET_TEAMS_DATA.filter((vt) => vt.department === department);
-  }, [department]);
+  const vietTeams = useMemo(() => resolveVietTeams(users, department), [users, department]);
+  const vietUsers = useMemo(() => vietIndividuals(users, department).sort(compareStaff), [users, department]);
+  const ungroupedVietUsers = useMemo(() => vietUsers.filter(person => !vietTeams.some(team => team.members.some(member => member.id === person.id))), [vietUsers,vietTeams]);
 
   // 통합 행 유닛 목록 생성 (한국 본사 개인 + 베트남 팀 유닛)
   const scheduleRowUnits = useMemo<ScheduleRowUnit[]>(() => {
@@ -133,7 +144,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
 
     // 2. 베트남 팀별 추가 (마감: 내부1, 내부2, 내부3, 외부, 조적, 창호 / 구조: 수직, 수평)
     if (regionFilter === 'ALL' || regionFilter === 'VIETNAM') {
-      vietTeams.forEach((vt) => {
+      if (vietView === 'TEAM') vietTeams.forEach((vt) => {
         units.push({
           id: vt.id,
           type: 'VIET_TEAM',
@@ -144,10 +155,14 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
           isVietnam: true,
         });
       });
+      (vietView === 'TEAM' ? ungroupedVietUsers : vietUsers).forEach(person => {
+        const group = vietTeams.find(team => team.members.some(member => member.id === person.id));
+        units.push({id:person.id,type:'VIET_PERSON',name:person.name,subTitle:`${person.position} · ${group?.name || '그룹 미지정'} · ${person.idPrefix}`,badge:'베트남 개인',isVietnam:true});
+      });
     }
 
     return units;
-  }, [koreaUsers, vietTeams, regionFilter]);
+  }, [koreaUsers, vietTeams, vietUsers, ungroupedVietUsers, vietView, regionFilter]);
 
   // 해당 부서 프로젝트 필터링
   const deptProjects = useMemo(() => {
@@ -183,76 +198,14 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
       const shortName = getProjectShortName(p.name);
       const displayName = getProjectDisplayName(p.name);
 
-      if (p.subTasks) {
-        Object.values(p.subTasks).forEach((st) => {
-          // 1. 한국 개인 매칭 (다중 인원 personIds 우선, 없으면 단일 personId fallback)
-          const assignedIds = (st.personIds && st.personIds.length > 0)
-            ? st.personIds
-            : (st.personId ? [st.personId] : []);
-
-          koreaUsers.forEach((ku) => {
-            const isAssigned = assignedIds.some(
-              (id) => id === ku.id || id === String(ku.no) || id === ku.name
-            );
-
-            if (isAssigned && rawMap[ku.id]) {
-              const alreadyExists = rawMap[ku.id].some(
-                (t) => t.projectId === p.id && t.roleName === st.roleName
-              );
-              if (!alreadyExists) {
-                rawMap[ku.id].push({
-                  projectId: p.id,
-                  projectName: p.name,
-                  projectShortName: shortName,
-                  projectDisplayName: displayName,
-                  roleName: st.roleName + (st.subType ? ` (${st.subType})` : ''),
-                  startDate: st.startDate,
-                  endDate: st.endDate,
-                  status: st.status,
-                  memo: st.memo,
-                  version: st.version,
-                });
-              }
-            }
-          });
-
-          // 2. 베트남 팀 매칭 (다중 인원 personIds 우선 매칭)
-          vietTeams.forEach((vt) => {
-            const isMemberInTeam = vt.members.some((m) =>
-              assignedIds.some((id) => id === m.id || id === String(m.no) || id === m.name)
-            ) || assignedIds.some((id) => id === vt.id || id === vt.code);
-            // 공종명 기반 매핑 (예: 내부 -> 내부팀, 창호 -> 창호팀, 조적 -> 조적팀, 외부 -> 외부팀, 슬라브/보 -> 수평팀, 기둥/옹벽 -> 수직팀)
-            const isRoleMapped =
-              (vt.code === 'IN1' && (st.roleName === '내부' || st.roleName === '세대')) ||
-              (vt.code === 'EXT' && st.roleName === '외부') ||
-              (vt.code === 'BRICK' && st.roleName === '조적') ||
-              (vt.code === 'WIN' && st.roleName === '창호') ||
-              (vt.code === 'VERT' && (st.roleName === '기둥' || st.roleName === '옹벽' || st.roleName === '기초')) ||
-              (vt.code === 'HORIZ' && (st.roleName === '보' || st.roleName === '슬라브' || st.roleName === '아파트슬라브')) ||
-              (vt.code === 'CIVIL' && (st.roleName === '토목' || st.roleName === '부대토목'));
-
-            if ((isMemberInTeam || isRoleMapped) && rawMap[vt.id]) {
-              const alreadyExists = rawMap[vt.id].some(
-                (t) => t.projectId === p.id && t.roleName === st.roleName
-              );
-              if (!alreadyExists) {
-                rawMap[vt.id].push({
-                  projectId: p.id,
-                  projectName: p.name,
-                  projectShortName: shortName,
-                  projectDisplayName: displayName,
-                  roleName: st.roleName + (st.subType ? ` (${st.subType})` : ''),
-                  startDate: st.startDate,
-                  endDate: st.endDate,
-                  status: st.status,
-                  memo: st.memo,
-                  version: st.version,
-                });
-              }
-            }
-          });
-        });
-      }
+      scheduleRowUnits.forEach(unit=>{
+        const person=users.find(person=>person.id===unit.id),team=unit.vietTeamData;
+        const aliases=team?[team.id,team.code,team.displayName,...team.members.flatMap(member=>assignmentAliases(users.find(user=>user.id===member.id)||{id:member.id},users))]:assignmentAliases(person||{id:unit.id},users);
+        for(const task of assignedTasksForAliases(aliases,[p])){
+          const source=p.subTasks?.[task.roleName];
+          rawMap[unit.id].push({id:task.id,allocationId:task.allocationId,projectId:p.id,projectName:p.name,projectShortName:shortName,projectDisplayName:displayName,roleName:task.roleName+(source?.subType?` (${source.subType})`:''),startDate:task.startDate,endDate:task.endDate,status:task.status==='대기'?'예정':task.status,memo:task.scheduleMemo||'',version:source?.version});
+        }
+      });
     });
 
     // 겹치는 작업 레인 번호(lane) 자동 배정
@@ -293,7 +246,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
     });
 
     return packedMap;
-  }, [scheduleRowUnits, deptProjects, koreaUsers, vietTeams]);
+  }, [scheduleRowUnits, deptProjects, users]);
 
   // 간트 바 스타일 위치 계산
   const getGanttBarStyle = (task: AssignedTask, lane: number) => {
@@ -305,13 +258,13 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
 
     if (effStart > monthEnd || effEnd < monthStart) return null;
 
-    const left = differenceInDays(effStart, monthStart) * cellWidth;
-    const width = (differenceInDays(effEnd, effStart) + 1) * cellWidth;
+    const left = differenceInDays(effStart, monthStart) / daysInMonth.length * 100;
+    const width = (differenceInDays(effEnd, effStart) + 1) / daysInMonth.length * 100;
     const top = lane * 30 + 5;
 
     return {
-      left: `${left + 2}px`,
-      width: `${Math.max(width - 4, 30)}px`,
+      left: `calc(${left}% + 2px)`,
+      width: `max(30px, calc(${width}% - 4px))`,
       top: `${top}px`,
       height: '24px',
     };
@@ -323,7 +276,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
       return 'bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700';
     }
     if (roleName.includes('내역')) {
-      return 'bg-amber-600 text-white border-amber-700 hover:bg-amber-700';
+      return 'bg-amber-700 text-white border-amber-800 hover:bg-amber-800';
     }
     if (roleName === 'PM') {
       return 'bg-slate-900 text-white border-slate-950 hover:bg-black shadow-xs';
@@ -332,13 +285,13 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
       return 'bg-blue-600 text-white border-blue-700 hover:bg-blue-700';
     }
     if (roleName === '조적' || roleName === '슬라브') {
-      return 'bg-orange-500 text-white border-orange-600 hover:bg-orange-600';
+      return 'bg-orange-700 text-white border-orange-800 hover:bg-orange-800';
     }
     if (roleName === '외부' || roleName === '옹벽') {
       return 'bg-purple-600 text-white border-purple-700 hover:bg-purple-700';
     }
     if (roleName === '내부' || roleName === '기둥') {
-      return 'bg-cyan-600 text-white border-cyan-700 hover:bg-cyan-700';
+      return 'bg-cyan-700 text-white border-cyan-800 hover:bg-cyan-800';
     }
     return 'bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-700';
   };
@@ -346,9 +299,9 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
   return (
     <div className="space-y-5 animate-fadeIn">
       {/* 1. 상단 컨트롤 패널 */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:flex-wrap md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             <span className="w-3 h-3 rounded-full bg-[#00338d]" />
             <h2 className="text-xl font-black text-slate-900 tracking-tight">
               {department} 캘린더 일정표
@@ -358,14 +311,14 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            한국 본사는 개인별, 베트남은 팀별(마감 6개팀 / 구조 2개팀)로 날짜별 겹치는 프로젝트를 한눈에 식별합니다.
+            한국 본사와 베트남 직원의 개인 일정, 베트남 팀별 일정을 전환하여 날짜별 프로젝트를 확인합니다.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {/* 엑셀 다운로드 버튼 */}
           <button
-            onClick={() => exportProjectsToExcel(projects, personnel, currentDate)}
+            onClick={() => exportProjectsToExcel(deptProjects, personnel, currentDate, 1, department)}
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition active:scale-95 cursor-pointer"
             title="현재 월 실시간 타임라인 간트 일정표 엑셀 다운로드"
           >
@@ -376,7 +329,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
           {/* 인쇄 / PDF 저장 버튼 */}
           {onOpenPrintModal && (
             <button
-              onClick={onOpenPrintModal}
+              onClick={() => onOpenPrintModal?.(currentDate)}
               className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl bg-slate-900 text-white hover:bg-slate-800 shadow-sm transition active:scale-95 cursor-pointer"
               title="A4 가로 규격 완벽 핏 인쇄 및 PDF 저장"
             >
@@ -445,18 +398,18 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
       {/* 2. 메인 캘린더 렌더링 */}
       {viewMode === 'TEAM' ? (
         <div className="space-y-4">
-          <ProjectCalendar onOpenPrintModal={onOpenPrintModal} />
+          <ProjectCalendar date={currentDate} onDateChange={setCurrentDate} onOpenPrintModal={onOpenPrintModal} />
         </div>
       ) : (
         <div className="corporate-card overflow-hidden">
           {/* 상단 퀵 필터 탭 (전체 / 한국 개인 / 베트남 팀 유닛) */}
           <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
                 <Users className="w-4 h-4 text-blue-600" />
                 표시 구분:
               </span>
-              <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-200">
+              <div className="flex flex-wrap items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-200">
                 <button
                   onClick={() => setRegionFilter('ALL')}
                   className={`px-2.5 py-1 text-xs font-bold rounded-md transition ${
@@ -465,7 +418,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                       : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
-                  전체 ({koreaUsers.length + vietTeams.length})
+                  전체 ({koreaUsers.length + (vietView === 'TEAM' ? vietTeams.length + ungroupedVietUsers.length : vietUsers.length)})
                 </button>
                 <button
                   onClick={() => setRegionFilter('KOREA')}
@@ -485,13 +438,16 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                       : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
-                  🇻🇳 베트남 팀별 ({vietTeams.length}개 팀)
+                  🇻🇳 베트남 ({vietUsers.length}명)
                 </button>
+              </div>
+              <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-0.5">
+                {(['INDIVIDUAL','TEAM'] as const).map(mode=><button key={mode} type="button" aria-label={`베트남 일정 ${mode==='TEAM'?'팀별':'개인별'}`} aria-pressed={vietView===mode} onClick={()=>setVietView(mode)} className={`rounded-md px-2.5 py-1 text-xs font-bold ${vietView===mode?'bg-slate-900 text-white':'text-slate-700 hover:bg-slate-100'}`}>{mode==='TEAM'?`팀별 (${vietTeams.length})${ungroupedVietUsers.length?` · 미지정 ${ungroupedVietUsers.length}명`:''}`:`개인별 (${vietUsers.length})`}</button>)}
               </div>
             </div>
 
             {/* 범례 */}
-            <div className="flex items-center gap-3 text-[11px] font-semibold">
+            <div className="flex flex-wrap items-center gap-3 text-[11px] font-semibold text-slate-700">
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded bg-slate-900" /> PM
               </span>
@@ -511,30 +467,31 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
           </div>
 
           {/* 간트 타임라인 스크롤 영역 */}
-          <div className="overflow-x-auto">
+          <div className="schedule-calendar-scrollport overflow-auto custom-scrollbar" role="region" aria-label={`${department} 개인 및 팀별 월간 일정표`} tabIndex={0}>
             <div
-              className="inline-block min-w-full"
-              style={{ width: `${280 + daysInMonth.length * cellWidth}px` }}
+              data-calendar-month={format(monthStart, 'yyyy-MM')}
+              style={{ width: '100%', minWidth: `${280 + daysInMonth.length * cellWidth}px` }}
             >
               {/* 타임라인 헤더 (좌측 유닛명 + 우측 날짜 셀) */}
-              <div className="flex border-b border-slate-200 bg-slate-100/90 sticky top-0 z-20">
+              <div className="flex border-b border-slate-200 bg-slate-100 sticky top-0 z-30">
                 <div className="w-[280px] p-3 border-r border-slate-200 font-bold text-xs text-slate-700 flex items-center justify-between shrink-0 bg-slate-100">
                   <span>투입 인원 / 팀 구분</span>
-                  <span className="text-[10px] text-slate-400 font-mono">ASSIGNMENT</span>
+                  <span className="text-[10px] text-slate-600 font-mono">ASSIGNMENT</span>
                 </div>
 
-                <div className="flex">
+                <div className="flex flex-1 min-w-0">
                   {daysInMonth.map((day) => {
                     const dateStr = format(day, 'yyyy-MM-dd');
                     const isSat = getDay(day) === 6;
                     const isSun = getDay(day) === 0;
                     const isCurrentToday = isSameDay(day, today);
-                    const holiday = HOLIDAYS_2026[dateStr];
+                    const holiday = HOLIDAYS[dateStr];
 
                     return (
                       <div
                         key={dateStr}
-                        style={{ width: `${cellWidth}px` }}
+                        data-calendar-day={dateStr}
+                        style={{ flex: 1, minWidth: 0 }}
                         className={`text-center py-2 border-r border-slate-200 shrink-0 select-none flex flex-col justify-between ${
                           isSun || isSat || holiday
                             ? 'bg-slate-50/70'
@@ -543,8 +500,8 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                             : 'bg-white'
                         }`}
                       >
-                        <div className="text-[10px] font-medium text-slate-400">
-                          {format(day, 'E', { locale: ko })}
+                        <div className="text-[10px] font-medium text-slate-600">
+                          {format(day, 'E', { locale: lang==='vi'?vi:ko })}
                         </div>
                         <div
                           className={`text-xs font-bold leading-none my-0.5 ${
@@ -585,31 +542,34 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                   );
 
                   // 당월 실제 일정 겹침(충돌) 계산: 두 작업의 날짜 구간이 겹치는 경우
-                  let overlapCount = 0;
+                  const overlappingTasks = new Set<number>();
                   for (let i = 0; i < monthTasks.length; i++) {
                     for (let j = i + 1; j < monthTasks.length; j++) {
                       const a = monthTasks[i];
                       const b = monthTasks[j];
                       if (a.startDate <= b.endDate && b.startDate <= a.endDate) {
-                        overlapCount++;
+                        overlappingTasks.add(i);
+                        overlappingTasks.add(j);
                       }
                     }
                   }
+                  const overlapCount = overlappingTasks.size;
 
-                  const rowHeight = Math.max(52, (maxLane + 1) * 32 + 12);
+                  const monthLeaves=leavesFor(leaves,unit.id,monthStartStr,monthEndStr);
+                  const rowHeight = Math.max(52+monthLeaves.length*14, (maxLane + 1) * 32 + 12)+monthLeaves.length*24;
 
                   return (
                     <div
                       key={unit.id}
                       className={`flex hover:bg-slate-50/40 transition relative group ${
-                        unit.isVietnam ? 'bg-red-50/15' : 'bg-white'
+                        unit.isVietnam ? 'bg-red-50' : 'bg-white'
                       }`}
                       style={{ minHeight: `${rowHeight}px` }}
                     >
                       {/* 좌측 유닛 카드 (너비 280px) */}
                       <div
-                        className={`w-[280px] p-2.5 border-r border-slate-200 shrink-0 flex items-center justify-between ${
-                          unit.isVietnam ? 'bg-red-50/20' : 'bg-white'
+                        className={`w-[280px] p-2.5 border-r border-slate-200 shrink-0 flex items-start justify-between ${
+                          unit.isVietnam ? 'bg-red-50' : 'bg-white'
                         } group-hover:bg-slate-50/80`}
                         style={{ minHeight: `${rowHeight}px` }}
                       >
@@ -625,7 +585,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                           </div>
                           <div className="truncate">
                             <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-xs text-slate-900 truncate">
+                              <span title={unit.name} className={`font-bold text-xs text-slate-900 ${unit.type==='VIET_PERSON'?'whitespace-normal break-words':'truncate'}`}>
                                 {unit.name}
                               </span>
                               <span
@@ -638,8 +598,9 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                                 {unit.badge}
                               </span>
                             </div>
-                            <span className="text-[10px] text-slate-400 block truncate">
+                            <span className={`text-[10px] text-slate-600 block ${unit.type==='VIET_PERSON'?'whitespace-normal break-words':'truncate'}`}>
                               {unit.subTitle}
+                              {monthLeaves.map(l=><span key={l.id} className="block text-amber-800 dark:text-amber-300 whitespace-normal">{l.start_date.slice(5)}~{l.end_date.slice(5)} {l.kind}</span>)}
                             </span>
                           </div>
                         </div>
@@ -649,7 +610,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                           {unit.vietTeamData ? (
                             <button
                               onClick={() => setActiveVietTeamModal(unit.vietTeamData!)}
-                              title="베트남 팀원 세부 인원 배치 관리"
+                              title="베트남 프로젝트별 인원 배치"
                               className="px-2 py-1 bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded-md text-[10px] font-bold flex items-center gap-1 transition shadow-2xs"
                             >
                               <Settings2 size={12} />
@@ -662,7 +623,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                                   ? 'bg-rose-100 text-rose-700 border border-rose-300'
                                   : monthTasks.length > 0
                                   ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                                  : 'bg-slate-100 text-slate-400'
+                                  : 'bg-slate-100 text-slate-600'
                               }`}
                               title={
                                 overlapCount > 0
@@ -684,9 +645,8 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
 
                       {/* 우측 간트 그리드 배경 */}
                       <div
-                        className="flex relative shrink-0"
+                        className="flex flex-1 min-w-0 overflow-hidden relative"
                         style={{
-                          width: `${daysInMonth.length * cellWidth}px`,
                           minHeight: `${rowHeight}px`,
                         }}
                       >
@@ -696,12 +656,12 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                           const isSat = getDay(day) === 6;
                           const isSun = getDay(day) === 0;
                           const isCurrentToday = isSameDay(day, today);
-                          const holiday = HOLIDAYS_2026[dateStr];
+                          const holiday = HOLIDAYS[dateStr];
 
                           return (
                             <div
                               key={dateStr}
-                              style={{ width: `${cellWidth}px` }}
+                              style={{ flex: 1, minWidth: 0 }}
                               className={`border-r border-slate-100 shrink-0 h-full ${
                                 isCurrentToday
                                   ? 'bg-blue-50/25'
@@ -713,26 +673,28 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                           );
                         })}
 
+                        {monthLeaves.map((leave,leaveIndex)=>{const start=parseISO(leave.start_date<monthStartStr?monthStartStr:leave.start_date),end=parseISO(leave.end_date>monthEndStr?monthEndStr:leave.end_date);return <div key={leave.id} title={`${unit.name} ${leave.kind} · ${leave.start_date} ~ ${leave.end_date} · 본인 등록`} className="absolute bottom-1 rounded border border-amber-600 bg-amber-100 text-amber-950 text-[10px] font-bold truncate px-1 z-20" style={{bottom:4+leaveIndex*24,left:`${differenceInDays(start,monthStart)/daysInMonth.length*100}%`,width:`calc(${(differenceInDays(end,start)+1)/daysInMonth.length*100}% - 2px)`,height:20}}>{leave.kind}</div>;})}
                         {/* 오늘(TODAY) 표시선 */}
                         {daysInMonth.some((d) => isSameDay(d, today)) && (
                           <div
                             className="absolute top-0 bottom-0 z-10 border-l-2 border-red-500 pointer-events-none"
                             style={{
                               left: `${
-                                differenceInDays(today, monthStart) * cellWidth + cellWidth / 2
-                              }px`,
+                                (differenceInDays(today, monthStart) + 0.5) / daysInMonth.length * 100
+                              }%`,
                             }}
                           />
                         )}
 
                         {/* 간트 타임라인 바 렌더링 */}
-                        {tasks.map((task, idx) => {
+                        {tasks.map((task) => {
                           const style = getGanttBarStyle(task, task.lane);
                           if (!style) return null;
 
                           return (
                             <div
-                              key={`${task.projectId}-${task.roleName}-${idx}`}
+                              key={task.id}
+                              data-allocation-id={task.allocationId}
                               onClick={() => setSelectedProjectId(task.projectId)}
                               style={style}
                               title={`${task.projectName}\n공종: ${task.roleName}\n기간: ${task.startDate} ~ ${task.endDate}\n상태: ${task.status}\n메모: ${task.memo}`}
@@ -745,7 +707,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                                 <span className="font-extrabold text-white truncate">
                                   {task.projectDisplayName}
                                 </span>
-                                <span className="font-black bg-white/25 px-1.5 py-0.5 rounded text-white text-[10px] shrink-0">
+                                <span className="font-black bg-black/20 px-1.5 py-0.5 rounded text-white text-[10px] shrink-0">
                                   {task.roleName}
                                 </span>
                               </span>
@@ -763,7 +725,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
       )}
 
       {/* 베트남 팀원 세부 인원 배치 관리 모달 */}
-      <VietTeamModal
+      <VietTeamModal key={activeVietTeamModal?.id}
         team={activeVietTeamModal}
         isOpen={!!activeVietTeamModal}
         onClose={() => setActiveVietTeamModal(null)}

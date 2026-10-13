@@ -1,3 +1,9 @@
+import {translatedAlert} from './services/translationService';
+import {ProjectArchive} from './components/RetainedRecords';
+import {PersonalWorkView} from './components/PersonalWorkView';
+import {usePersonalStore} from './store/usePersonalStore';
+import {StudioCollaboration} from './components/StudioCollaboration';
+import {restoreStudioSession,startStudioSync,useStudioStore,waitForSchedulePublished} from './store/useStudioStore';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   FolderKanban,
@@ -20,7 +26,7 @@ import {
   AlertCircle,
   ArrowUpRight,
   Sparkles,
-  ClipboardCheck
+  ClipboardCheck, Menu, X
 } from 'lucide-react';
 import ProjectCalendar from './components/ProjectCalendar';
 import ProjectModal from './components/ProjectModal';
@@ -37,8 +43,11 @@ import { IntakeListView } from './components/IntakeListView';
 import { PrintScheduleModal } from './components/PrintScheduleModal';
 import { useProjectStore, type Department } from './store/useProjectStore';
 import { useAuthStore, isUserAdmin } from './store/useAuthStore';
-import { exportProjectsToExcel, importProjectsFromExcel } from './services/excelService';
-import realProjectsData from './data/realProjects.json';
+import { canManageSchedule } from './utils/schedulePermissions';
+import { exportProjectsToExcel, parseProjectsWorkbook, parseLegacyProjectsWorkbook, type LegacyProjectPreview } from './services/excelService';
+import * as XLSX from 'xlsx';
+import {useLanguageStore} from './store/useLanguageStore';
+import {ProjectInquiries} from './components/ProjectInquiries';
 
 // 좌측 카테고리 정의 (최상단에 '프로젝트 접수목록' 추가, 회의록 하위 2단 카테고리 추가)
 export type NavCategory =
@@ -47,10 +56,15 @@ export type NavCategory =
   | '마감팀 일정표'
   | '구조팀 일정표'
   | '토목&조경팀 일정표'
+  | '마감팀 프로젝트 질의사항'
+  | '구조팀 프로젝트 질의사항'
+  | '토목&조경팀 프로젝트 질의사항'
   | '회의록'
   | '회의록 작성'
   | '회의록 목록'
   | '업무일지'
+  | '할 일'
+  | '내 휴가 일정'
   | '자료실(google드라이브)'
   | '연계시스템(검토)'
   | '설정';
@@ -64,22 +78,44 @@ export default function App() {
     selectedProjectId,
     setSelectedProjectId,
     addProject,
-    setProjects,
+    importProjects,
   } = useProjectStore();
 
   const { currentUser, logout } = useAuthStore();
+  const actorId=currentUser?.id;
+  const studio=useStudioStore();
+  const sharedReady=studio.ready&&studio.actorId===actorId;
+  const sharedLoaded=studio.hasLoaded&&studio.actorId===actorId;
+  const [sessionChecked,setSessionChecked]=useState(false);
+  const [localViewActorId,setLocalViewActorId]=useState<string|null>(null);
+
+  useEffect(()=>{void restoreStudioSession().finally(()=>setSessionChecked(true));},[]);
+  useEffect(()=>{if(sessionChecked&&actorId)return startStudioSync(actorId);},[sessionChecked,actorId]);
+  const handleLogout=()=>{setLocalViewActorId(null);logout();};
 
   // 기본 활성 메뉴: 프로젝트 일정표
   const [activeMenu, setActiveMenu] = useState<NavCategory>('프로젝트 일정표');
+  const [inquiryVisited,setInquiryVisited]=useState<Department[]>([]);
+  const [inquiryContext,setInquiryContext]=useState<Partial<Record<Department,{projectId?:string;trade?:string}>>>({});
+  const openInquiries=(department:Department,projectId?:string,trade?:string)=>{
+    setInquiryContext(old=>({...old,[department]:{projectId,trade}}));
+    setInquiryVisited(old=>old.includes(department)?old:[...old,department]);
+    setActiveMenu(`${department} 프로젝트 질의사항` as NavCategory);setFilterDepartment(department);
+  };
+  const [mobileNavOpen,setMobileNavOpen]=useState(false);
+  useEffect(()=>setMobileNavOpen(false),[activeMenu,actorId]);
+  const [workLogActorId,setWorkLogActorId]=useState<string|null>(null);
+  useEffect(()=>{if(activeMenu==='업무일지'&&actorId)setWorkLogActorId(actorId);},[activeMenu,actorId]);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [selectedIntegratedProjectCode, setSelectedIntegratedProjectCode] = useState<string | null>(null);
+  const [openIntakeCode,setOpenIntakeCode] = useState<string|null>(null);
   const [newProjectName, setNewProjectName] = useState('');
   const [newDept, setNewDept] = useState<Department>('마감팀');
 
   // 다국어(한국어 / 베트남어) 및 다크모드 상태
-  const [lang, setLang] = useState<'ko' | 'vi'>('ko');
+  const {lang,setLang} = useLanguageStore();
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('concost_dark_mode') === 'true';
   });
@@ -87,6 +123,10 @@ export default function App() {
 
   // 엑셀 파일 업로드 ref
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [legacyPreview, setLegacyPreview] = useState<{name:string;rows:LegacyProjectPreview[]} | null>(null);
+  const [legacySelected, setLegacySelected] = useState<Set<string>>(() => new Set());
+  const [importError, setImportError] = useState('');
+  const [legacySaving, setLegacySaving] = useState(false);
 
   // 다크모드 HTML 클래스 및 로컬스토리지 반영
   useEffect(() => {
@@ -106,7 +146,7 @@ export default function App() {
     const error = searchParams.get('error');
 
     if (error) {
-      alert(`Google OAuth 승인 실패: ${error}`);
+      void translatedAlert(`Google OAuth 승인 실패: ${error}`);
       window.history.replaceState({}, '', window.location.pathname);
       return;
     }
@@ -118,38 +158,29 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           code,
+          state: searchParams.get('state'),
           redirectUri: window.location.origin,
         }),
       })
         .then((res) => res.json())
         .then((data: any) => {
           if (data.success) {
-            alert('회사 Google Drive (concost_dt@gmail.com) 1회 영구 연동이 완료되었습니다!\n이제 자료실에서 업로드하는 모든 파일이 회사 구글 드라이브 5단계 폴더로 즉시 실제 적재됩니다.');
+            void translatedAlert('회사 Google Drive (concost.dt@gmail.com) 1회 영구 연동이 완료되었습니다!\n이제 자료실에서 업로드하는 모든 파일이 회사 구글 드라이브 5단계 폴더로 즉시 실제 적재됩니다.');
             setActiveMenu('자료실(google드라이브)');
           } else {
-            alert(`Google Drive 연동 실패: ${data.error || data.message || '알 수 없는 오류'}`);
+            void translatedAlert(`Google Drive 연동 실패: ${data.error || data.message || '알 수 없는 오류'}`);
           }
         })
         .catch((err) => {
-          alert(`Google Drive 연동 통신 실패: ${err.message}`);
+          void translatedAlert(`Google Drive 연동 통신 실패: ${err.message}`);
         });
     }
   }, []);
 
-  // 구버전 가짜 샘플(수택E구역 등) 감지 시 실제 수주 접수목록 프로젝트(58건)로 전면 자동 갱신
-  useEffect(() => {
-    const hasFakeSample = projects.some(
-      (p) => p.name.includes('수택E구역') || p.name.includes('광양 바이오매스') || p.id === 'p1' || p.id === 'p2'
-    );
-    if (hasFakeSample || projects.length <= 5) {
-      setProjects(realProjectsData as any);
-    }
-  }, [projects, setProjects]);
-
   // KPI 지표 계산 (고유 프로젝트 기준)
   const uniqueProjectCount = useMemo(() => {
-    return new Set(projects.map((p) => p.code || p.id)).size;
-  }, [projects]);
+    return new Set([...projects.map((p) => p.code || p.id),...studio.pendingIntake.map(item=>item.code)]).size;
+  }, [projects,studio.pendingIntake]);
   const totalCount = uniqueProjectCount;
   const inProgressCount = projects.filter((p) => p.status === '진행중').length;
   const revCount = projects.filter((p) => p.status === '수정').length;
@@ -165,7 +196,7 @@ export default function App() {
       department: newDept,
       startDate: new Date().toISOString().split('T')[0],
       endDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
-      pmId: newDept === '마감팀' ? '4' : newDept === '구조팀' ? '3' : '26', // 양한규(마감), 김재헌(구조), 오승균(토목)
+      pmId: '', // 양한규(마감), 김재헌(구조), 오승균(토목)
       progress: 0,
       status: '착수예정',
       roles: {},
@@ -179,8 +210,9 @@ export default function App() {
   };
 
   // 엑셀 내보내기 핸들러
-  const handleExportExcel = () => {
-    exportProjectsToExcel(projects, personnel);
+  const [printDate, setPrintDate] = useState(new Date());
+  const handleExportExcel = async (date = new Date()) => {
+    if(!await exportProjectsToExcel(filterDepartment === 'ALL' ? projects : projects.filter(p => p.department === filterDepartment), personnel, date, 1, filterDepartment))return;
     setToastMessage('프로젝트 일정표가 엑셀(.xlsx)로 다운로드되었습니다.');
     setTimeout(() => setToastMessage(null), 3500);
   };
@@ -189,20 +221,52 @@ export default function App() {
   const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setImportError('');
 
     try {
-      const imported = await importProjectsFromExcel(file, personnel);
+      const workbook = XLSX.read(await file.arrayBuffer(), {type:'array'});
+      if (!workbook.Sheets['복원데이터']) {
+        const rows = parseLegacyProjectsWorkbook(workbook, personnel);
+        setLegacySelected(new Set());
+        setLegacyPreview({name:file.name,rows});
+        return;
+      }
+      const imported = parseProjectsWorkbook(workbook);
       if (imported.length > 0) {
-        setProjects(imported);
+        if (!sharedReady) throw new Error('중앙 공유 연결 후 일정을 가져오세요.');
+        importProjects(imported);
+        const current=useProjectStore.getState().projects;
+        await waitForSchedulePublished(imported.map(p=>current.find(item=>item.code===p.code&&item.department===p.department)!.id));
         setToastMessage(`성공: 엑셀에서 ${imported.length}개 프로젝트 일정을 동기화하였습니다.`);
       } else {
         setToastMessage('엑셀 파일에서 유효한 프로젝트 데이터를 찾지 못했습니다.');
       }
     } catch (err: any) {
-      alert('엑셀 파일 파싱 오류: ' + (err?.message || err));
+      setImportError('엑셀 파일 확인 실패: ' + (err?.message || err));
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = '';
       setTimeout(() => setToastMessage(null), 4000);
+    }
+  };
+
+  const handleApplyLegacyPreview = async () => {
+    if (!legacyPreview) return;
+    const chosen=legacyPreview.rows.filter(row=>legacySelected.has(row.project.id));
+    if (!chosen.length) return;
+    try {
+      setImportError('');
+      if (!sharedReady) throw new Error('중앙 공유 연결 후 일정을 등록하세요.');
+      setLegacySaving(true);
+      importProjects(chosen.map(row=>row.project),true);
+      await waitForSchedulePublished(chosen.map(row=>row.project.id));
+      setLegacyPreview(null);
+      setLegacySelected(new Set());
+      setToastMessage(`구형 Excel에서 선택한 ${chosen.length}개 팀 일정을 등록했습니다.`);
+      setTimeout(()=>setToastMessage(null),4000);
+    } catch(err:unknown) {
+      setImportError(err instanceof Error ? err.message : '구형 Excel 일정을 등록하지 못했습니다.');
+    } finally {
+      setLegacySaving(false);
     }
   };
 
@@ -231,8 +295,24 @@ export default function App() {
   };
 
   // 로그인하지 않은 상태일 때 클레임센터 스튜디오 1:1 스타일 정식 로그인 게이트웨이 화면 렌더링
+  if (!sessionChecked) {
+    return <div role="status" className="min-h-screen flex items-center justify-center bg-slate-950 text-white text-sm">서버 로그인 확인 중…</div>;
+  }
   if (!currentUser) {
     return <LoginScreen />;
+  }
+  if (!sharedLoaded && localViewActorId !== actorId) {
+    return <div className={`min-h-screen ${darkMode?'dark bg-slate-950 text-slate-100':'bg-slate-50 text-slate-900'}`}>
+      {studio.actorId===actorId&&studio.conflict&&<StudioCollaboration onOpenMeeting={()=>setActiveMenu('회의록 작성')} onOpenWorkLog={()=>setActiveMenu('업무일지')} />}
+      <main className="min-h-screen max-w-lg mx-auto flex flex-col items-center justify-center gap-4 p-6 text-center">
+        <h1 className="text-xl font-bold">중앙 일정 확인 중</h1>
+        <p role="status" className="text-sm">{studio.actorId===actorId?studio.status:'중앙 서버 연결을 시작하고 있습니다.'}</p>
+        <p className="text-sm text-slate-600 dark:text-slate-300">중앙 확인이 끝나면 최신 프로젝트 일정과 개인 할 일을 표시합니다.{studio.actorId===actorId&&studio.pending>0?` 미전송 변경 ${studio.pending}건은 보존되어 있습니다.`:''}</p>
+        <button className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white" onClick={()=>setLocalViewActorId(actorId||null)}>이 PC 저장본 보기</button>
+        <p className="text-xs text-slate-600 dark:text-slate-300">연결 전 저장본은 최신 일정이 아닐 수 있습니다. 저장된 변경은 삭제하지 않습니다.</p>
+        <button className="text-sm underline" onClick={handleLogout}>로그아웃</button>
+      </main>
+    </div>;
   }
 
   return (
@@ -257,9 +337,10 @@ export default function App() {
       )}
 
       {/* 상단 글로벌 헤더 */}
-      <header className="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 flex items-center justify-between shadow-2xs z-30 shrink-0">
+      <header className="min-h-16 md:h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-3 md:px-6 md:py-0 flex flex-wrap md:flex-nowrap gap-3 items-center justify-between shadow-2xs z-30 shrink-0">
+        <button type="button" aria-label="메뉴 열기" aria-expanded={mobileNavOpen} aria-controls="studio-navigation" className="md:hidden rounded-lg border border-slate-300 p-2 dark:border-slate-600" onClick={()=>setMobileNavOpen(true)}><Menu size={20}/></button>
         {/* 좌측 로고 영역 */}
-        <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveMenu('프로젝트 일정표')}>
+        <div className="flex items-center gap-3 cursor-pointer min-w-0" onClick={() => setActiveMenu('프로젝트 일정표')}>
           <div className="w-10 h-10 rounded-xl bg-[#00338d] flex items-center justify-center text-white shadow-md">
             <Building2 size={22} />
           </div>
@@ -272,14 +353,14 @@ export default function App() {
                 CONCOST TECH HQ
               </span>
             </div>
-            <p className="text-[10px] font-bold text-slate-400 tracking-wider">
+            <p className="text-[10px] font-bold text-slate-600 tracking-wider dark:text-slate-400">
               QUANTITY TAKEOFF & SCHEDULER
             </p>
           </div>
         </div>
 
         {/* 우측 글로벌 액션: 바로가기/언어 슬라이더 토글/다크모드/프로필 */}
-        <div className="flex items-center gap-3 text-xs font-semibold text-slate-600 dark:text-slate-300">
+        <div className="flex flex-wrap md:flex-nowrap items-center gap-2 md:gap-3 text-xs font-semibold text-slate-600 dark:text-slate-300">
           <button
             onClick={() => setActiveMenu('자료실(google드라이브)')}
             className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/60 flex items-center gap-1.5 transition text-xs font-bold text-slate-700 dark:text-slate-200"
@@ -315,7 +396,7 @@ export default function App() {
               className={`px-3 py-1 rounded-full text-xs font-black transition-all duration-200 flex items-center gap-1.5 ${
                 lang === 'ko'
                   ? 'bg-[#00338d] text-white shadow-xs scale-100'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <span className="text-sm">🇰🇷</span> 한국
@@ -325,7 +406,7 @@ export default function App() {
               className={`px-3 py-1 rounded-full text-xs font-black transition-all duration-200 flex items-center gap-1.5 ${
                 lang === 'vi'
                   ? 'bg-[#00338d] text-white shadow-xs scale-100'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <span className="text-sm">🇻🇳</span> VIET
@@ -358,12 +439,12 @@ export default function App() {
                     {currentUser.position}
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-400 block truncate max-w-[120px]">
+                <span className="text-[10px] text-slate-600 block truncate max-w-[120px] dark:text-slate-400">
                   {currentUser.department}
                 </span>
               </div>
               <button
-                onClick={logout}
+                onClick={handleLogout}
                 title="로그아웃"
                 className="ml-1 p-1 text-slate-400 hover:text-rose-600 rounded-md transition"
               >
@@ -381,14 +462,18 @@ export default function App() {
           )}
         </div>
       </header>
+      <StudioCollaboration onOpenMeeting={()=>setActiveMenu('회의록 작성')} onOpenWorkLog={()=>setActiveMenu('업무일지')} />
+      {!sharedReady&&<p role="status" className="border-b border-amber-300 bg-amber-100 px-4 py-2 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">{sharedLoaded?(studio.conflict?'다른 사람이 같은 일정을 변경했습니다. 상단에서 충돌을 해결하세요.':'중앙 서버 연결이 끊겼습니다. 마지막으로 확인한 일정과 이 PC 변경을 표시합니다. 최신 여부를 확인하세요.'):'이 PC 저장본을 보고 있습니다. 중앙 서버 연결 전에는 최신 일정이 아닐 수 있습니다.'}</p>}
 
       {/* 바디 레이아웃 */}
       <div className="flex flex-1 overflow-hidden">
         {/* 좌측 사이드바: 최상단에 '프로젝트 접수목록' 배치 */}
-        <aside className="w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col p-3 gap-5 select-none shrink-0 overflow-y-auto">
+        {mobileNavOpen&&<button type="button" aria-label="메뉴 닫기" className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={()=>setMobileNavOpen(false)}/>}
+        <aside id="studio-navigation" aria-label="스튜디오 메뉴" className={`${mobileNavOpen?'flex':'hidden'} md:flex fixed inset-y-0 left-0 z-40 md:static w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex-col p-3 gap-5 select-none shrink-0 overflow-y-auto`}>
+          <button type="button" aria-label="스튜디오 메뉴 닫기" className="md:hidden self-end rounded-lg border border-slate-300 p-2 dark:border-slate-600" onClick={()=>setMobileNavOpen(false)}><X size={20}/></button>
           {/* 1) 일정표 관리 섹션 */}
           <div>
-            <div className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-3 mb-2">
+            <div className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest px-3 mb-2">
               일정표 관리
             </div>
             <div className="space-y-1">
@@ -436,7 +521,7 @@ export default function App() {
                   className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
                     activeMenu === '프로젝트 일정표'
                       ? 'bg-blue-800 text-blue-100'
-                      : 'bg-slate-100 dark:bg-slate-700 text-slate-500'
+                      : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200'
                   }`}
                 >
                   {uniqueProjectCount}
@@ -463,6 +548,7 @@ export default function App() {
               </button>
 
               {/* 구조팀 일정표 */}
+              <button aria-label="마감팀 프로젝트 질의사항" onClick={()=>openInquiries('마감팀')} className={`ml-4 w-[calc(100%-1rem)] rounded-lg px-3 py-2 text-left text-xs font-semibold ${activeMenu==='마감팀 프로젝트 질의사항'?'bg-blue-50 text-blue-900 dark:bg-blue-950 dark:text-blue-100':'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'}`}>{lang==='vi'?'Câu hỏi dự án':'프로젝트 질의사항'}</button>
               <button
                 onClick={() => {
                   setActiveMenu('구조팀 일정표');
@@ -482,6 +568,7 @@ export default function App() {
               </button>
 
               {/* 토목&조경팀 일정표 */}
+              <button aria-label="구조팀 프로젝트 질의사항" onClick={()=>openInquiries('구조팀')} className={`ml-4 w-[calc(100%-1rem)] rounded-lg px-3 py-2 text-left text-xs font-semibold ${activeMenu==='구조팀 프로젝트 질의사항'?'bg-blue-50 text-blue-900 dark:bg-blue-950 dark:text-blue-100':'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'}`}>{lang==='vi'?'Câu hỏi dự án':'프로젝트 질의사항'}</button>
               <button
                 onClick={() => {
                   setActiveMenu('토목&조경팀 일정표');
@@ -499,12 +586,13 @@ export default function App() {
                 </div>
                 <ChevronRight size={14} className="opacity-60" />
               </button>
+              <button aria-label="토목&조경팀 프로젝트 질의사항" onClick={()=>openInquiries('토목&조경팀')} className={`ml-4 w-[calc(100%-1rem)] rounded-lg px-3 py-2 text-left text-xs font-semibold ${activeMenu==='토목&조경팀 프로젝트 질의사항'?'bg-blue-50 text-blue-900 dark:bg-blue-950 dark:text-blue-100':'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'}`}>{lang==='vi'?'Câu hỏi dự án':'프로젝트 질의사항'}</button>
             </div>
           </div>
 
           {/* 2) 협업 및 산출 자료실 섹션 */}
           <div>
-            <div className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-3 mb-2">
+            <div className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest px-3 mb-2">
               협업 및 산출 자료실
             </div>
             <div className="space-y-1">
@@ -542,7 +630,7 @@ export default function App() {
                       <span>회의록 작성</span>
                     </div>
                     <span className="text-[9px] px-1 rounded font-mono opacity-80">
-                      작성·AI
+                      작성·원문
                     </span>
                   </button>
 
@@ -565,6 +653,11 @@ export default function App() {
                 </div>
               </div>
 
+              <div className="mt-3 space-y-1">
+                <button onClick={()=>setActiveMenu('할 일')} className={`w-full flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold ${activeMenu==='할 일'?'bg-blue-700 text-white':'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}><ClipboardCheck size={17}/>할 일 (TO DO)</button>
+                <button type="button" aria-current={activeMenu==='할 일'?'page':undefined} onClick={()=>setActiveMenu('할 일')} className={`w-full text-left pl-10 py-2 text-xs rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${activeMenu==='할 일'?'bg-blue-700 text-white font-bold':'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>오늘·내일 할 일</button>
+                <button type="button" aria-current={activeMenu==='내 휴가 일정'?'page':undefined} onClick={()=>setActiveMenu('내 휴가 일정')} className={`w-full text-left pl-10 py-2 text-xs rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${activeMenu==='내 휴가 일정'?'bg-blue-700 text-white font-bold':'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>내 휴가 일정</button>
+              </div>
               {/* ✨ 회의록 하단에 업무일지 (개인별 업무일지 & 결재라인) 신규 추가 */}
               <button
                 onClick={() => setActiveMenu('업무일지')}
@@ -604,7 +697,7 @@ export default function App() {
 
           {/* 3) 품질 검토 연계시스템 */}
           <div>
-            <div className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-3 mb-2">
+            <div className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest px-3 mb-2">
               품질 검토 연계시스템
             </div>
             <div className="space-y-1">
@@ -629,7 +722,7 @@ export default function App() {
 
           {/* 4) 시스템 환경설정 섹션 (관리자/일반회원 명확한 분기) */}
           <div>
-            <div className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-3 mb-2">
+            <div className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest px-3 mb-2">
               {isAdmin ? '시스템 환경설정' : '계정 보안 설정'}
             </div>
             <div className="space-y-1">
@@ -655,27 +748,29 @@ export default function App() {
           {/* 사용자 계정 정보 미니 위젯 */}
           <div className="mt-auto pt-3 border-t border-slate-100 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-700/40 p-3 rounded-xl border border-slate-200/60 dark:border-slate-600/60">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">사내 인증 상태</span>
-              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">{sharedReady?'중앙 서버 로그인':'로컬 로그인 상태'}</span>
+              <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                정상 연동
+                {sharedReady?'공유 연결':'로컬 세션'}
               </span>
             </div>
             <div className="text-xs font-bold text-slate-800 dark:text-white truncate">
               {currentUser ? `${currentUser.name} (${currentUser.position})` : '로그인이 필요합니다'}
             </div>
-            <div className="text-[11px] text-slate-400 truncate">
+            <div className="text-[11px] text-slate-600 truncate dark:text-slate-400">
               {currentUser?.department || 'CONCOST 기술본부'}
             </div>
           </div>
         </aside>
 
         {/* 우측 메인 콘텐츠 영역: 선택된 메뉴에 따라 동적 전환 */}
-        <main className="flex-1 overflow-y-auto p-6 space-y-6">
+        <main className="min-w-0 flex-1 overflow-y-auto p-3 md:p-6 space-y-6">
           {/* CASE 0: 프로젝트 접수목록 (그룹웨어 수주소식 실시간 연동) */}
           {activeMenu === '프로젝트 접수목록' && (
             <IntakeListView
               lang={lang}
+              openIntakeCode={openIntakeCode}
+              onIntakeOpened={()=>setOpenIntakeCode(null)}
               onNavigateToSchedule={(dept) => {
                 if (dept) {
                   setFilterDepartment(dept);
@@ -691,6 +786,7 @@ export default function App() {
           {/* CASE 1: 프로젝트 일정표 */}
           {activeMenu === '프로젝트 일정표' && (
             <div className="space-y-6 animate-fadeIn">
+              <ProjectArchive />
               {/* 타이틀 및 헤더 액션 */}
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
@@ -708,7 +804,7 @@ export default function App() {
                 <div className="flex items-center gap-3">
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-extrabold">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    실시간 프로젝트 - 신규 의뢰 자동 반영
+                    {sharedReady?'중앙 공유 연결 · 상세 전송 상태는 상단 확인':'프로젝트 로컬 저장 · 중앙 공유 미연결'}
                   </span>
                   <button
                     onClick={() => setShowAddModal(true)}
@@ -729,7 +825,7 @@ export default function App() {
                       : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'
                   }`}
                 >
-                  전체 팀 보기 ({projects.length})
+                  전체 팀 보기 ({uniqueProjectCount})
                 </button>
                 <button
                   onClick={() => setFilterDepartment('마감팀')}
@@ -795,7 +891,7 @@ export default function App() {
 
                   <div className="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
                     <span>마감 · 구조 · 토목 통합 집계</span>
-                    <span className="text-blue-400 font-bold">100% 가동중</span>
+                    <span className="text-blue-400 font-bold">수주·일정 연결</span>
                   </div>
                 </div>
 
@@ -828,7 +924,7 @@ export default function App() {
                   </div>
 
                   <div className="mt-3 pt-3 border-t border-blue-800/60 flex items-center justify-between text-[11px] text-blue-200/80">
-                    <span>일정 지연 0건 통제</span>
+                    <span>팀별 일정 확인</span>
                     <span className="text-emerald-300 font-bold">공정률 가속</span>
                   </div>
                 </div>
@@ -866,7 +962,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* 4) 착수예정 & 납품 (에메랄드 그린 & 포레스트 블랙 에셋) */}
+                {/* 4) 착수예정 (에메랄드 그린 & 포레스트 블랙 에셋) */}
                 <div
                   className="group relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-emerald-950/90 via-slate-900 to-zinc-950 text-white border border-emerald-500/40 shadow-xl shadow-emerald-950/30 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
                 >
@@ -876,10 +972,10 @@ export default function App() {
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-black tracking-widest text-emerald-300 uppercase flex items-center gap-1.5">
                       <CheckCircle2 size={14} className="text-emerald-400" />
-                      착수예정 & 납품
+                      착수예정
                     </span>
                     <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-900/80 text-emerald-300 border border-emerald-500/50">
-                      품질검수 완료
+                      착수 대기
                     </span>
                   </div>
 
@@ -889,23 +985,25 @@ export default function App() {
                       <span className="text-sm font-bold text-emerald-300/80 ml-1">건</span>
                     </div>
                     <span className="text-xs font-bold text-emerald-300 flex items-center gap-0.5">
-                      성과물 인도 준비
+                      착수 일정 확인
                     </span>
                   </div>
 
                   <div className="mt-3 pt-3 border-t border-emerald-950/80 flex items-center justify-between text-[11px] text-emerald-300/80">
-                    <span>검수 승인 및 차기 프로젝트 연계</span>
-                    <span className="text-emerald-400 font-bold">인도 완료</span>
+                    <span>담당자 배정 및 일정 확인</span>
+                    <span className="text-emerald-400 font-bold">착수 준비</span>
                   </div>
                 </div>
               </div>
 
               {/* 메인 캘린더 컴포넌트 */}
               <ProjectCalendar
-                onOpenPrintModal={() => setIsPrintModalOpen(true)}
+                onOpenPrintModal={(date) => { setPrintDate(date || new Date()); setIsPrintModalOpen(true); }}
                 onExportExcel={handleExportExcel}
                 onImportExcel={() => fileInputRef.current?.click()}
                 onSelectProject={(code) => setSelectedIntegratedProjectCode(code)}
+                pendingIntake={studio.pendingIntake}
+                onSelectIntake={(item)=>{setOpenIntakeCode(item.code);setActiveMenu('프로젝트 접수목록');}}
                 lang={lang}
               />
             </div>
@@ -915,7 +1013,7 @@ export default function App() {
           {activeMenu === '마감팀 일정표' && (
             <PersonalScheduleView
               department="마감팀"
-              onOpenPrintModal={() => setIsPrintModalOpen(true)}
+              onOpenPrintModal={(date) => { setPrintDate(date || new Date()); setIsPrintModalOpen(true); }}
             />
           )}
 
@@ -923,7 +1021,7 @@ export default function App() {
           {activeMenu === '구조팀 일정표' && (
             <PersonalScheduleView
               department="구조팀"
-              onOpenPrintModal={() => setIsPrintModalOpen(true)}
+              onOpenPrintModal={(date) => { setPrintDate(date || new Date()); setIsPrintModalOpen(true); }}
             />
           )}
 
@@ -931,11 +1029,12 @@ export default function App() {
           {activeMenu === '토목&조경팀 일정표' && (
             <PersonalScheduleView
               department="토목&조경팀"
-              onOpenPrintModal={() => setIsPrintModalOpen(true)}
+              onOpenPrintModal={(date) => { setPrintDate(date || new Date()); setIsPrintModalOpen(true); }}
             />
           )}
 
           {/* CASE 5: 회의록 (작성 및 목록 2단 분기) */}
+          {inquiryVisited.map(department=><div key={`${actorId}:${department}`} hidden={activeMenu!==`${department} 프로젝트 질의사항`}><ProjectInquiries department={department} initialProjectId={inquiryContext[department]?.projectId} initialTrade={inquiryContext[department]?.trade} visible={activeMenu===`${department} 프로젝트 질의사항`}/></div>)}
           {(activeMenu === '회의록' || activeMenu === '회의록 작성') && (
             <MinutesView initialTab="write" />
           )}
@@ -944,7 +1043,8 @@ export default function App() {
           )}
 
           {/* CASE 5-2: 업무일지 (팀별 일정표 연계 및 3단 결재라인) */}
-          {activeMenu === '업무일지' && <DailyWorkLogView />}
+          {(activeMenu==='업무일지'||workLogActorId===actorId)&&<div key={actorId} hidden={activeMenu!=='업무일지'}><DailyWorkLogView visible={activeMenu==='업무일지'} /></div>}
+          {(activeMenu==='할 일'||activeMenu==='내 휴가 일정')&&<PersonalWorkView leaveMode={activeMenu==='내 휴가 일정'} onWorklog={date=>{usePersonalStore.setState({openDate:date});setActiveMenu('업무일지');}}/>}
 
           {/* CASE 6: 자료실 (Google 드라이브) */}
           {activeMenu === '자료실(google드라이브)' && <DriveView />}
@@ -960,8 +1060,9 @@ export default function App() {
       {/* 새 프로젝트 등록 모달 */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 backdrop-blur-xs">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-200 dark:border-slate-700 animate-fadeIn">
-            <h3 className="text-lg font-black text-slate-900 dark:text-white">새 물량산출 프로젝트 등록</h3>
+          <div className="relative bg-white dark:bg-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-200 dark:border-slate-700 animate-fadeIn">
+            <button type="button" onClick={()=>setShowAddModal(false)} aria-label="새 프로젝트 등록 닫기" className="absolute top-3 right-3 !m-0 rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-700 dark:hover:text-white"><X size={20}/></button>
+            <h3 className="!mt-0 pr-10 text-lg font-black text-slate-900 dark:text-white">새 물량산출 프로젝트 등록</h3>
             <form onSubmit={handleCreateQuickProject} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
@@ -1014,6 +1115,7 @@ export default function App() {
         <ProjectModal
           projectId={selectedProjectId}
           onClose={() => setSelectedProjectId(null)}
+          onOpenInquiries={(id,trade)=>{const project=projects.find(project=>project.id===id);if(project){setSelectedProjectId(null);openInquiries(project.department,id,trade);}}}
         />
       )}
 
@@ -1044,6 +1146,7 @@ export default function App() {
 
       {/* 클레임센터 스튜디오 스타일 A4 가로 인쇄 모달 (스크린샷 4번) */}
       <PrintScheduleModal
+        targetDate={printDate}
         isOpen={isPrintModalOpen}
         onClose={() => setIsPrintModalOpen(false)}
         projects={projects}
@@ -1052,6 +1155,54 @@ export default function App() {
         departmentFilter={filterDepartment}
         lang={lang}
       />
+
+      {legacyPreview && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/70 p-3" role="dialog" aria-modal="true" aria-label="구형 Excel 이관 미리보기">
+          <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-300 bg-white text-slate-900 shadow-2xl dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+            <div className="relative border-b border-slate-200 p-5 pr-16 dark:border-slate-700">
+              <button type="button" disabled={legacySaving} onClick={()=>{setLegacyPreview(null);setLegacySelected(new Set());}} aria-label="구형 Excel 이관 미리보기 닫기" className="absolute top-3 right-3 rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white disabled:opacity-50"><X size={20}/></button>
+              <h2 className="text-lg font-bold">구형 Excel 이관 미리보기</h2>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{legacyPreview.name} · 원본의 프로젝트 기간과 담당자를 확인하세요. 선택한 신규 팀 일정만 등록합니다.</p>
+              <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">공종 종료일은 원본 Excel의 주말 제외 표준일수 수식을 따른 값입니다. 공휴일은 원본 수식에 없으며, 기존 진척률은 승인 업무일지 실적으로 옮기지 않습니다.</p>
+            </div>
+            <div className="space-y-3 overflow-y-auto p-5">
+              {legacyPreview.rows.map(row=>{
+                const exists=projects.some(p=>p.code===row.project.code&&p.department===row.project.department);
+                const permitted=canManageSchedule(currentUser,row.project.department);
+                const available=!exists&&permitted&&row.issues.length===0;
+                return <label key={row.project.id} className="block rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+                  <div className="flex items-start gap-3">
+                    <input type="checkbox" className="mt-1 h-4 w-4" checked={legacySelected.has(row.project.id)} disabled={!available} onChange={event=>setLegacySelected(previous=>{
+                      const next=new Set(previous);
+                      if(event.target.checked) next.add(row.project.id); else next.delete(row.project.id);
+                      return next;
+                    })} />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold">{row.project.code} · {row.project.name} <span className="text-blue-700 dark:text-blue-300">[{row.project.department}]</span></div>
+                      <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">원본 {row.row}행 · {row.project.startDate} ~ {row.project.endDate} · 원본 진척률 {row.oldProgress===null?'미입력':`${row.oldProgress}%`}</div>
+                      <div className="mt-2 text-sm text-slate-700 dark:text-slate-200">{row.assignments.join(' · ')}</div>
+                      {(exists||!permitted||row.issues.length>0)&&<div className="mt-2 text-sm font-medium text-rose-700 dark:text-rose-300">
+                        {[exists?'이미 등록된 프로젝트/팀':null,!permitted?'해당 팀 실장·팀장만 등록 가능':null,...row.issues].filter(Boolean).join(' · ')}
+                      </div>}
+                    </div>
+                  </div>
+                </label>;
+              })}
+            </div>
+            <div className="flex items-center justify-between gap-3 border-t border-slate-200 p-5 dark:border-slate-700">
+              <span className="text-sm text-slate-600 dark:text-slate-300">선택 {legacySelected.size}건 / 검토 대상 {legacyPreview.rows.length}건</span>
+              <div className="flex gap-2">
+                <button type="button" disabled={legacySaving} onClick={()=>{setLegacyPreview(null);setLegacySelected(new Set());}} className="rounded-lg border border-slate-300 px-4 py-2 font-medium text-slate-900 disabled:opacity-50 dark:border-slate-600 dark:text-slate-100">취소</button>
+                <button type="button" disabled={!legacySelected.size||legacySaving} onClick={()=>void handleApplyLegacyPreview()} className="rounded-lg bg-blue-700 px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{legacySaving?'중앙 저장 확인 중…':'선택한 일정 등록'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {importError && <div role="alert" className="fixed bottom-5 left-1/2 z-[90] flex max-w-[90vw] -translate-x-1/2 items-center gap-3 rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm font-semibold text-rose-900 shadow-xl dark:border-rose-600 dark:bg-rose-950 dark:text-rose-100">
+        <span>{importError}</span><button type="button" aria-label="Excel 오류 닫기" onClick={()=>setImportError('')} className="rounded-md border border-rose-400 px-2 py-1">닫기</button>
+      </div>}
 
       {/* 숨김 엑셀 파일 업로드용 input (엑셀 가져오기 트리거) */}
       <input

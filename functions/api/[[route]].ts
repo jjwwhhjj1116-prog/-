@@ -1,20 +1,23 @@
+import { handleCollaboration, sessionUser, tokenHash } from '../lib/collaboration';
+import { resumableUpload } from '../lib/driveResumable';
+import { archiveMeeting } from '../lib/meetingArchive';
+import { handleTranslation } from '../lib/translation';
+import {intakeProjectStatements} from '../lib/intakeSchedule';
 // Cloudflare Pages Functions: D1 Database & Google Drive Integration REST API Route
 interface Env {
   DB: D1Database;
+  CIVIL_APPROVER_ID?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
-}
-
-function decodeCred(arr: number[]): string {
-  return arr.map((c) => String.fromCharCode(c ^ 42)).join('');
+  INTAKE_SYNC_TOKEN?: string;
 }
 
 function getGoogleClientId(env: Env): string {
-  return env.GOOGLE_CLIENT_ID || decodeCred([25, 24, 28, 26, 25, 31, 30, 28, 18, 30, 29, 30, 7, 28, 66, 69, 69, 70, 91, 68, 66, 92, 70, 27, 26, 65, 68, 91, 26, 94, 24, 66, 26, 25, 29, 28, 18, 89, 95, 24, 75, 77, 92, 64, 75, 4, 75, 90, 90, 89, 4, 77, 69, 69, 77, 70, 79, 95, 89, 79, 88, 73, 69, 68, 94, 79, 68, 94, 4, 73, 69, 71]);
+  return env.GOOGLE_CLIENT_ID || "";
 }
 
 function getGoogleClientSecret(env: Env): string {
-  return env.GOOGLE_CLIENT_SECRET || decodeCred([109, 101, 105, 121, 122, 114, 7, 98, 25, 127, 27, 89, 96, 117, 25, 18, 125, 115, 91, 124, 82, 109, 64, 90, 104, 109, 123, 71, 30, 114, 99, 105, 28, 28, 69]);
+  return env.GOOGLE_CLIENT_SECRET || "";
 }
 
 const GOOGLE_DRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.file';
@@ -86,6 +89,7 @@ async function serverFindOrCreateFolder(name: string, parentId: string, accessTo
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
+  if (!sRes.ok) throw new Error('Drive 폴더 조회 실패');
   if (sRes.ok) {
     const sData = await sRes.json<any>();
     if (sData.files && sData.files.length > 0) {
@@ -210,10 +214,43 @@ async function serverUploadToDrive(params: {
   return await res.json<any>();
 }
 
+async function syncIntake(request: Request, env: Env): Promise<Response> {
+  const reply = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
+  if (request.method !== 'POST') return reply({ error: 'POST only' }, 405);
+  if (!env.INTAKE_SYNC_TOKEN || env.INTAKE_SYNC_TOKEN.length < 32) return reply({ error: 'Collector not configured' }, 503);
+  const supplied = request.headers.get('Authorization')?.match(/^Bearer (\S+)$/)?.[1] || '';
+  if (await tokenHash(supplied) !== await tokenHash(env.INTAKE_SYNC_TOKEN)) return reply({ error: 'Unauthorized' }, 401);
+  const text = await request.text();
+  if (new TextEncoder().encode(text).length > 2 * 1024 * 1024) return reply({ error: 'Payload too large' }, 413);
+  let body: any;
+  try { body = JSON.parse(text); } catch { return reply({ error: 'Invalid JSON' }, 400); }
+  if (typeof body?.lastError === 'string' && body.lastError.trim() && body.lastError.length <= 180 && !('items' in body)) {
+    await env.DB.prepare("INSERT INTO studio_intake_sync(id,last_error) VALUES ('groupware',?) ON CONFLICT(id) DO UPDATE SET last_error=excluded.last_error").bind(body.lastError).run();
+    return reply({ success: true });
+  }
+  const items = body?.items;
+  const departments = ['마감팀', '구조팀', '토목&조경팀'];
+  if (!Array.isArray(items) || !items.length || items.length > 100 ||
+      new Set(items.map(item => item?.id)).size !== items.length || items.some(item =>
+        !item || !Number.isSafeInteger(item.no) || item.no <= 0 || item.id !== `intake_${item.no}` ||
+        typeof item.code !== 'string' || !/^TK-20\d{5}$/.test(item.code) ||
+        typeof item.name !== 'string' || !item.name.trim() || item.scopeVerified !== true ||
+        !Array.isArray(item.targetDepartments) || item.targetDepartments.some((team: unknown) => !departments.includes(team as string)) ||
+        new Set(item.targetDepartments).size !== item.targetDepartments.length)) return reply({ error: 'Invalid intake' }, 400);
+  const stamp = new Date().toISOString();
+  await env.DB.batch([
+    ...items.map(item => env.DB.prepare('INSERT INTO studio_intake_documents(id,document_no,data,updated_at) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET document_no=excluded.document_no,data=excluded.data,updated_at=excluded.updated_at').bind(item.id, item.no, JSON.stringify(item), stamp)),
+    ...intakeProjectStatements(env.DB,items,stamp),
+    env.DB.prepare("INSERT INTO studio_intake_sync(id,last_success,item_count,last_error) VALUES ('groupware',?,?,NULL) ON CONFLICT(id) DO UPDATE SET last_success=excluded.last_success,item_count=excluded.item_count,last_error=NULL").bind(stamp, items.length),
+  ]);
+  return reply({ success: true, count: items.length });
+}
+
 export const onRequest: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
   const url = new URL(request.url);
   const path = url.pathname.replace('/api/', '');
+  if(path.startsWith('collaboration/')) return handleCollaboration(request, env, async (meeting, revision) => archiveMeeting(env, meeting, revision, await getCompanyAccessToken(env), serverFindOrCreateFolder));
 
   const headers = {
     'Content-Type': 'application/json; charset=utf-8',
@@ -227,49 +264,74 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   }
 
   try {
+    if (path === 'intake/sync') return await syncIntake(request, env);
+    const actor=await sessionUser(request,env);
+    if(!actor)return new Response(JSON.stringify({error:'서버 로그인이 필요합니다.'}),{status:401,headers});
+    if(request.method!=='GET'&&request.headers.get('Origin')&&request.headers.get('Origin')!==url.origin)return new Response(JSON.stringify({error:'잘못된 요청 출처'}),{status:403,headers});
+    if(path==='translation')return handleTranslation(request);
+    const profile=JSON.parse(actor.profile);
+    const administrator=['yjw@con-cost.com','yjpark@con-cost.com'].includes(String(profile.email).toLowerCase());
+    if(path.startsWith('google/oauth/')&&!administrator)return new Response(JSON.stringify({error:'관리자만 회사 Google 연결을 변경할 수 있습니다.'}),{status:403,headers});
     // 0. Google OAuth 서버 엔드포인트
     if (path.startsWith('google/')) {
       // 0-1. GET /api/google/status (회사 구글 계정 연동 상태 확인)
       if (path === 'google/status') {
         const token = await getCompanyAccessToken(env);
+        let about: any = null;
+        if (token) {
+          try {
+            const result = await fetch('https://www.googleapis.com/drive/v3/about?fields=storageQuota,user(emailAddress)', {
+              headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15000),
+            });
+            if (result.ok) about = await result.json();
+          } catch { /* An unavailable provider must not be reported as connected. */ }
+        }
         return new Response(JSON.stringify({
-          connected: !!token,
-          companyEmail: 'concost_dt@gmail.com',
-          status: token ? 'CONNECTED' : 'DISCONNECTED',
-        }), { headers });
+          connected: !!about,
+          companyEmail: about?.user?.emailAddress || 'concost.dt@gmail.com',
+          status: about ? 'CONNECTED' : token ? 'UNAVAILABLE' : 'DISCONNECTED',
+          storageQuota: about?.storageQuota || null,
+        }), { headers: {...headers, 'Cache-Control': 'no-store'} });
       }
 
       // 0-2. GET /api/google/oauth/start (관리자 1회 회사 구글 드라이브 승인 시작)
       if (path === 'google/oauth/start') {
         const redirectUri = url.origin;
+        const state=crypto.randomUUID();
+        await env.DB.prepare('INSERT INTO studio_oauth_states VALUES (?,?,?)').bind(await tokenHash(state),actor.id,Date.now()+600000).run();
         const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
           `client_id=${encodeURIComponent(getGoogleClientId(env))}&` +
           `redirect_uri=${encodeURIComponent(redirectUri)}&` +
           `response_type=code&` +
           `scope=${encodeURIComponent(GOOGLE_DRIVE_SCOPES)}&` +
           `access_type=offline&` +
-          `prompt=consent`;
+          `prompt=consent&state=${encodeURIComponent(state)}`;
 
         return Response.redirect(authUrl, 302);
       }
 
       // 0-3. POST & GET /api/google/oauth/callback (구글 인증 완료 콜백 -> refresh_token 저장)
       if (path === 'google/oauth/callback') {
+        let state = url.searchParams.get('state');
         let code = url.searchParams.get('code');
         let error = url.searchParams.get('error');
         let redirectUri = url.origin;
 
         if (request.method === 'POST') {
           const postBody = await request.json().catch(() => ({})) as any;
+          if (postBody.state) state = postBody.state;
           if (postBody.code) code = postBody.code;
           if (postBody.error) error = postBody.error;
-          if (postBody.redirectUri) redirectUri = postBody.redirectUri;
+          // Redirect URI is fixed to this app origin.
         }
 
         if (error || !code) {
           return new Response(JSON.stringify({ error: `Google OAuth 인증 실패: ${error || '인증 코드가 없습니다.'}` }), { status: 400, headers });
         }
 
+        if(!state)return new Response(JSON.stringify({error:'OAuth 승인 요청을 다시 시작해 주세요.'}),{status:403,headers});
+        const consumed=await env.DB.prepare('DELETE FROM studio_oauth_states WHERE id=? AND user_id=? AND expires_at>?').bind(await tokenHash(state),actor.id,Date.now()).run();
+        if(!consumed.meta.changes)return new Response(JSON.stringify({error:'OAuth 승인 요청이 만료되었거나 계정이 일치하지 않습니다.'}),{status:403,headers});
         const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -283,8 +345,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         });
 
         if (!tokenRes.ok) {
-          const errData = await tokenRes.text();
-          return new Response(JSON.stringify({ error: `토큰 교환 실패: ${errData}` }), { status: 500, headers });
+          return new Response(JSON.stringify({ error: 'Google 토큰 교환 실패. 관리자 연결 설정을 확인하세요.' }), { status: 500, headers });
         }
 
         const tokenData = await tokenRes.json<any>();
@@ -413,47 +474,15 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       }
     }
 
-    // 2. /api/intake (수주소식)
+    // The collector alone writes D1; browser accounts can only read collected intake.
     if (path === 'intake') {
-      if (request.method === 'GET') {
-        const { results } = await env.DB.prepare(
-          'SELECT * FROM intake_projects ORDER BY no DESC'
-        ).all();
-        return new Response(JSON.stringify({ success: true, intakeList: results }), { headers });
-      }
-
-      if (request.method === 'POST') {
-        const { items } = (await request.json()) as { items: any[] };
-        for (const it of items) {
-          await env.DB.prepare(`
-            INSERT INTO intake_projects (id, no, code, client, name, raw_title, author, received_date, start_date, end_date, scope_text, target_departments, status, is_scheduled)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(no) DO UPDATE SET
-              status = excluded.status,
-              is_scheduled = excluded.is_scheduled
-          `).bind(
-            it.id,
-            it.no,
-            it.code,
-            it.client,
-            it.name,
-            it.rawTitle,
-            it.author,
-            it.receivedDate,
-            it.startDate,
-            it.endDate,
-            it.scopeText,
-            JSON.stringify(it.targetDepartments),
-            it.status,
-            it.isScheduled ? 1 : 0
-          ).run();
-        }
-        return new Response(JSON.stringify({ success: true, count: items.length }), { headers });
-      }
+      if (request.method !== 'GET') return new Response(JSON.stringify({error:'수주 수집 전용 경로입니다.'}),{status:405,headers});
+      const {results}=await env.DB.prepare('SELECT data FROM studio_intake_documents ORDER BY document_no DESC').all<any>();
+      const sync=await env.DB.prepare("SELECT last_success,item_count,last_error FROM studio_intake_sync WHERE id='groupware'").first<any>();
+      return new Response(JSON.stringify({success:true,intakeList:results.map((row:any)=>JSON.parse(row.data)),sync:sync||null}),{headers:{...headers,'Cache-Control':'no-store'}});
     }
 
-    // 3. /api/drive/files (기술본부 통합 자료실 API - 회사 구글 드라이브 계정 직통 연동)
-    if (path === 'drive/files' || path.startsWith('drive/files/')) {
+    if (path === 'drive/files' || path.startsWith('drive/files/') || path === 'drive/folders/ensure' || path.startsWith('drive/uploads')) {
       await env.DB.prepare(`
         CREATE TABLE IF NOT EXISTS drive_evidence (
           id TEXT PRIMARY KEY,
@@ -471,6 +500,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         )
       `).run();
 
+      if(path.startsWith('drive/uploads')) return await resumableUpload(request,env.DB,actor,{
+        token:()=>getCompanyAccessToken(env),folder:async(m)=>serverEnsureDriveHierarchy({...m,subtitle:m.category,accessToken:(await getCompanyAccessToken(env))!})
+      });
       // 3-1. 개별 파일 다운로드 (GET /api/drive/files/download?id=xxx)
       if (path === 'drive/files/download') {
         const fileId = url.searchParams.get('id');
@@ -482,35 +514,32 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           return new Response(JSON.stringify({ error: 'File not found' }), { status: 404, headers });
         }
 
-        if (file.file_data) {
-          const binaryString = atob(file.file_data);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          const origName = file.original_name || 'download.xlsx';
-          const ext = origName.includes('.') ? origName.slice(origName.lastIndexOf('.')) : '';
-          const safeAscii = `file_${String(file.id || '').slice(0, 8)}${ext}`;
-          const encodedName = encodeURIComponent(origName).replace(/['()]/g, escape);
-          const mimeType = file.mime_type || (origName.endsWith('.xlsx') ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/octet-stream');
-
-          return new Response(bytes, {
-            headers: {
-              'Content-Type': mimeType,
-              'Content-Disposition': `attachment; filename="${safeAscii}"; filename*=UTF-8''${encodedName}`,
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Expose-Headers': 'Content-Disposition',
-            },
-          });
-        }
-
-        return new Response(JSON.stringify({ error: 'No content data available' }), { status: 404, headers });
+        if (!['GET','HEAD'].includes(request.method)) return new Response(null,{status:405});
+        const googleId=/^https:\/\/drive\.google\.com\/file\/d\/([A-Za-z0-9_-]+)(?:\/|$)/.exec(file.drive_url||'')?.[1];
+        if(!googleId)return new Response(JSON.stringify({error:'기존 파일의 Drive 원본 연결을 확인하세요.'}),{status:409,headers});
+        const token=await getCompanyAccessToken(env);if(!token)return new Response(JSON.stringify({error:'회사 Drive 연결을 확인하세요.'}),{status:503,headers});
+        const base=`https://www.googleapis.com/drive/v3/files/${googleId}`;
+        const metadata=await fetch(`${base}?fields=size,sha256Checksum,trashed`,{headers:{Authorization:`Bearer ${token}`}});
+        if(!metadata.ok)return new Response(JSON.stringify({error:'Drive 원본 또는 접근 권한을 확인하세요.'}),{status:metadata.status===404?404:502,headers});
+        const info=await metadata.json<any>();
+        if(info.trashed||Number(info.size)!==Number(file.byte_size)||(/^[a-f0-9]{64}$/i.test(file.sha256||'')&&info.sha256Checksum?.toLowerCase()!==file.sha256.toLowerCase()))return new Response(JSON.stringify({error:'Drive 파일이 업로드 당시 원본과 다릅니다.'}),{status:409,headers});
+        const downloadHeaders:Record<string,string>={
+          'Content-Type':file.mime_type||'application/octet-stream','Content-Disposition':`attachment; filename="download"; filename*=UTF-8''${encodeURIComponent(file.original_name||'download').replace(/'/g,'%27')}`,
+          'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':'sandbox','X-Storage-Source':'GOOGLE_DRIVE','Accept-Ranges':'bytes'
+        };
+        if(request.method==='HEAD')return new Response(null,{headers:{...downloadHeaders,'Content-Length':String(file.byte_size)}});
+        const range=request.headers.get('Range');
+        if(range&&!/^bytes=\d*-\d*$/.test(range))return new Response(null,{status:416});
+        const original=await fetch(`${base}?alt=media`,{headers:{Authorization:`Bearer ${token}`,...(range?{Range:range}:{})}});
+        if(!original.ok)return new Response(JSON.stringify({error:'Drive 다운로드 실패'}),{status:original.status===416?416:502,headers});
+        for(const name of ['Content-Length','Content-Range']){const value=original.headers.get(name);if(value)downloadHeaders[name]=value;}
+        return new Response(original.body,{status:original.status,headers:downloadHeaders});
       }
 
       // 3-2. 파일 목록 조회 (GET /api/drive/files)
       if (request.method === 'GET') {
         const projectCode = url.searchParams.get('projectCode') || '';
-        let query = 'SELECT id, project_code, category, original_name, mime_type, byte_size, sha256, uploaded_by, uploaded_at, storage_provider, drive_url FROM drive_evidence';
+        let query = 'SELECT e.id, e.project_code, e.category, e.original_name, e.mime_type, e.byte_size, e.sha256, e.uploaded_by, e.uploaded_at, e.storage_provider, e.drive_url, m.project_name, m.team_name, m.role_name, m.main_folder FROM drive_evidence e LEFT JOIN studio_vault_metadata m ON m.file_id=e.id';
         let params: any[] = [];
 
         if (projectCode) {
@@ -526,18 +555,19 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         return new Response(JSON.stringify({
           success: true,
           files: results || [],
-          googleDriveConnected: true,
+          googleDriveConnected: Boolean(await getCompanyAccessToken(env)),
           storagePolicy: 'GOOGLE_DRIVE_REQUIRED',
         }), { headers });
       }
 
-      if (request.method === 'POST') {
+      if (path === 'drive/files' && request.method === 'POST') {
         const body = await request.json() as {
           id?: string;
           projectCode: string;
           projectName?: string;
           mainFolder?: string;
           roleName?: string;
+          teamName?: string;
           category: string;
           originalName: string;
           mimeType: string;
@@ -549,16 +579,22 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           fileData?: string;
         };
 
+        if(!body.projectCode||!body.originalName||!body.category||typeof body.fileData!=='string'||!Number.isInteger(body.byteSize)||body.byteSize<0||body.byteSize>15*1024*1024)return new Response(JSON.stringify({error:'파일 이름·분류·크기·내용을 확인하세요.'}),{status:400,headers});
+        let bytes:Uint8Array<ArrayBuffer>;try{bytes=Uint8Array.from(atob(body.fileData),c=>c.charCodeAt(0));}catch{return new Response(JSON.stringify({error:'파일 내용이 손상되었습니다.'}),{status:400,headers});}
+        const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(b=>b.toString(16).padStart(2,'0')).join('');
+        if(bytes.length!==body.byteSize||digest!==body.sha256)return new Response(JSON.stringify({error:'파일 크기 또는 무결성 값이 일치하지 않습니다.'}),{status:400,headers});
         const fileId = body.id || `file_${crypto.randomUUID()}`;
-        const uploadedAt = body.uploadedAt || new Date().toISOString();
-        let driveUrl = body.driveUrl || `https://drive.google.com/drive/u/0/search?q=${encodeURIComponent(body.originalName)}`;
+        if(await env.DB.prepare('SELECT id FROM drive_evidence WHERE id=?').bind(fileId).first())return new Response(JSON.stringify({error:'이미 등록된 파일 ID입니다. 기존 원본은 유지됩니다.'}),{status:409,headers});
+        const uploadedAt = new Date().toISOString();
+        body.uploadedBy=actor.name;
+        let driveUrl = '';
 
         // 회사 Google 계정으로 실제 Google Drive v3 업로드 실행
         const companyToken = await getCompanyAccessToken(env);
         if (!companyToken) {
           return new Response(JSON.stringify({
             error: 'GOOGLE_DRIVE_NOT_CONNECTED',
-            message: '회사 Google Drive 계정이 아직 연동되지 않았습니다. [설정] 메뉴에서 관리자 1회 승인(concost_dt@gmail.com)을 완료해주세요.',
+            message: '회사 Google Drive 계정이 아직 연동되지 않았습니다. [설정] 메뉴에서 관리자 1회 승인(concost.dt@gmail.com)을 완료해주세요.',
           }), { status: 400, headers });
         }
 
@@ -573,9 +609,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           });
 
           // Base64 -> 바이너리
-          const binStr = atob(body.fileData || '');
-          const bytes = new Uint8Array(binStr.length);
-          for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+          // 위에서 검증한 원본 바이트를 업로드한다.
 
           const mime = body.mimeType || (body.originalName.endsWith('.xlsx') ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/octet-stream');
           const driveRes = await serverUploadToDrive({
@@ -586,9 +620,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             accessToken: companyToken,
           });
 
-          if (driveRes.webViewLink) {
-            driveUrl = driveRes.webViewLink;
-          }
+          if (!/^[A-Za-z0-9_-]+$/.test(driveRes.id || '')) throw new Error('Google 파일 ID를 받지 못했습니다.');
+          driveUrl = `https://drive.google.com/file/d/${driveRes.id}/view`;
           console.log(`[Server Google Drive] 업로드 완료: ${hierarchy.folderPath} > ${body.originalName}`);
         } catch (gErr: any) {
           console.error('Server Google Drive direct upload failed:', gErr);
@@ -598,7 +631,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           }), { status: 502, headers });
         }
 
-        await env.DB.prepare(`
+        await env.DB.batch([env.DB.prepare(`
           INSERT INTO drive_evidence (
             id, project_code, category, original_name, mime_type, byte_size, sha256, uploaded_by, uploaded_at, storage_provider, drive_url, file_data
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE_DRIVE', ?, ?)
@@ -619,8 +652,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           body.uploadedBy || '사용자',
           uploadedAt,
           driveUrl,
-          body.fileData || ''
-        ).run();
+          '' // 원본은 Drive에 보관한다. 기존 DB 보관본은 임의로 삭제하지 않는다.
+        ), env.DB.prepare('INSERT INTO studio_vault_metadata VALUES (?,?,?,?,?) ON CONFLICT(file_id) DO UPDATE SET project_name=excluded.project_name,team_name=excluded.team_name,role_name=excluded.role_name,main_folder=excluded.main_folder').bind(fileId,body.projectName||body.projectCode,body.teamName||'',body.roleName||'',body.mainFolder||'')]);
 
         return new Response(JSON.stringify({
           success: true,
@@ -640,13 +673,28 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         }), { headers });
       }
 
-      // 4-3. DELETE /api/drive/files?id=... (파일 삭제)
-      if (path.startsWith('drive/files') && request.method === 'DELETE') {
+      // 4-3. DELETE /api/drive/files?id=... (회사 Drive 원본과 목록 함께 삭제)
+      if (path === 'drive/files' && request.method === 'DELETE') {
+        if(!administrator)return new Response(JSON.stringify({error:'자료실 원본 삭제는 관리자만 가능합니다.'}),{status:403,headers});
         const fileId = url.searchParams.get('id');
         if (!fileId) {
           return new Response(JSON.stringify({ error: 'File id is required' }), { status: 400, headers });
         }
-        await env.DB.prepare('DELETE FROM drive_evidence WHERE id = ?').bind(fileId).run();
+        const file=await env.DB.prepare('SELECT drive_url FROM drive_evidence WHERE id=?').bind(fileId).first<any>();
+        if(!file)return new Response(JSON.stringify({error:'파일을 찾을 수 없습니다.'}),{status:404,headers});
+        const googleId=/^https:\/\/drive\.google\.com\/file\/d\/([A-Za-z0-9_-]+)(?:\/|$)/.exec(file.drive_url||'')?.[1];
+        if(!googleId)return new Response(JSON.stringify({error:'Drive 원본 연결을 확인하세요.'}),{status:409,headers});
+        const token=await getCompanyAccessToken(env);
+        if(!token)return new Response(JSON.stringify({error:'회사 Drive 연결을 확인하세요.'}),{status:503,headers});
+        let removed:Response;
+        try{removed=await fetch(`https://www.googleapis.com/drive/v3/files/${googleId}`,{method:'DELETE',headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(15000)});}
+        catch{return new Response(JSON.stringify({error:'Drive 원본 삭제 응답을 확인하지 못했습니다.'}),{status:502,headers});}
+        if(!removed.ok)return new Response(JSON.stringify({error:'Drive 원본 삭제에 실패했습니다. 목록을 유지합니다.'}),{status:502,headers});
+        await env.DB.batch([
+          env.DB.prepare('DELETE FROM drive_evidence WHERE id=?').bind(fileId),
+          env.DB.prepare('DELETE FROM studio_vault_metadata WHERE file_id=?').bind(fileId),
+          env.DB.prepare('DELETE FROM studio_drive_uploads WHERE id=?').bind(fileId),
+        ]);
         return new Response(JSON.stringify({ success: true, deletedId: fileId }), { headers });
       }
 
@@ -681,10 +729,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             '6.타분야자료',
           ],
           '03.구조자료': [
-            '1.프로그램파일(RC)',
-            '2.CAD작업도면',
-            '3.견적조건 및 질의사항',
-            '4.VIET QS 작업자료',
+            '1.납품자료',
+            '2.프로그램파일(RC)',
+            '3.CAD작업도면',
+            '4.견적조건 및 질의사항',
+            '5.VIET QS 작업자료',
           ],
         };
 

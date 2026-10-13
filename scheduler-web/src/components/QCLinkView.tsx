@@ -1,8 +1,47 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, ShieldCheck, FileSearch, ExternalLink } from 'lucide-react';
+import { useAuthStore } from '../store/useAuthStore';
+import { useProjectStore } from '../store/useProjectStore';
+import { useStudioStore } from '../store/useStudioStore';
 
 export const QCLinkView: React.FC = () => {
-  const qcUrl = 'https://concost-qc-studio.jjwwhhjj1116.workers.dev/?drive=connected';
+  const user = useAuthStore(state => state.currentUser);
+  const projects = useProjectStore(state => state.projects);
+  const ready = useStudioStore(state => !!user && state.ready && state.actorId === user.id);
+  const [selection, setSelection] = useState<{ actor: typeof user; code: string; round: number } | null>(null);
+  const availableProjects = useMemo(() => {
+    const unique = new Map<string, { code: string; name: string; client: string; round: number }>();
+    for (const project of projects) {
+      const code = project.code;
+      if (typeof code === 'string' && code.length >= 2 && code.length <= 40 && code === code.trim()) {
+        const round = Math.min(999, Math.max(1, ...(project.revisions || []).map(revision => revision.round + 1)));
+        const existing = unique.get(code);
+        if (existing) existing.round = Math.max(existing.round, round);
+        else unique.set(code, { code, name: project.name, client: project.client || '', round });
+      }
+    }
+    return [...unique.values()];
+  }, [projects]);
+  const selectedCode = ready && selection && selection.actor === user && availableProjects.some(project => project.code === selection.code) ? selection.code : '';
+  useEffect(() => {
+    setSelection(previous => previous && (!ready || previous.actor !== user || !availableProjects.some(project => project.code === previous.code)) ? null : previous);
+  }, [user, ready, availableProjects]);
+  const target = new URL('https://concost-qc-studio.jjwwhhjj1116.workers.dev/');
+  const selectedProject = availableProjects.find(project => project.code === selectedCode);
+  const round = selection?.round ?? 1;
+  const canRegister = !!selectedProject && Number.isInteger(round) && round >= 1 && round <= 999 &&
+    (round === 1 ? selectedCode : `${selectedCode}-R${round}`).length <= 40 &&
+    `${selectedProject.name} · ${round}차`.length <= 120 && selectedProject.client.length <= 120;
+  if (selectedProject) {
+    target.searchParams.set('projectCode', selectedCode);
+    if (canRegister) {
+      target.searchParams.set('register', '1');
+      target.searchParams.set('projectName', selectedProject.name);
+      target.searchParams.set('projectRound', String(round));
+      target.searchParams.set('projectClient', selectedProject.client);
+    }
+  }
+  const qcUrl = target.href;
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 animate-fadeIn">
@@ -19,7 +58,7 @@ export const QCLinkView: React.FC = () => {
 
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 text-xs font-black shadow-sm">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            QC Studio 원격 검토 시스템 정상 연동
+            QC Studio 별도 서비스로 이동
           </div>
         </div>
 
@@ -35,26 +74,40 @@ export const QCLinkView: React.FC = () => {
 
         {/* 3. 대형 바로 접속하기 액션 버튼 */}
         <div className="relative z-10 w-full max-w-md pt-2">
+          <label className="block mb-3 text-left text-sm font-semibold text-slate-200">
+            검토할 프로젝트
+            <select aria-label="검토할 프로젝트" disabled={!ready} value={selectedCode} onChange={event => { const project = availableProjects.find(project => project.code === event.target.value); setSelection(user && ready && project ? { actor: user, code: project.code, round: project.round } : null); }} className="mt-2 w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 disabled:opacity-60">
+              <option value="">{ready ? '프로젝트를 선택하세요' : '프로젝트 목록을 불러오고 있습니다'}</option>
+              {ready && availableProjects.map(project => <option key={project.code} value={project.code}>{project.code} · {project.name}</option>)}
+            </select>
+          </label>
+          {selectedProject && <label className="block mb-3 text-left text-sm font-semibold text-slate-200">
+            검수 차수
+            <input aria-label="검수 차수" type="number" min="1" max="999" value={round || ''} onChange={event => setSelection(previous => previous ? {...previous, round: Number(event.target.value)} : null)} className="mt-2 w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2.5 text-sm text-slate-100" />
+            <span className="mt-1 block text-xs font-normal text-slate-400">같은 차수는 기존 프로젝트를 열고, 새로운 차수는 별도로 등록합니다.</span>
+          </label>}
+          {selectedProject && !canRegister && <p role="alert" className="mb-3 text-sm text-amber-400">차수와 프로젝트명·코드 길이를 확인해 주세요.</p>}
           <a
-            href={qcUrl}
+            href={selectedProject && !canRegister ? undefined : qcUrl}
+            aria-disabled={selectedProject && !canRegister ? true : undefined}
             target="_blank"
             rel="noopener noreferrer"
             className="group w-full py-4 px-8 bg-purple-600 hover:bg-purple-500 text-white font-black text-base rounded-2xl shadow-xl shadow-purple-600/30 hover:shadow-purple-600/50 transition-all flex items-center justify-center gap-3 transform hover:-translate-y-0.5"
           >
-            <span>QC Studio 시스템 바로 접속하기</span>
+            <span>{selectedCode ? '선택한 프로젝트 검토하기' : 'QC 스튜디오 열기'}</span>
             <ArrowUpRight className="w-5 h-5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
           </a>
 
           <div className="mt-3 flex items-center justify-center gap-2 text-xs font-semibold text-slate-400">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>Google Drive 실시간 연동 모드 자동 활성화</span>
+            <span>선택한 프로젝트명과 차수를 QC에 자동 등록·연결합니다.</span>
           </div>
         </div>
 
         {/* 4. 시스템 접속 주소 표시 바 */}
         <div className="relative z-10 mt-2 px-4 py-2 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-2 text-xs text-slate-400 font-mono">
           <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
-          <span>https://concost-qc-studio.jjwwhhjj1116.workers.dev/?drive=connected</span>
+          <span>https://concost-qc-studio.jjwwhhjj1116.workers.dev/</span>
         </div>
       </div>
     </div>

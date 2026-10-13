@@ -1,3 +1,4 @@
+import {translatedAlert} from '../services/translationService';
 import React, { useState } from 'react';
 import { X, Check, FileText, UploadCloud, MessageSquare } from 'lucide-react';
 import { useProjectStore } from '../store/useProjectStore';
@@ -9,7 +10,7 @@ interface RevisionModalProps {
 }
 
 export default function RevisionModal({ onClose, projectId }: RevisionModalProps) {
-  const { projects, addRevision, updateProject } = useProjectStore();
+  const { projects, addRevision } = useProjectStore();
   const project = projects.find(p => p.id === projectId);
   
   const [reason, setReason] = useState<'도면변경' | '거래처 요청사항 반영' | '산출오류' | string>('도면변경');
@@ -32,8 +33,7 @@ export default function RevisionModal({ onClose, projectId }: RevisionModalProps
       attachments: mockAttachmentName ? [{ name: mockAttachmentName, url: '#' }] : []
     });
 
-    // Optionally update the project's endDate to the new revision date to reflect delays
-    updateProject(projectId, { endDate: date });
+    // 수정 기록일은 납품 예정일이 아니다. 일정 변경은 권한이 있는 일정 편집에서 처리한다.
     
     // Clear form
     setComment('');
@@ -47,21 +47,21 @@ export default function RevisionModal({ onClose, projectId }: RevisionModalProps
     const file = e.target.files?.[0];
     if (file) {
       setMockAttachmentName(file.name);
-      alert(`[모의 작동] ${file.name} 파일이 선택되었습니다. 실제 구글 드라이브 연동은 백엔드 API 구성이 필요합니다.`);
+      void translatedAlert(`[모의 작동] ${file.name} 파일이 선택되었습니다. 실제 구글 드라이브 연동은 백엔드 API 구성이 필요합니다.`);
     }
   };
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-[#111] border border-gray-700 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-        <div className="flex justify-between items-center p-5 border-b border-gray-800 bg-gray-900/50 shrink-0">
+        <div className="relative flex justify-between items-center p-5 pr-16 border-b border-gray-800 bg-gray-900/50 shrink-0">
           <div>
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <FileText className="text-[#bc13fe]" /> 프로젝트 수정 히스토리
             </h2>
             <p className="text-sm text-gray-400 mt-1">{project.name}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+          <button type="button" onClick={onClose} aria-label="프로젝트 수정 이력 닫기" className="absolute top-3 right-3 p-2 text-gray-400 hover:text-white transition-colors">
             <X size={24} />
           </button>
         </div>

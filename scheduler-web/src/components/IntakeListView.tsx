@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import { canManageSchedule } from '../utils/schedulePermissions';
+import { useAuthStore } from '../store/useAuthStore';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Inbox,
   CalendarPlus,
@@ -18,6 +20,9 @@ import {
   Info
 } from 'lucide-react';
 import { useProjectStore, type Department } from '../store/useProjectStore';
+import {newProjectFromIntake} from '../utils/intakeRegistration';
+import {refreshStudioProjects,waitForSchedulePublished,useStudioStore} from '../store/useStudioStore';
+import {pendingAssignmentReason} from '../utils/pendingAssignment';
 import intakeRawData from '../data/intakeProjects.json';
 
 export interface IntakeProject {
@@ -36,6 +41,8 @@ export interface IntakeProject {
   status: string;
   isScheduled: boolean;
   // 그룹웨어 세부 스펙
+  pmByDepartment?: Record<string, string>;
+  scopeVerified?: boolean;
   area?: string;
   usage?: string;
   buildings?: string;
@@ -47,27 +54,59 @@ export interface IntakeProject {
 
 interface Props {
   onNavigateToSchedule: (dept?: Department) => void;
+  openIntakeCode?:string|null;
+  onIntakeOpened?:()=>void;
   lang?: 'ko' | 'vi';
 }
 
-export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = 'ko' }) => {
+export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, openIntakeCode, onIntakeOpened, lang = 'ko' }) => {
   const { addProject, projects, setSelectedProjectId } = useProjectStore();
   const [selectedIntake, setSelectedIntake] = useState<IntakeProject | null>(null);
-  const [intakeList, setIntakeList] = useState<IntakeProject[]>(() => {
-    // 기존 프로젝트 코드들과 비교하여 이미 등록된 항목은 isScheduled=true로 동기화
-    const scheduledCodes = new Set(projects.map((p) => p.code));
-    return (intakeRawData as IntakeProject[]).map((item) => ({
-      ...item,
-      isScheduled: item.isScheduled || scheduledCodes.has(item.code),
-      status: item.isScheduled || scheduledCodes.has(item.code) ? '일정등록완료' : '접수완료',
-    }));
-  });
-
+  const currentUser = useAuthStore(state => state.currentUser);
+  const [remoteIntake,setRemoteIntake]=useState<IntakeProject[]>([]);
+  const [syncState,setSyncState]=useState('중앙 수주 연결 확인 중');
+  useEffect(()=>{
+    let stopped=false, busy=false;
+    const refresh=async()=>{
+      if(busy)return; busy=true;
+      try{
+        const response=await fetch('/api/intake',{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(20000)});
+        if(!response.ok)throw new Error('수주 연결 실패');
+        const data=await response.json();
+        if(!Array.isArray(data.intakeList))throw new Error('수주 응답 오류');
+        if(stopped)return;
+        setRemoteIntake(data.intakeList);
+        const last=data.sync?.last_success;
+        const stale=last && Date.now()-Date.parse(last)>90*60*1000;
+        const issue=data.sync?.last_error?` · 수집 실패 (${data.sync.last_error})`:last?(stale?' · 갱신 지연':' · 정상'):'';
+        setSyncState((last?`마지막 수집 ${new Date(last).toLocaleString('ko-KR')}`:'자동 수집 기록 없음 · 저장 자료 표시')+issue);
+      }catch{if(!stopped)setSyncState('수주 서버 연결 실패 · 마지막 자료 표시');}
+      finally{busy=false;}
+    };
+    void refresh(); const timer=setInterval(()=>void refresh(),60000);
+    const focus=()=>void refresh(); window.addEventListener('focus',focus);
+    return()=>{stopped=true;clearInterval(timer);window.removeEventListener('focus',focus);};
+  },[currentUser?.id]);
+  const intakeList = useMemo(()=>{
+    const mergedIntake=new Map((intakeRawData as IntakeProject[]).map(item=>[item.id,item]));
+    remoteIntake.forEach(item=>mergedIntake.set(item.id,{...mergedIntake.get(item.id),...item}));
+    return [...mergedIntake.values()].sort((a,b)=>b.no-a.no).map(item => {
+    const departments=item.targetDepartments.length?item.targetDepartments:[...new Set(projects.filter(p=>p.code===item.code).map(p=>p.department))];
+    const isScheduled=departments.length>0&&departments.every(dept=>projects.some(p=>p.code===item.code&&p.department===dept));
+    const needsAssignment=!isScheduled||departments.some(dept=>{const project=projects.find(p=>p.code===item.code&&p.department===dept);return project&&pendingAssignmentReason(project);});
+    return {...item,targetDepartments:departments,isScheduled,needsAssignment,status:isScheduled?'프로젝트등록':'접수완료'};
+    });
+  },[remoteIntake,projects]);
   const [searchTerm, setSearchTerm] = useState('');
   const [deptFilter, setDeptFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [registeringId, setRegisteringId] = useState<string | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+  useEffect(()=>{
+    if(!openIntakeCode)return;
+    const item=intakeList.find(item=>item.code===openIntakeCode);
+    if(item){setSearchTerm(openIntakeCode);setDeptFilter('ALL');setStatusFilter('ALL');setSelectedIntake(item);onIntakeOpened?.();}
+  },[openIntakeCode,intakeList,onIntakeOpened]);
 
   // 필터링
   const filteredList = intakeList.filter((item) => {
@@ -81,70 +120,62 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
 
     const matchesStatus =
       statusFilter === 'ALL' ||
-      (statusFilter === 'PENDING' && !item.isScheduled) ||
-      (statusFilter === 'SCHEDULED' && item.isScheduled);
+      (statusFilter === 'PENDING' && item.needsAssignment) ||
+      (statusFilter === 'SCHEDULED' && item.isScheduled&&!item.needsAssignment);
 
     return matchesSearch && matchesDept && matchesStatus;
   });
 
   // 일정표로 원클릭 등록
-  const handleRegisterToSchedule = (item: IntakeProject, targetDept: Department) => {
+  const handleRegisterToSchedule = async (item: IntakeProject, targetDept: Department) => {
+    if (!canManageSchedule(currentUser, targetDept)) { setSuccessToast('해당 팀 실장·팀장만 일정을 등록할 수 있습니다.'); return; }
+    if (projects.some(p => p.code === item.code && p.department === targetDept)) { setSuccessToast('이미 등록된 프로젝트/부서입니다.'); return; }
+    if (item.startDate && item.endDate && item.endDate < item.startDate) { setSuccessToast('수주 원문 착수·납품일의 순서가 잘못되어 등록할 수 없습니다.'); return; }
     setRegisteringId(item.id);
 
-    setTimeout(() => {
-      // 프로젝트 생성
-      addProject({
-        code: item.code,
-        name: item.name,
-        startDate: item.startDate,
-        endDate: item.endDate,
-        department: targetDept,
-        pmId: targetDept === '마감팀' ? '4' : targetDept === '구조팀' ? '3' : '26', // 양한규(마감), 김재헌(구조), 오승균(토목)
-        progress: 0,
-        status: '착수예정',
-        roles: {
-          PM: {
-            personId: targetDept === '마감팀' ? '4' : targetDept === '구조팀' ? '3' : '26',
-            startDate: item.startDate,
-            endDate: item.endDate,
-          },
-        },
-        subTasks: {
-          PM: {
-            roleName: 'PM',
-            personId: targetDept === '마감팀' ? '4' : targetDept === '구조팀' ? '3' : '26',
-            startDate: item.startDate,
-            endDate: item.endDate,
-            status: '예정',
-            memo: `그룹웨어 수주소식 접수 (담당: ${item.author})`,
-            version: 'v1',
-          },
-        },
-      });
+    try{
+      // 확인된 참여 팀은 서버에서 자동 등록한다. 별도 로컬 복제본을 만들지 않는다.
+      if(item.targetDepartments.includes(targetDept)){
+        await refreshStudioProjects();
+        setSuccessToast('중앙 일정표에 자동 반영됩니다. 신규·미배정 프로젝트에서 PM과 담당 인원을 배정해 주세요.');
+      }else{
+        const actor=useAuthStore.getState().currentUser;
+        if(!useStudioStore.getState().ready)throw new Error('중앙 공유 연결 후 담당팀을 지정해 주세요.');
+        addProject(newProjectFromIntake(item,targetDept));
+        const created=useProjectStore.getState().projects.find(p=>p.code===item.code&&p.department===targetDept);
+        if(!created)throw new Error('담당팀 일정을 확인할 수 없습니다.');
+        await waitForSchedulePublished([created.id]);
+        if(actor!==useAuthStore.getState().currentUser)return;
+        openRegisteredProject(created);
+        setSuccessToast(`${targetDept} 일정을 등록했습니다. PM·담당 인원·날짜를 배정해 주세요.`);
+      }
+    }catch(error){setSuccessToast(error instanceof Error?error.message:'중앙 일정 등록 실패');}
+    finally{setRegisteringId(null);}
+  };
 
-      // 목록 상태 갱신
-      setIntakeList((prev) =>
-        prev.map((it) =>
-          it.id === item.id ? { ...it, isScheduled: true, status: '일정등록완료' } : it
-        )
-      );
-
-      setRegisteringId(null);
-      setSuccessToast(`[${item.name}]이(가) ${targetDept} 일정표에 성공적으로 등록되었습니다!`);
-      setTimeout(() => setSuccessToast(null), 4000);
-    }, 400);
+  const registeredProject = (item: IntakeProject, dept: string) => projects.find(p => p.code === item.code && p.department === dept);
+  const registrationLabel = (item: IntakeProject) => {
+    const registered = item.targetDepartments.map(dept => registeredProject(item, dept)).filter(p => p !== undefined);
+    const needsPM = registered.some(p => pendingAssignmentReason(p)==='PM 미배정');
+    const needsDates = registered.some(p => pendingAssignmentReason(p)==='일정 미정');
+    return item.isScheduled ? (needsPM ? '신규 · PM 배정 필요' : needsDates?'일정 미정':'프로젝트 등록') : registered.length ? `일부 등록${needsPM ? ' · PM 배정 필요' : ''}` : '신규·미배정';
+  };
+  const openRegisteredProject = (project: (typeof projects)[number]) => {
+    setSelectedProjectId(project.id);
+    setSelectedIntake(null);
+    onNavigateToSchedule(project.department);
   };
 
   const t = {
     title: lang === 'vi' ? 'Danh sách tiếp nhận dự án (Tiếp nhận trúng thầu)' : '프로젝트 접수목록 (그룹웨어 수주소식 연동)',
     subtitle:
       lang === 'vi'
-        ? 'Tự động đồng bộ từ Groupware (gw.con-cost.com). Quản lý dự án mới và đăng ký lịch trình một chạm.'
-        : '그룹웨어(gw.con-cost.com) 수주소식에서 1시간마다 자동 크롤링된 신규 수주 프로젝트를 통합 검토하고 일정표로 원클릭 등록합니다.',
+        ? 'Dữ liệu Groupware theo phạm vi công việc đã đánh dấu; lịch hiện có được giữ nguyên.'
+        : '그룹웨어 작업범위 체크에 따라 참여 팀의 신규 프로젝트를 등록합니다. PM은 자동 지정하지 않으므로 해당 팀 실장·팀장이 PM과 담당 인원을 배정해 주세요.',
     totalIntake: lang === 'vi' ? 'Tổng số tiếp nhận' : '수주 접수 건수',
-    pending: lang === 'vi' ? 'Chưa xếp lịch' : '일정 미등록 (대기)',
-    scheduled: lang === 'vi' ? 'Đã xếp lịch' : '일정표 등록완료',
-    syncDesc: lang === 'vi' ? 'Tự động thu thập: 09:00 ~ 17:00 ngày thường' : '평일 09:00 ~ 17:00 매시간 자동 동기화 구동 중',
+    pending: lang === 'vi' ? 'Chờ phân công' : '신규·미배정 (배정 대기)',
+    scheduled: lang === 'vi' ? 'Đã xác nhận phân công' : '배정 확인',
+    syncDesc: syncState,
     searchPlaceholder: lang === 'vi' ? 'Tìm theo tên dự án, chủ đầu tư, mã...' : '프로젝트명, 발주처, 수주코드 검색...',
   };
 
@@ -152,7 +183,7 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
     <div className="space-y-6">
       {/* 알림 토스트 */}
       {successToast && (
-        <div className="fixed top-6 right-6 z-50 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-xl flex items-center gap-3 animate-fade-in">
+        <div className="fixed top-6 right-6 z-50 bg-emerald-700 text-white px-5 py-3 rounded-xl shadow-xl flex items-center gap-3 animate-fade-in">
           <CheckCircle2 size={20} className="text-emerald-200" />
           <span className="text-sm font-bold">{successToast}</span>
         </div>
@@ -165,7 +196,7 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
             <div className="flex items-center gap-2 mb-1">
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-[#00338d] dark:bg-blue-900/40 dark:text-blue-300 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                GW 1205 LIVE CRAWLER
+                그룹웨어 수주 연동
               </span>
               <span className="text-xs text-slate-500 dark:text-slate-400">{t.syncDesc}</span>
             </div>
@@ -197,7 +228,7 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
               <Inbox size={16} />
             </div>
             <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">
-              {intakeList.length} <span className="text-xs font-normal text-slate-500">건</span>
+              {intakeList.length} <span className="text-xs font-normal text-slate-500 dark:text-slate-300">건</span>
             </div>
           </div>
 
@@ -207,8 +238,8 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
               <Clock size={16} />
             </div>
             <div className="text-2xl font-black text-amber-900 dark:text-amber-200 mt-1">
-              {intakeList.filter((i) => !i.isScheduled).length}{' '}
-              <span className="text-xs font-normal text-amber-600">건 미등록</span>
+              {intakeList.filter((i) => i.needsAssignment).length}{' '}
+              <span className="text-xs font-normal text-amber-700 dark:text-amber-300">건 배정 대기</span>
             </div>
           </div>
 
@@ -218,8 +249,8 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
               <CheckCircle2 size={16} />
             </div>
             <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200 mt-1">
-              {intakeList.filter((i) => i.isScheduled).length}{' '}
-              <span className="text-xs font-normal text-emerald-600">건 배정완료</span>
+              {intakeList.filter((i) => i.isScheduled&&!i.needsAssignment).length}{' '}
+              <span className="text-xs font-normal text-emerald-700 dark:text-emerald-300">건 배정 확인</span>
             </div>
           </div>
         </div>
@@ -288,21 +319,21 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
               onClick={() => setStatusFilter('PENDING')}
               className={`px-3 py-1.5 rounded-md transition-all ${
                 statusFilter === 'PENDING'
-                  ? 'bg-amber-500 text-white shadow-xs'
+                  ? 'bg-amber-700 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-300'
               }`}
             >
-              미등록
+              미배정
             </button>
             <button
               onClick={() => setStatusFilter('SCHEDULED')}
               className={`px-3 py-1.5 rounded-md transition-all ${
                 statusFilter === 'SCHEDULED'
-                  ? 'bg-emerald-600 text-white shadow-xs'
+                  ? 'bg-emerald-700 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-300'
               }`}
             >
-              등록완료
+              배정 확인
             </button>
           </div>
         </div>
@@ -323,24 +354,27 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
       {/* 수주소식 데이터 테이블 */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full min-w-[860px] 2xl:min-w-[1600px] table-fixed text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/80 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700 text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                <th className="py-3.5 px-4 w-16 text-center">No</th>
-                <th className="py-3.5 px-4 w-32">수주코드</th>
-                <th className="py-3.5 px-4 w-44">발주처</th>
-                <th className="py-3.5 px-4">프로젝트명 (수주소식 제목)</th>
-                <th className="py-3.5 px-4 w-36 text-center">해당 팀 (공종)</th>
-                <th className="py-3.5 px-4 w-28 text-center">접수일자</th>
-                <th className="py-3.5 px-4 w-28 text-center">작성자</th>
-                <th className="py-3.5 px-4 w-32 text-center">상태</th>
-                <th className="py-3.5 px-4 w-44 text-center">일정표 등록</th>
+                <th className="hidden 2xl:table-cell py-3.5 px-4 w-16 text-center">No</th>
+                <th className="py-3.5 px-4 w-28 2xl:w-32">수주코드</th>
+                <th className="hidden 2xl:table-cell py-3.5 px-4 w-44">발주처</th>
+                <th className="py-3.5 px-4 w-[320px] 2xl:w-[360px]">프로젝트명 (수주소식 제목)</th>
+                <th className="py-3.5 px-4 w-32 2xl:w-36 text-center">해당 팀 (공종)</th>
+                <th className="hidden 2xl:table-cell py-3.5 px-4 w-28 text-center">접수일자</th>
+                <th className="hidden 2xl:table-cell py-3.5 px-4 w-28 text-center">작성자</th>
+                <th className="hidden 2xl:table-cell py-3.5 px-4 w-32 text-center">상태</th>
+                <th className="py-3.5 px-4 w-[300px] text-center">일정표 등록</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-xs">
               {filteredList.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-12 text-slate-400 dark:text-slate-500">
+                  <td colSpan={4} className="2xl:hidden text-center py-12 text-slate-400 dark:text-slate-500">
+                    조건에 맞는 수주 프로젝트가 없습니다.
+                  </td>
+                  <td colSpan={9} className="hidden 2xl:table-cell text-center py-12 text-slate-400 dark:text-slate-500">
                     조건에 맞는 수주 프로젝트가 없습니다.
                   </td>
                 </tr>
@@ -354,7 +388,7 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
                       }`}
                     >
                       {/* 번호 */}
-                      <td className="py-3.5 px-4 text-center font-semibold text-slate-500">
+                      <td className="hidden 2xl:table-cell py-3.5 px-4 text-center font-semibold text-slate-500">
                         {item.no}
                       </td>
 
@@ -366,7 +400,7 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
                       </td>
 
                       {/* 발주처 */}
-                      <td className="py-3.5 px-4">
+                      <td className="hidden 2xl:table-cell py-3.5 px-4">
                         <span className="font-bold text-slate-700 dark:text-slate-300">
                           {item.client}
                         </span>
@@ -376,11 +410,11 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
                       <td className="py-3.5 px-4 cursor-pointer group" onClick={() => setSelectedIntake(item)}>
                         <div className="font-extrabold text-slate-900 dark:text-white group-hover:text-[#00338d] dark:group-hover:text-blue-400 flex items-center gap-1.5 transition-colors">
                           <span className="group-hover:underline">{item.name}</span>
-                          <span className="text-[10px] bg-blue-50 dark:bg-slate-700 text-[#00338d] dark:text-blue-300 px-1.5 py-0.5 rounded font-bold border border-blue-200 dark:border-slate-600">
+                          <span className="shrink-0 whitespace-nowrap text-[10px] bg-blue-50 dark:bg-slate-700 text-[#00338d] dark:text-blue-300 px-1.5 py-0.5 rounded font-bold border border-blue-200 dark:border-slate-600">
                             세부내용 확인
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">
+                        <div className="text-[11px] text-slate-600 mt-0.5 line-clamp-1 dark:text-slate-400">
                           {item.rawTitle}
                         </div>
                         {/* 연면적 및 세부 스펙 태그 */}
@@ -406,6 +440,7 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
                       {/* 대상 부서/공종 */}
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex flex-wrap items-center justify-center gap-1">
+                          {!item.targetDepartments.length&&<span className="text-amber-700 dark:text-amber-300">담당팀 확인 필요</span>}
                           {item.targetDepartments.map((dept) => (
                             <span
                               key={dept}
@@ -424,24 +459,24 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
                       </td>
 
                       {/* 접수일자 */}
-                      <td className="py-3.5 px-4 text-center font-mono text-slate-600 dark:text-slate-300">
+                      <td className="hidden 2xl:table-cell py-3.5 px-4 text-center font-mono text-slate-600 dark:text-slate-300">
                         {item.receivedDate}
                       </td>
 
                       {/* 작성자 */}
-                      <td className="py-3.5 px-4 text-center text-slate-600 dark:text-slate-300">
+                      <td className="hidden 2xl:table-cell py-3.5 px-4 text-center text-slate-600 dark:text-slate-300">
                         {item.author}
                       </td>
 
                       {/* 상태 */}
-                      <td className="py-3.5 px-4 text-center">
+                      <td className="hidden 2xl:table-cell py-3.5 px-4 text-center">
                         {item.isScheduled ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                            <CheckCircle2 size={12} /> 등록완료
+                            <CheckCircle2 size={12} /> {registrationLabel(item)}
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                            <Clock size={12} /> 미등록
+                            <Clock size={12} /> {registrationLabel(item)}
                           </span>
                         )}
                       </td>
@@ -450,24 +485,28 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
                       <td className="py-3.5 px-4 text-center">
                         {item.isScheduled ? (
                           <button
-                            onClick={() => onNavigateToSchedule()}
+                            onClick={() => {const project=projects.find(p=>p.code===item.code&&pendingAssignmentReason(p))||projects.find(p=>p.code===item.code);if(project)openRegisteredProject(project);else onNavigateToSchedule();}}
                             className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors inline-flex items-center gap-1"
                           >
                             일정표 보기 <ArrowRight size={13} />
                           </button>
                         ) : (
                           <div className="flex items-center justify-center gap-1">
-                            {item.targetDepartments.map((dept) => (
-                              <button
+                            {!item.targetDepartments.length&&<button onClick={()=>setSelectedIntake(item)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-amber-700 dark:text-amber-300">신규·미배정 · 담당팀 확인</button>}
+                            {item.targetDepartments.map((dept) => {
+                              const existing = registeredProject(item, dept);
+                              return existing ? <button key={dept} onClick={() => openRegisteredProject(existing)} className="shrink-0 whitespace-nowrap px-2 py-1.5 rounded-lg text-[11px] font-bold text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors inline-flex items-center gap-1">
+                                {dept.replace('팀', '')} 일정 보기 <ArrowRight size={13} />
+                              </button> : <button
                                 key={dept}
-                                disabled={registeringId === item.id}
+                                disabled={registeringId === item.id || !canManageSchedule(currentUser, dept as Department) || projects.some(p => p.code === item.code && p.department === dept)}
                                 onClick={() => handleRegisterToSchedule(item, dept as Department)}
-                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-[#00338d] hover:bg-[#002266] text-white transition-all shadow-xs flex items-center gap-1 disabled:opacity-50"
+                                className="shrink-0 whitespace-nowrap px-2 py-1.5 rounded-lg text-[11px] font-bold bg-[#00338d] hover:bg-[#002266] text-white transition-all shadow-xs flex items-center gap-1 disabled:opacity-50"
                               >
                                 <CalendarPlus size={12} />
                                 {dept.replace('팀', '')} 등록
-                              </button>
-                            ))}
+                              </button>;
+                            })}
                           </div>
                         )}
                       </td>
@@ -486,7 +525,7 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-3xl overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
             
             {/* 모달 헤더 */}
-            <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between bg-slate-50/80 dark:bg-slate-850">
+            <div className="relative p-5 pr-16 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between bg-slate-50/80 dark:bg-slate-800">
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-[11px] font-black tracking-wider text-[#00338d] dark:text-blue-400 uppercase">
@@ -507,7 +546,8 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
               </div>
               <button
                 onClick={() => setSelectedIntake(null)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+                aria-label="수주 상세 닫기"
+                className="absolute right-3 top-3 p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
               >
                 <X size={20} />
               </button>
@@ -586,6 +626,11 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
                 </div>
               )}
 
+              {selectedIntake.pmByDepartment && Object.keys(selectedIntake.pmByDepartment).length > 0 && (
+                <div className="text-xs text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 p-3 rounded-lg">
+                  원문 담당자 참고: {Object.entries(selectedIntake.pmByDepartment).map(([team,name])=>`${team} · ${name}`).join(' / ')} · PM 자동 배정 없음
+                </div>
+              )}
               {/* 원본 수주소식 타이틀 */}
               <div className="text-[11px] text-slate-400 font-mono bg-slate-100 dark:bg-slate-800 p-2.5 rounded-lg">
                 그룹웨어 원문: {selectedIntake.rawTitle}
@@ -593,9 +638,10 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
             </div>
 
             {/* 모달 푸터 액션 */}
-            <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850 flex items-center justify-between gap-3">
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 flex items-center justify-between gap-3">
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 대상부서: <strong className="text-slate-800 dark:text-slate-200">{selectedIntake.targetDepartments.join(', ')}</strong>
+                {!selectedIntake.isScheduled && selectedIntake.targetDepartments.some(dept => registeredProject(selectedIntake, dept)) && <span className="block mt-1">{registrationLabel(selectedIntake)}</span>}
               </span>
 
               <div className="flex items-center gap-2">
@@ -614,13 +660,17 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
                     }}
                     className="px-4 py-2 rounded-xl text-xs font-bold bg-[#00338d] hover:bg-[#002266] text-white transition-all shadow-sm flex items-center gap-1.5"
                   >
-                    일정표 & 공종별 상세 배정 모달 열기 <ArrowRight size={14} />
+                    일정표에서 PM·담당 인원 배정 확인 <ArrowRight size={14} />
                   </button>
                 ) : (
                   <div className="flex items-center gap-1.5">
-                    {selectedIntake.targetDepartments.map((dept) => (
-                      <button
+                    {(selectedIntake.targetDepartments.length?selectedIntake.targetDepartments:['마감팀','구조팀','토목&조경팀']).map((dept) => {
+                      const existing = registeredProject(selectedIntake, dept);
+                      return existing ? <button key={dept} onClick={() => openRegisteredProject(existing)} className="px-3 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors inline-flex items-center gap-1">
+                        {dept} 일정 보기 <ArrowRight size={13} />
+                      </button> : <button
                         key={dept}
+                        disabled={registeringId === selectedIntake.id || !canManageSchedule(currentUser, dept as Department)}
                         onClick={() => {
                           handleRegisterToSchedule(selectedIntake, dept as Department);
                           setSelectedIntake(null);
@@ -628,9 +678,9 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, lang = '
                         className="px-3 py-2 rounded-xl text-xs font-bold bg-[#00338d] hover:bg-[#002266] text-white transition-all shadow-sm flex items-center gap-1"
                       >
                         <CalendarPlus size={13} />
-                        {dept} 일정 등록
-                      </button>
-                    ))}
+                        {dept} {selectedIntake.targetDepartments.length?'자동 반영 확인':'담당팀 지정'}
+                      </button>;
+                    })}
                   </div>
                 )}
                 <button

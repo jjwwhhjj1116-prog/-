@@ -1,9 +1,12 @@
+import { studioApi } from '../services/studioApi';
 import { create } from 'zustand';
-import concostUsersData from '../data/concostUsers.json';
+import concostUsersData from '../data/publicDirectory.json';
 
 export interface ConcostUser {
   id: string;
   no: number;
+  employeeNo?: string;
+  vietTeamId?: string;
   company: string;
   name: string;
   engName: string;
@@ -11,9 +14,11 @@ export interface ConcostUser {
   originalDept: string;
   position: string;
   phone: string;
+  extension?: string;
   email: string;
   idPrefix: string;
   password?: string;
+  active?: boolean;
   role: 'ADMIN' | 'MEMBER';
 }
 
@@ -33,17 +38,17 @@ interface AuthState {
   isAuthenticated: boolean;
   loginError: string | null;
   googleDriveConfig: GoogleDriveConfig;
-  login: (idOrEmail: string, password: string) => boolean;
+  login: (idOrEmail: string, password: string) => Promise<boolean>;
   quickLogin: (userId: string) => void;
   logout: () => void;
   clearError: () => void;
   // 개인 설정 (비밀번호 변경)
-  changePassword: (oldPw: string, newPw: string) => { success: boolean; message: string };
+  changePassword: (oldPw: string, newPw: string) => Promise<{ success: boolean; message: string }>;
   // 관리자 회원 관리
-  adminResetPassword: (userId: string, newPw: string) => boolean;
-  adminAddUser: (user: Omit<ConcostUser, 'id'>) => boolean;
-  adminUpdateUser: (userId: string, update: Partial<ConcostUser>) => boolean;
-  adminDeleteUser: (userId: string) => boolean;
+  adminResetPassword: (userId: string, newPw: string, options?: {resetMode:'extension'|'temporary';extension?:string}) => Promise<boolean>;
+  adminAddUser: (user: Omit<ConcostUser, 'id'>) => Promise<boolean>;
+  adminUpdateUser: (userId: string, update: Partial<ConcostUser>) => Promise<boolean>;
+  adminDeleteUser: (userId: string) => Promise<boolean>;
   // 구글 드라이브 설정
   updateGoogleDriveConfig: (config: Partial<GoogleDriveConfig>) => void;
   testGoogleDriveConnection: () => Promise<boolean>;
@@ -67,8 +72,9 @@ export const isUserAdmin = (user: ConcostUser | null | undefined): boolean => {
 
 export const sanitizeUser = (user: ConcostUser): ConcostUser => {
   const isAdmin = isUserAdmin(user);
+  const {password: _password,...safe}=user;
   return {
-    ...user,
+    ...safe,
     role: isAdmin ? 'ADMIN' : 'MEMBER',
   };
 };
@@ -119,48 +125,13 @@ const loadInitialUser = (usersList: ConcostUser[]): ConcostUser | null => {
   return null;
 };
 
-// 구글 드라이브 설정 로드 (사용자 제공 Google OAuth 2.0 실제 자격증명 연계)
-const deobfuscateKey = (codes: number[]) => codes.map((c) => String.fromCharCode(c ^ 42)).join('');
-
+// OAuth 비밀 값은 서버 환경 변수에서만 관리한다.
 const loadInitialGDriveConfig = (): GoogleDriveConfig => {
-  // 실제 Google OAuth 2.0 Client ID 및 Secret 안전 로드
-  const REAL_CLIENT_ID = deobfuscateKey([
-    25, 24, 28, 26, 25, 31, 30, 28, 18, 30, 29, 30, 7, 28, 66, 69, 69, 70, 91, 68, 66, 92, 70, 27, 26, 65, 68, 91, 26,
-    94, 24, 66, 26, 25, 29, 28, 18, 89, 95, 24, 75, 77, 92, 64, 75, 4, 75, 90, 90, 89, 4, 77, 69, 69, 77, 70, 79, 95,
-    89, 79, 88, 73, 69, 68, 94, 79, 68, 94, 4, 73, 69, 71,
-  ]);
-  const REAL_CLIENT_SECRET = deobfuscateKey([
-    109, 101, 105, 121, 122, 114, 7, 98, 25, 127, 27, 89, 96, 117, 25, 18, 125, 115, 91, 124, 82, 109, 64, 90, 104,
-    109, 123, 71, 30, 114, 99, 105, 28, 28, 69,
-  ]);
-  const REAL_REDIRECT_URI = 'https://concost-tech-scheduler.pages.dev';
-
-  try {
-    const saved = localStorage.getItem(GDRIVE_STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      // 기존 더미 값이 저장되어 있던 경우 실제 값으로 자동 갱신
-      if (parsed.clientId?.includes('849204918234') || !parsed.clientId) {
-        parsed.clientId = REAL_CLIENT_ID;
-        parsed.clientSecret = REAL_CLIENT_SECRET;
-        parsed.redirectUri = REAL_REDIRECT_URI;
-        delete parsed.rootFolderId;
-        localStorage.setItem(GDRIVE_STORAGE_KEY, JSON.stringify(parsed));
-      }
-      return parsed;
-    }
-  } catch (e) {
-    console.error('Failed to load gdrive config', e);
-  }
-  return {
-    clientId: REAL_CLIENT_ID,
-    clientSecret: REAL_CLIENT_SECRET,
-    redirectUri: REAL_REDIRECT_URI,
-    rootFolderId: '', // 클레임센터 스튜디오와 동일하게 최상위 '기술본부 자료실' 자동 생성/연결
-    connected: true,
-    autoCreateFolder: true,
-    lastCheckedAt: '2026-09-18 15:30',
-  };
+  let saved: Partial<GoogleDriveConfig> = {};
+  try { saved = JSON.parse(localStorage.getItem(GDRIVE_STORAGE_KEY) || '{}'); } catch { /* 기본값 */ }
+  const safe = {clientId: saved.clientId || '', clientSecret: '', redirectUri: saved.redirectUri || '', rootFolderId: saved.rootFolderId || '', connected: false, autoCreateFolder: saved.autoCreateFolder ?? true};
+  localStorage.setItem(GDRIVE_STORAGE_KEY, JSON.stringify(safe));
+  return safe;
 };
 
 const initialUsers = loadInitialUsers();
@@ -173,44 +144,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loginError: null,
   googleDriveConfig: loadInitialGDriveConfig(),
 
-  login: (idOrEmail: string, password: string) => {
-    const cleanInput = idOrEmail.trim().toLowerCase();
-    const cleanPw = password.trim();
-
-    const user = get().users.find((u) => {
-      const matchId =
-        u.idPrefix.toLowerCase() === cleanInput ||
-        u.email.toLowerCase() === cleanInput ||
-        u.name.toLowerCase() === cleanInput ||
-        `${u.idPrefix.toLowerCase()}@con-cost.com` === cleanInput ||
-        (cleanInput === 'pyj' && u.idPrefix === 'yjpark') ||
-        (cleanInput === 'pyj@con-cost.com' && u.idPrefix === 'yjpark');
-      return matchId;
-    });
-
-    if (!user) {
-      set({ loginError: '등록되지 않은 사내 ID 또는 이메일입니다.' });
-      return false;
-    }
-
-    // 유종욱 실장님의 경우 전달된 신규 비밀번호 dbwhddnr1! 와 기존 1147 모두 허용
-    const isYjw = user.email === 'yjw@con-cost.com' || user.idPrefix === 'yjw';
-    const isValidPw = isYjw
-      ? cleanPw === 'dbwhddnr1!' || cleanPw === '1147' || cleanPw === user.password
-      : user.password === cleanPw;
-
-    if (!isValidPw) {
-      set({ loginError: '비밀번호가 일치하지 않습니다. (관리자 초기 비밀번호 확인)' });
-      return false;
-    }
-
-    const sanitized = sanitizeUser(user);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
-    set({ currentUser: sanitized, isAuthenticated: true, loginError: null });
-    return true;
+  login: async (idOrEmail: string, password: string) => {
+    try {
+      const {user}=await studioApi('login','POST',{login:idOrEmail,password});
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(user));
+      set({currentUser:user,isAuthenticated:true,loginError:null});return true;
+    } catch(error) {set({loginError:error instanceof Error?error.message:'서버 로그인 실패'});return false;}
   },
 
   quickLogin: (userId: string) => {
+    if (!import.meta.env.DEV) { set({loginError:"비밀번호로 로그인해 주세요."}); return; }
     const user = get().users.find((u) => u.id === userId);
     if (user) {
       const sanitized = sanitizeUser(user);
@@ -220,6 +163,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: () => {
+    void studioApi("logout","POST").catch(()=>{});
     localStorage.removeItem(STORAGE_KEY);
     set({
       currentUser: null,
@@ -231,83 +175,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   clearError: () => set({ loginError: null }),
 
   // 개인 설정: 본인 비밀번호 변경
-  changePassword: (oldPw: string, newPw: string) => {
-    const { currentUser, users } = get();
-    if (!currentUser) return { success: false, message: '로그인이 필요합니다.' };
-
-    if (currentUser.password && currentUser.password !== oldPw.trim()) {
-      return { success: false, message: '현재 비밀번호가 일치하지 않습니다.' };
-    }
-
-    if (newPw.trim().length < 4) {
-      return { success: false, message: '새 비밀번호는 최소 4자리 이상이어야 합니다.' };
-    }
-
-    const updatedUser: ConcostUser = { ...currentUser, password: newPw.trim() };
-    const updatedUsers = users.map((u) => (u.id === currentUser.id ? updatedUser : u));
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedUser));
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updatedUsers));
-
-    set({ currentUser: updatedUser, users: updatedUsers });
-    return { success: true, message: '비밀번호가 성공적으로 변경되었습니다.' };
+  changePassword: async (oldPw: string,newPw: string)=>{
+    try{await studioApi('password','POST',{oldPassword:oldPw,newPassword:newPw});return {success:true,message:'서버 비밀번호를 변경했습니다.'};}
+    catch(e){return {success:false,message:e instanceof Error?e.message:'변경 실패'};}
   },
 
-  // 관리자 기능: 특정 회원 비밀번호 강제 초기화
-  adminResetPassword: (userId: string, newPw: string) => {
-    const { users, currentUser } = get();
-    const target = users.find((u) => u.id === userId);
-    if (!target) return false;
-
-    const updated = users.map((u) => (u.id === userId ? { ...u, password: newPw.trim() } : u));
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updated));
-
-    if (currentUser && currentUser.id === userId) {
-      const updatedCur = { ...currentUser, password: newPw.trim() };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedCur));
-      set({ users: updated, currentUser: updatedCur });
-    } else {
-      set({ users: updated });
-    }
-    return true;
-  },
-
-  // 관리자 기능: 신규 기술본부 회원 등록
-  adminAddUser: (newUser) => {
-    const { users } = get();
-    const id = `u_${Date.now()}`;
-    const userWithId: ConcostUser = { ...newUser, id };
-    const updated = [userWithId, ...users];
-
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updated));
-    set({ users: updated });
-    return true;
-  },
-
-  // 관리자 기능: 회원 정보(부서, 직급, 권한 등) 수정
-  adminUpdateUser: (userId: string, update: Partial<ConcostUser>) => {
-    const { users, currentUser } = get();
-    const updated = users.map((u) => (u.id === userId ? { ...u, ...update } : u));
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updated));
-
-    if (currentUser && currentUser.id === userId) {
-      const updatedCur = { ...currentUser, ...update };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedCur));
-      set({ users: updated, currentUser: updatedCur });
-    } else {
-      set({ users: updated });
-    }
-    return true;
-  },
-
-  // 관리자 기능: 회원 삭제
-  adminDeleteUser: (userId: string) => {
-    const { users } = get();
-    const updated = users.filter((u) => u.id !== userId);
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updated));
-    set({ users: updated });
-    return true;
-  },
+  adminResetPassword: async (id,password,options)=>manageUser('reset',{id,password,...options},set),
+  adminAddUser: async ({password,...record})=>manageUser('create',{record,password},set),
+  adminUpdateUser: async (id,record)=>manageUser('update',{id,record},set),
+  adminDeleteUser: async (id)=>manageUser('deactivate',{id},set),
 
   // 구글 드라이브 설정 갱신
   updateGoogleDriveConfig: (config) => {
@@ -318,16 +194,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   // 구글 드라이브 연결 테스트 (클레임센터 스튜디오 OAuth 검증 시뮬레이션)
   testGoogleDriveConnection: async () => {
-    await new Promise((r) => setTimeout(r, 800));
-    const now = new Date();
-    const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const updated = {
-      ...get().googleDriveConfig,
-      connected: true,
-      lastCheckedAt: timeStr,
-    };
+    let connected = false;
+    try { const response = await fetch('/api/google/status'); const status = await response.json(); connected = response.ok && status.connected === true; } catch { /* 연결 실패 */ }
+    const updated = {...get().googleDriveConfig, clientSecret:'', connected, lastCheckedAt:new Date().toISOString()};
     localStorage.setItem(GDRIVE_STORAGE_KEY, JSON.stringify(updated));
-    set({ googleDriveConfig: updated });
-    return true;
+    set({googleDriveConfig:updated});
+    return connected;
   },
 }));
+
+async function manageUser(action:string,input:Record<string,unknown>,set:(value:Partial<AuthState>)=>void){
+ const actor=useAuthStore.getState().currentUser;
+ try{const result=await studioApi('admin/users','POST',{action,...input});if(actor!==useAuthStore.getState().currentUser)return false;if(result.sessionRevoked){localStorage.removeItem(STORAGE_KEY);set({currentUser:null,isAuthenticated:false,loginError:null});return true;}const {users}=await studioApi('directory');if(actor!==useAuthStore.getState().currentUser)return false;set({users:users.map(sanitizeUser),loginError:null});return true;}
+ catch(e){if(actor===useAuthStore.getState().currentUser)set({loginError:e instanceof Error?e.message:'계정 관리 요청 실패'});return false;}
+}

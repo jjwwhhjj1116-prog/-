@@ -1,3 +1,4 @@
+import {translatedAlert} from '../services/translationService';
 import React, { useState, useRef } from 'react';
 import { X, Check, Upload } from 'lucide-react';
 import { useProjectStore, type Department, DEPARTMENTS } from '../store/useProjectStore';
@@ -35,18 +36,18 @@ export default function OrderModal({ onClose }: OrderModalProps) {
       setEndDate('2026-10-31');
       setMemo('마감, 구조공사 / 공내역서 작성');
       setSelectedDepartments(['마감팀', '구조팀']);
-      alert('수주소식 엑셀 파일 정보가 성공적으로 불러와졌습니다.');
+      void translatedAlert('수주소식 엑셀 파일 정보가 성공적으로 불러와졌습니다.');
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !startDate || !endDate) {
-      alert('필수 항목(프로젝트명, 착수일, 납품일)을 모두 입력해주세요.');
+      void translatedAlert('필수 항목(프로젝트명, 착수일, 납품일)을 모두 입력해주세요.');
       return;
     }
     if (selectedDepartments.length === 0) {
-      alert('할당할 기술본부 팀을 하나 이상 선택해주세요.');
+      void translatedAlert('할당할 기술본부 팀을 하나 이상 선택해주세요.');
       return;
     }
 
@@ -65,14 +66,14 @@ export default function OrderModal({ onClose }: OrderModalProps) {
       });
     });
     
-    alert('프로젝트가 선택된 각 팀의 착수예정 항목으로 전달되었습니다.');
+    void translatedAlert('프로젝트가 선택된 각 팀의 착수예정 항목으로 전달되었습니다.');
     onClose();
   };
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-[#111] border border-gray-700 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl">
-        <div className="flex justify-between items-center p-5 border-b border-gray-800 bg-gray-900/50">
+        <div className="relative flex flex-wrap justify-between items-center gap-3 p-5 pr-16 border-b border-gray-800 bg-gray-900/50">
           <h2 className="text-xl font-bold text-white flex items-center gap-2">수주소식 등록</h2>
           <div className="flex items-center gap-3">
             <input type="file" accept=".xlsx, .xls" ref={fileInputRef} onChange={handleMockUpload} className="hidden" />
@@ -83,7 +84,7 @@ export default function OrderModal({ onClose }: OrderModalProps) {
             >
               <Upload size={14} /> 엑셀 업로드 자동채우기
             </button>
-            <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+            <button type="button" onClick={onClose} aria-label="수주소식 등록 닫기" className="absolute top-3 right-3 p-2 text-gray-400 hover:text-white transition-colors">
               <X size={24} />
             </button>
           </div>

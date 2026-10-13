@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS studio_leaves (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,start_date TEXT NOT NULL,end_date TEXT NOT NULL,kind TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1,cancelled INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS studio_leaves_dates ON studio_leaves(user_id,start_date,end_date);
+CREATE TABLE IF NOT EXISTS studio_task_checks (user_id TEXT NOT NULL,day TEXT NOT NULL,task_id TEXT NOT NULL,done INTEGER NOT NULL,PRIMARY KEY(user_id,day,task_id));
+CREATE TABLE IF NOT EXISTS studio_write_assertions (value INTEGER CHECK(value=1));
+CREATE TABLE IF NOT EXISTS studio_worklogs (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,day TEXT NOT NULL,department TEXT NOT NULL,body TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1,removed INTEGER NOT NULL DEFAULT 0);
+CREATE UNIQUE INDEX IF NOT EXISTS studio_worklogs_user_day ON studio_worklogs(user_id,day) WHERE removed=0;
+INSERT OR IGNORE INTO studio_sync_versions VALUES ('personal',0);
+CREATE TRIGGER IF NOT EXISTS sync_leaves_insert AFTER INSERT ON studio_leaves BEGIN UPDATE studio_sync_versions SET revision=revision+1 WHERE key='personal'; END;
+CREATE TRIGGER IF NOT EXISTS sync_leaves_update AFTER UPDATE ON studio_leaves BEGIN UPDATE studio_sync_versions SET revision=revision+1 WHERE key='personal'; END;
+CREATE TRIGGER IF NOT EXISTS sync_checks_insert AFTER INSERT ON studio_task_checks BEGIN UPDATE studio_sync_versions SET revision=revision+1 WHERE key='personal'; END;
+CREATE TRIGGER IF NOT EXISTS sync_checks_update AFTER UPDATE ON studio_task_checks BEGIN UPDATE studio_sync_versions SET revision=revision+1 WHERE key='personal'; END;
+CREATE TRIGGER IF NOT EXISTS sync_worklogs_insert AFTER INSERT ON studio_worklogs BEGIN UPDATE studio_sync_versions SET revision=revision+1 WHERE key='personal'; END;
+CREATE TRIGGER IF NOT EXISTS sync_worklogs_update AFTER UPDATE ON studio_worklogs BEGIN UPDATE studio_sync_versions SET revision=revision+1 WHERE key='personal'; END;

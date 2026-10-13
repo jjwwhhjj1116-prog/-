@@ -1,3 +1,10 @@
+import {translateWorkbook,translatedAlert} from '../services/translationService';
+import {useLanguageStore} from '../store/useLanguageStore';
+import {studioApi} from '../services/studioApi';
+import {ownLegacyMinutes,legacyMinuteId} from '../utils/legacyMinutes';
+import {useStudioStore,refreshStudioMeetings} from '../store/useStudioStore';
+import directory from '../data/publicDirectory.json';
+import { buildMeetingWorkbook, rebuildTranslatedMeetingWorkbook, downloadMeetingWorkbook, readMeetingBody, extractAiMeetingSummary } from '../services/meetingExcel';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { useAuthStore } from '../store/useAuthStore';
@@ -14,7 +21,8 @@ import {
   Upload,
   FileSpreadsheet,
   Paperclip,
-  Building2
+  Building2,
+  X
 } from 'lucide-react';
 
 export type MeetingType = '착수회의' | '공정회의' | '도면질의협의' | '내역검토회' | '긴급이슈';
@@ -30,6 +38,12 @@ export interface ActionItem {
 }
 
 export interface MeetingRecord {
+  serverRevision?: number;
+  authorId?: string;
+  archiveRevision?: number;
+  archiveUrl?: string;
+  archiveError?: string;
+  reviews?: {recipient_id:string;stage:string;read_at:string|null;decision:string|null}[];
   id: string;
   projectId: string;
   projectName: string;
@@ -64,70 +78,8 @@ export interface MeetingRecord {
 }
 
 /**
- * 클레임센터 스튜디오 표준 AI 스마트 회의록 요약 엔진 (AI Summarizer)
+ * 클레임센터 스튜디오 표준 AI 스마트 회의록 요약 엔진 (원문 발췌r)
  */
-export function extractAiMeetingSummary(rawText: string, projectName: string = ''): {
-  summary: string;
-  decisions: string[];
-} {
-  if (!rawText || !rawText.trim()) {
-    return {
-      summary: '회의 원문 대화록이 비어 있어 요약을 생성할 수 없습니다.',
-      decisions: ['대화록 원문을 입력하거나 파일을 첨부한 뒤 [AI 자동 정리]를 실행해 주세요.']
-    };
-  }
-
-  const lines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
-  
-  // 1. 도면 버전 및 날짜 파싱
-  const dateMatches = rawText.match(/\b(202[0-9]년\s*)?([0-1]?[0-9]월\s*[0-3]?[0-9]일|\d{4}-\d{2}-\d{2})\b/g) || [];
-  const revMatches = rawText.match(/\bRev\.?\s*([0-9]+)\b/gi) || [];
-  const latestRev = revMatches.length > 0 ? revMatches[revMatches.length - 1].toUpperCase() : 'Rev.3';
-
-  // 2. 공종별 언급 추출
-  const detectedRoles: string[] = [];
-  const roleKeywords = ['조적', '창호', '외부', '내부', '세대', '가설', '내역', '보', '슬라브', '기둥', '기초', '골조'];
-  roleKeywords.forEach((r) => {
-    if (rawText.includes(r)) detectedRoles.push(r);
-  });
-
-  // 3. 핵심 요약문 생성
-  const summaryPoints: string[] = [];
-  const projectPrefix = projectName ? `[${projectName}] ` : '';
-  summaryPoints.push(`1. ${projectPrefix}[도면 기준] ${latestRev} 최신 건축 도면 기준선 및 인터페이스 상세 확정`);
-  if (dateMatches.length > 0) {
-    summaryPoints.push(`2. [납품 일정] 주요 협의 일정 및 최종 납품 기한: ${dateMatches[0]} (중간점검 철저)`);
-  } else {
-    summaryPoints.push(`2. [납품 일정] 공종별 일정 준수 및 1차 중간 산출물 적기 공유 협의`);
-  }
-  if (detectedRoles.length > 0) {
-    summaryPoints.push(`3. [공종별 투입] ${detectedRoles.join(', ')} 공종 우선 착수 및 부서 간 다중인원 협업 전개`);
-  }
-  summaryPoints.push(`4. [글로벌 협업] VIET QS(호치민)와 창호/외벽 산출물 실시간 크로스체크 체계 확립`);
-
-  // 5. 주요 결정사항 (Decisions) 추출
-  const decisions: string[] = [];
-  lines.forEach((line) => {
-    if (line.includes('확정') || line.includes('적용') || line.includes('기준') || line.includes('합의') || line.includes('결정')) {
-      const cleanLine = line.replace(/^[\[\(].*?[\]\)]\s*/, '').replace(/^[가-힣]+:?\s*/, '').trim();
-      if (cleanLine.length > 8 && !decisions.includes(cleanLine) && decisions.length < 5) {
-        decisions.push(cleanLine);
-      }
-    }
-  });
-
-  if (decisions.length === 0) {
-    decisions.push(`건축 마감 도면 기준: ${latestRev} 최신 도면 일괄 적용`);
-    decisions.push(`공종별 인터페이스 및 물량산출 기준선 사내 표준화`);
-    decisions.push(`사내 기술본부 및 VIET QS(호치민) 간 일일 산출물 크로스체크 합의`);
-  }
-
-  return {
-    summary: summaryPoints.join('\n'),
-    decisions
-  };
-}
-
 // 클레임센터 스튜디오 레퍼런스 기준 실물 연동 착수회의록 초기 데이터
 const INITIAL_MEETINGS: MeetingRecord[] = [
   {
@@ -218,6 +170,7 @@ const INITIAL_MEETINGS: MeetingRecord[] = [
 ];
 
 const MINUTES_STORAGE_KEY = 'concost_minutes_records_v2';
+const MINUTES_BACKUP_KEY = 'studio-legacy-minutes-backup-v1';
 
 const loadStoredMeetings = (): MeetingRecord[] => {
   try {
@@ -225,6 +178,7 @@ const loadStoredMeetings = (): MeetingRecord[] => {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
+        try{if(!localStorage.getItem(MINUTES_BACKUP_KEY))localStorage.setItem(MINUTES_BACKUP_KEY,saved);}catch{console.error('회의록 원본 백업 공간이 부족합니다. 기존 목록은 유지합니다.');}
         return parsed;
       }
     }
@@ -241,6 +195,11 @@ export interface MinutesViewProps {
 export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }) => {
   const { currentUser } = useAuthStore();
   const { projects } = useProjectStore();
+  const {ready,meetings:sharedMeetings,openMeetingId}=useStudioStore();
+  const [saving,setSaving]=useState(false);
+  const [importingLegacy,setImportingLegacy]=useState(false);
+  const [legacyMessage,setLegacyMessage]=useState('');
+  const opened=useRef<string|null>(null);
 
   // 회의록 하위 2단 카테고리 탭: 'write' (회의록 작성) | 'list' (회의록 목록)
   const [activeSubTab, setActiveSubTab] = useState<'write' | 'list'>(initialTab);
@@ -258,6 +217,49 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
 
   const [meetings, setMeetings] = useState<MeetingRecord[]>(loadStoredMeetings);
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<MeetingRecord | null>(null);
+  const legacyRecords=useMemo(()=>{
+    try{return JSON.parse(localStorage.getItem(MINUTES_BACKUP_KEY)||'[]') as MeetingRecord[];}catch{return [];}
+  },[]);
+  const legacyOwned=ownLegacyMinutes(legacyRecords,INITIAL_MEETINGS,currentUser);
+  async function importLegacyMinutes(){
+    if(!ready||!currentUser||importingLegacy)return;
+    setImportingLegacy(true);let saved=0,already=0,archivePending=0;
+    try{
+      const {meetings:remote}=await studioApi('meetings');
+      for(const source of legacyOwned){
+        const id=await legacyMinuteId(currentUser.id,source);
+        if(remote.some((m:MeetingRecord)=>m.id===id)){already++;continue;}
+        const {meeting}=await studioApi(`meetings/${id}`,'PUT',{meeting:{...source,id,legacySourceId:source.id}});
+        saved++;if(meeting.archiveError)archivePending++;
+      }
+      await refreshStudioMeetings();
+      setLegacyMessage(`중앙 이관 ${saved}건 · 기존 이관 ${already}건 · Drive 보관 재시도 필요 ${archivePending}건. 이 PC 원본 백업은 유지됩니다.`);
+    }catch(e){setLegacyMessage(`${saved}건 저장 후 중단: ${e instanceof Error?e.message:'서버 응답 오류'}. 원본 백업은 유지되며 다시 실행할 수 있습니다.`);}
+    finally{setImportingLegacy(false);}
+  }
+
+  useEffect(()=>{
+    if(!ready)return;
+    setMeetings(previous=>{
+      const remote=sharedMeetings as MeetingRecord[];
+      // Keep the open draft stable while polling, but refresh receipts and archive state.
+      const merged=remote.map(m=>{const old=previous.find(x=>x.id===m.id);return old&&old.id===opened.current?(old.serverRevision===m.serverRevision?{...old,reviews:m.reviews,archiveRevision:m.archiveRevision,archiveUrl:m.archiveUrl,archiveError:m.archiveError}:old):m;});
+      for(const m of previous)if(!m.serverRevision&&!merged.some(x=>x.id===m.id))merged.push(m);
+      return JSON.stringify(previous)===JSON.stringify(merged)?previous:merged;
+    });
+  },[ready,sharedMeetings]);
+  async function openMeeting(id:string){
+    const meeting=sharedMeetings.find(m=>m.id===id)||meetings.find(m=>m.id===id);
+    if(!meeting)return;
+    setMeetings(previous=>previous.map(m=>m.id===id?meeting:m));
+    opened.current=id;setCurrentMeetingId(id);setSelectedProjectCode(meeting.projectCode);setActiveSubTab('write');
+    if(meeting.reviews?.some((v:any)=>v.recipient_id===currentUser?.id)){
+      try{await studioApi(`meetings/${encodeURIComponent(id)}/read`,'POST',{revision:meeting.serverRevision});await refreshStudioMeetings();}catch(e){setAiToast(e instanceof Error?e.message:'열람 기록 실패');}
+    }
+  }
+  // Explicit inbox/list selection counts as reading; initial page selection does not.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(()=>{if(openMeetingId&&meetings.some(m=>m.id===openMeetingId)){void openMeeting(openMeetingId);useStudioStore.setState({openMeetingId:null});}},[openMeetingId,meetings]);
 
   // 고유 프로젝트 목록 (코드 기준 중복 제거)
   const uniqueProjects = useMemo(() => {
@@ -288,11 +290,11 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
 
   // 프로젝트 변경 시 해당 프로젝트의 첫 번째 회의록으로 포인터 이동 (임의 자동 생성 금지)
   useEffect(() => {
+    // An inbox selection must win over the default project selection on mount.
+    if (openMeetingId) return;
     const matched = meetings.find((m) => m.projectCode === selectedProjectCode || m.projectId === selectedProjectCode);
-    if (matched) {
-      setCurrentMeetingId(matched.id);
-    }
-  }, [selectedProjectCode]);
+    setCurrentMeetingId(previous => meetings.some(m => m.id === previous && (m.projectCode === selectedProjectCode || m.projectId === selectedProjectCode)) ? previous : matched?.id || '');
+  }, [selectedProjectCode, meetings, openMeetingId]);
 
   // 로컬스토리지 저장
   useEffect(() => {
@@ -319,8 +321,13 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     });
   }, [meetings, listDeptFilter, listSearch]);
 
-  // 회의록 영구 삭제 실행기 (로컬스토리지 즉시 동기화 및 포인터 안전 이동)
-  const executeDeleteMeeting = (meetingId: string) => {
+  // 회의록 웹 목록 정리 실행기 (로컬스토리지 즉시 동기화 및 포인터 안전 이동)
+  const executeDeleteMeeting = async (meetingId: string) => {
+    const target=meetings.find(m=>m.id===meetingId);
+    if(!target?.serverRevision){setAiToast('Drive 보관을 완료한 회의록만 목록에서 정리할 수 있습니다.');return;}
+    try{await studioApi(`meetings/${encodeURIComponent(meetingId)}`,'DELETE',{revision:target.serverRevision});await refreshStudioMeetings();}
+    catch(e){setAiToast(e instanceof Error?e.message:'목록 정리 실패');return;}
+
     setMeetings((prev) => {
       const updated = prev.filter((m) => m.id !== meetingId);
       try {
@@ -343,21 +350,23 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
 
   // 현재 활성 회의록
   const currentMeeting = useMemo(() => {
-    return meetings.find((m) => m.id === currentMeetingId) || meetings[0];
-  }, [meetings, currentMeetingId]);
+    return meetings.find((m) => m.id === currentMeetingId && (m.projectCode === selectedProjectCode || m.projectId === selectedProjectCode));
+  }, [meetings, currentMeetingId, selectedProjectCode]);
+
+  const canEditMeeting=!currentMeeting?.authorId||(currentMeeting.authorId===currentUser?.id&&!currentMeeting.reviews?.some(r=>!r.decision));
 
   // 좌측 폼 편집 상태
   const [formTitle, setFormTitle] = useState(currentMeeting?.title || '');
   const [formType, setFormType] = useState<MeetingType>(currentMeeting?.type || '착수회의');
   const [formDate, setFormDate] = useState(currentMeeting?.meetingDate || '');
-  const [formStartTime, setFormStartTime] = useState(currentMeeting?.startTime || '14:00');
-  const [formEndTime, setFormEndTime] = useState(currentMeeting?.endTime || '15:30');
+  const [formStartTime, setFormStartTime] = useState(currentMeeting?.startTime || '');
+  const [formEndTime, setFormEndTime] = useState(currentMeeting?.endTime || '');
   const [formLocation, setFormLocation] = useState(currentMeeting?.location || '');
   const [formClientName, setFormClientName] = useState(currentMeeting?.clientName || '');
-  const [formReportingDept, setFormReportingDept] = useState(currentMeeting?.reportingDept || '기술본부 마감팀');
-  const [formReferenceDept, setFormReferenceDept] = useState(currentMeeting?.referenceDept || '개발 TF');
-  const [formAuthorPosition, setFormAuthorPosition] = useState(currentMeeting?.authorPosition || '실장');
-  const [formAuthorAffiliation, setFormAuthorAffiliation] = useState(currentMeeting?.authorAffiliation || '기술본부 마감팀');
+  const [formReportingDept, setFormReportingDept] = useState(currentMeeting?.reportingDept || '');
+  const [formReferenceDept, setFormReferenceDept] = useState(currentMeeting?.referenceDept || '');
+  const [formAuthorPosition, setFormAuthorPosition] = useState(currentMeeting?.authorPosition || '');
+  const [formAuthorAffiliation, setFormAuthorAffiliation] = useState(currentMeeting?.authorAffiliation || '');
   const [formAttendeesInternal, setFormAttendeesInternal] = useState(currentMeeting?.attendeesInternal.join(', ') || '');
   const [formAttendeesExternal, setFormAttendeesExternal] = useState(currentMeeting?.attendeesExternal.join(', ') || '');
   const [formTranscript, setFormTranscript] = useState(currentMeeting?.rawTranscript || '');
@@ -366,20 +375,38 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
   const [formDecisions, setFormDecisions] = useState(currentMeeting?.decisions.join('\n') || '');
   const [formAttachedFile, setFormAttachedFile] = useState(currentMeeting?.attachedFileName || '');
 
+  const fileReadMounted=useRef(true),formRevision=useRef(0),fileReadSequence=useRef(0);
+  useEffect(()=>{fileReadMounted.current=true;return()=>{fileReadMounted.current=false;};},[]);
+  const fileEditor=useRef({actor:currentUser,id:currentMeeting?.id,revision:currentMeeting?.serverRevision,editable:canEditMeeting,active:activeSubTab==='write',saving});
+  if(fileEditor.current.actor!==currentUser||fileEditor.current.id!==currentMeeting?.id||fileEditor.current.revision!==currentMeeting?.serverRevision||fileEditor.current.editable!==canEditMeeting||fileEditor.current.active!==(activeSubTab==='write'))fileReadSequence.current++;
+  fileEditor.current={actor:currentUser,id:currentMeeting?.id,revision:currentMeeting?.serverRevision,editable:canEditMeeting,active:activeSubTab==='write',saving};
+  const isCurrentMeetingFileRead=(context:typeof fileEditor.current & {formRevision:number;sequence:number})=>{
+    const current=fileEditor.current,remote=useStudioStore.getState().meetings.find(m=>m.id===context.id) as MeetingRecord|undefined;
+    return fileReadMounted.current&&!!context.actor&&context.actor===useAuthStore.getState().currentUser&&context.actor===current.actor
+      &&!!context.id&&context.id===current.id&&context.revision===current.revision&&current.active&&current.editable&&!current.saving
+      &&context.formRevision===formRevision.current&&context.sequence===fileReadSequence.current
+      &&(!context.revision||!!remote&&remote.serverRevision===context.revision&&(!remote.authorId||remote.authorId===context.actor.id&&!remote.reviews?.some(r=>!r.decision)));
+  };
+  const beginMeetingFileRead=()=>{
+    const context={...fileEditor.current,formRevision:formRevision.current,sequence:++fileReadSequence.current};
+    return isCurrentMeetingFileRead(context)?context:null;
+  };
+
   // 회의록 변경 시 폼 동기화
   useEffect(() => {
+    opened.current=currentMeetingId;
     if (currentMeeting) {
       setFormTitle(currentMeeting.title);
       setFormType(currentMeeting.type);
       setFormDate(currentMeeting.meetingDate);
-      setFormStartTime(currentMeeting.startTime || '14:00');
-      setFormEndTime(currentMeeting.endTime || '15:30');
+      setFormStartTime(currentMeeting.startTime || '');
+      setFormEndTime(currentMeeting.endTime || '');
       setFormLocation(currentMeeting.location);
       setFormClientName(currentMeeting.clientName || '');
-      setFormReportingDept(currentMeeting.reportingDept || '기술본부 마감팀');
-      setFormReferenceDept(currentMeeting.referenceDept || '개발 TF');
-      setFormAuthorPosition(currentMeeting.authorPosition || '실장');
-      setFormAuthorAffiliation(currentMeeting.authorAffiliation || '기술본부 마감팀');
+      setFormReportingDept(currentMeeting.reportingDept || '');
+      setFormReferenceDept(currentMeeting.referenceDept || '');
+      setFormAuthorPosition(currentMeeting.authorPosition || '');
+      setFormAuthorAffiliation(currentMeeting.authorAffiliation || '');
       setFormAttendeesInternal(currentMeeting.attendeesInternal.join(', '));
       setFormAttendeesExternal(currentMeeting.attendeesExternal.join(', '));
       setFormTranscript(currentMeeting.rawTranscript);
@@ -388,7 +415,9 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
       setFormDecisions(currentMeeting.decisions.join('\n'));
       setFormAttachedFile(currentMeeting.attachedFileName || '');
     }
-  }, [currentMeeting]);
+    // Receipt polling must not replace an in-progress form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentMeetingId,currentMeeting?.serverRevision]);
 
   // 파일 업로드 ref
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -402,50 +431,55 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    setFormAttachedFile(file.name);
+    const context=beginMeetingFileRead();
+    if(!context)return;
 
     // 텍스트 파일인 경우 내용 자동 읽어 원문 대화록에 채움
     const reader = new FileReader();
     reader.onload = (event) => {
+      if(!isCurrentMeetingFileRead(context))return;
+      setFormAttachedFile(file.name);
       const text = event.target?.result as string;
       if (text) {
         setFormTranscript(text);
-        setAiToast(`📎 파일 '${file.name}' 첨부 완료: 대화록 원문이 자동 로드되었습니다. [AI 자동 정리]를 실행하세요.`);
+        setAiToast(`📎 파일 '${file.name}' 첨부 완료: 대화록 원문이 자동 로드되었습니다. [원문 정리]를 실행하세요.`);
         setTimeout(() => setAiToast(null), 4000);
       }
     };
     reader.readAsText(file, 'utf-8');
   };
 
-  // ✨ AI 자동 정리 및 작성 실행
+  // ✨ 원문 정리 및 작성 실행
   const handleRunAiAutoGenerate = async () => {
     if (!formTranscript.trim()) {
-      alert('회의 자료를 첨부하거나 회의 원문 대화록을 먼저 입력해 주세요.');
+      void translatedAlert('회의 자료를 첨부하거나 회의 원문 대화록을 먼저 입력해 주세요.');
       return;
     }
 
     setIsAiProcessing(true);
-    await new Promise((r) => setTimeout(r, 600)); // AI 추론 시뮬레이션
+
 
     const result = extractAiMeetingSummary(formTranscript, currentMeeting?.projectName || '');
+    formRevision.current++;
     setFormSummary(result.summary);
     setFormDecisions(result.decisions.join('\n'));
 
     // 공식 서식 본문에도 핵심 요약 & 결정사항 자동 세팅
     if (!formNotesAndInstructions.trim()) {
-      const autoNotes = `1. 안건: ${formTitle}\n2. 도면 및 산출 기준선 협의 완료\n3. ${result.decisions.join('\n- ')}\n4. VIET QS(호치민) 협업 체계 가동`;
+      const autoNotes = formTranscript;
       setFormNotesAndInstructions(autoNotes);
     }
 
     setIsAiProcessing(false);
-    setAiToast('✨ AI 자동 정리 완료! 핵심 요약 및 주요 결정사항이 공식 서식에 반영되었습니다.');
+    setAiToast('✨ 원문 정리 완료! 핵심 요약 및 주요 결정사항이 공식 서식에 반영되었습니다.');
     setTimeout(() => setAiToast(null), 4500);
   };
 
   // 폼 내용 실시간 회의록에 저장 (저장 후 목록으로 자동 이동 옵션)
-  const handleSaveCurrentMeeting = (goToList: boolean = false) => {
-    if (!currentMeeting) return;
+  const handleSaveCurrentMeeting = async (goToList: boolean = false) => {
+    if (!currentMeeting || saving) return;
+    if(!canEditMeeting){setAiToast('열람 전용입니다. 작성자만 결재가 끝난 저장본을 수정할 수 있습니다.');return;}
+    if(!ready){setAiToast('중앙 서버 연결 후 저장해 주세요. 현재 입력은 화면에 유지됩니다.');return;}
 
     const updated: MeetingRecord = {
       ...currentMeeting,
@@ -470,41 +504,27 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
       updatedAt: new Date().toLocaleString('ko-KR')
     };
 
-    setMeetings((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
-    setAiToast('💾 회의록이 회의록 목록에 성공적으로 저장·등록되었습니다.');
-    setTimeout(() => setAiToast(null), 3500);
-    if (goToList) {
-      setActiveSubTab('list');
-    }
+    setSaving(true);
+    try {
+      const {meeting}=await studioApi(`meetings/${encodeURIComponent(updated.id)}`,'PUT',{meeting:updated,revision:currentMeeting.serverRevision});
+      setMeetings(prev=>prev.map(m=>m.id===updated.id?meeting:m));
+      await refreshStudioMeetings();
+      setAiToast(meeting.archiveError||'회의록 목록 저장 및 프로젝트별 Drive 보관 완료');
+      if(goToList)setActiveSubTab('list');
+    }catch(e){setAiToast(e instanceof Error?e.message:'저장 실패 · 입력 유지');}
+    finally{setSaving(false);}
   };
-
-
-  // 결재라인 서명/승인 토글
-  const handleToggleSignature = (role: 'author' | 'pm' | 'director') => {
-    if (!currentMeeting) return;
-
-    setMeetings((prev) =>
-      prev.map((m) => {
-        if (m.id === currentMeeting.id) {
-          if (role === 'author') {
-            return { ...m, authorSigned: !m.authorSigned };
-          }
-          if (role === 'pm') {
-            return { ...m, pmApproved: !m.pmApproved };
-          }
-          if (role === 'director') {
-            return { ...m, directorApproved: !m.directorApproved, status: !m.directorApproved ? 'FINAL' : 'DRAFT' };
-          }
-        }
-        return m;
-      })
-    );
-  };
+  async function meetingAction(action:'submit'|'approve'|'reject'|'archive'){
+    if(!currentMeeting?.serverRevision){setAiToast('회의록을 먼저 목록에 저장해 주세요.');return;}
+    try{await studioApi(`meetings/${encodeURIComponent(currentMeeting.id)}/${action}`,'POST',{revision:currentMeeting.serverRevision});await refreshStudioMeetings();setAiToast(action==='submit'?'결재 수신 계정에 알림을 보냈습니다.':'처리되었습니다.');}
+    catch(e){setAiToast(e instanceof Error?e.message:'요청 실패');}
+  }
 
   // 신규 회의록 등록 (실제 프로젝트 및 거래처 기반 실데이터 템플릿 생성)
   const handleCreateNewMeeting = () => {
     const proj = uniqueProjects.find((p) => (p.code || p.id) === selectedProjectCode) || uniqueProjects[0];
-    const clientName = proj?.client || (proj?.name?.match(/\[(.*?)\]/)?.[1]) || '삼성물산(주)';
+    if (!proj) { setAiToast('회의록을 연결할 프로젝트를 먼저 등록해 주세요.'); return; }
+    const clientName = proj?.client || (proj?.name?.match(/\[(.*?)\]/)?.[1]) || '';
     const cleanProjName = proj?.name?.replace(/^\[.*?\]\s*/, '').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim() || proj?.name || '신규 프로젝트';
 
     const newMeeting: MeetingRecord = {
@@ -515,26 +535,22 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
       type: '착수회의',
       title: `[${clientName}] ${cleanProjName} 신축공사 견적용역 착수회의 및 공종별 기준 협의`,
       meetingDate: new Date().toISOString().slice(0, 10),
-      startTime: '14:00',
-      endTime: '15:30',
-      location: '컨코스트 본사 4층 대회의실 / 화상연결(VIET QS)',
+      startTime: '',
+      endTime: '',
+      location: '',
       clientName: clientName,
-      reportingDept: '기술본부 마감팀',
-      referenceDept: '개발 TF',
+      reportingDept: proj.department,
+      referenceDept: '',
       department: proj.department || '마감팀',
       author: currentUser?.name || '유종욱',
       authorPosition: currentUser?.position || '실장',
-      authorAffiliation: '개발 TF',
-      attendeesInternal: ['유종욱 실장(개발TF)', '조한빈 실장(PM)', '성대용 수석', '원종수 수석'],
-      attendeesExternal: [`${clientName} 견적팀 담당자`, '하이테크 설계팀'],
+      authorAffiliation: currentUser?.department || '',
+      attendeesInternal: [],
+      attendeesExternal: [],
       rawTranscript: '',
-      notesAndInstructions: `1. 안건: ${cleanProjName} 물량산출 용역 착수 및 공종별 기준선 협의\n2. 도면 기준: 최신 배포본(Rev.1) 기준 일괄 적용\n3. 공종별 업무: 마감팀(조적·창호·내역) 및 구조팀(골조) 분할 투입\n4. VIET QS(호치민): 창호 및 외벽 수량 상호 교차검증\n5. 납품 일정: 공내역서 우선 산출 후 설계예가·실행가 순차 납품`,
-      summary: `1. 프로젝트 착수 및 공종별 기준선 협의 완료\n2. 마감·구조·VIET QS 협업 체계 가동\n3. 목표 납품일정 준수를 위한 1차 중간보고 수립`,
-      decisions: [
-        '최신 배포 도면(Rev.1) 일괄 기준선 적용',
-        '마감팀 내역 3단(공내역, 설계예가, 실행가) 순차 산출',
-        'VIET QS(호치민) 인터페이스 상호 교차검증 수행'
-      ],
+      notesAndInstructions: '',
+      summary: '',
+      decisions: [],
       actionItems: [],
       status: 'DRAFT',
       version: 1,
@@ -564,234 +580,32 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     if (match && match[1] && !match[1].includes('2026')) {
       return match[1];
     }
-    return '삼성물산(주)';
+    return '';
   };
 
   // 엑셀 내보내기 (.xlsx) - [회사 공식 회의록 양식 100% 실데이터 정밀 생성]
-  const handleExportMeetingExcel = (target: MeetingRecord) => {
+  const handleExportMeetingExcel = async (target: MeetingRecord) => {
     if (!target) return;
 
-    // AOA (Array of Arrays) 매트릭스 생성: Row 1 ~ Row 45
-    const rows: any[][] = [];
-    for (let r = 0; r < 45; r++) {
-      rows.push(new Array(9).fill(''));
-    }
-
-    // 작성 탭에서 실시간 편집 중인 경우에만 폼 state 참조, 목록에서 호출 시 target 객체 실데이터 100% 반영
     const isEditingCurrent = activeSubTab === 'write' && target.id === currentMeeting?.id;
-
-    // 거래처명 추출 (실데이터 100% 보장)
-    let clientName = isEditingCurrent && formClientName ? formClientName : getMeetingClientName(target);
-
-    // 프로젝트명 정제
-    const rawProjName = target.projectName || target.title || '프로젝트';
-    const cleanProjName = rawProjName.replace(/^\[.*?\]\s*/, '').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim() || rawProjName;
-
-    // 회의명
-    const title = (isEditingCurrent ? formTitle : target.title) || target.title || `[${clientName}] ${cleanProjName} 신축공사 견적용역 착수회의 및 공종별 기준 협의`;
-
-    // 작성자 정보 (undefined 방지)
-    const authorName = (isEditingCurrent ? currentUser?.name : target.author) || target.author || currentUser?.name || '유종욱';
-    const authorPosition = (isEditingCurrent ? formAuthorPosition : target.authorPosition) ||
-      (target.author?.includes('실장') ? '실장' : target.author?.includes('팀장') ? '팀장' : target.author?.includes('수석') ? '수석' : '실장');
-    const authorAffiliation = (isEditingCurrent ? formAuthorAffiliation : target.authorAffiliation) || target.authorAffiliation || '기술본부 마감팀';
-
-    // 회의일시 및 시간 파싱 (2026-09-16T10:30 등 완벽 지원)
-    const rawMeetingDate = isEditingCurrent ? formDate : target.meetingDate || '';
-    const dateOnly = rawMeetingDate.includes('T') ? rawMeetingDate.split('T')[0] : rawMeetingDate.slice(0, 10);
-    const meetingDate = dateOnly.replace(/-/g, '.') || new Date().toISOString().slice(0, 10).replace(/-/g, '.');
-
-    const defaultStartTime = rawMeetingDate.includes('T') ? rawMeetingDate.split('T')[1].slice(0, 5) : '14:00';
-    const startTime = (isEditingCurrent ? formStartTime : target.startTime) || defaultStartTime;
-    const endTime = (isEditingCurrent ? formEndTime : target.endTime) || '15:30';
-    const location = (isEditingCurrent ? formLocation : target.location) || target.location || '컨코스트 본사 4층 대회의실 / 화상연결(VIET QS)';
-
-    // 부서 정보
-    const reportingDept = (isEditingCurrent ? formReportingDept : target.reportingDept) || target.reportingDept || '기술본부 마감팀';
-    const referenceDept = (isEditingCurrent ? formReferenceDept : target.referenceDept) || target.referenceDept || '개발 TF';
-
-    // 참석자 정보
-    const attendeesInternal = (isEditingCurrent ? formAttendeesInternal : (target.attendeesInternal || []).join(', ')) ||
-      (target.attendeesInternal && target.attendeesInternal.length > 0
-        ? target.attendeesInternal.join(', ')
-        : '유종욱 실장(개발TF), 조한빈 실장(마감팀), 김재헌 팀장, 성대용 수석, 원종수 수석');
-
-    const attendeesExternal = (isEditingCurrent ? formAttendeesExternal : (target.attendeesExternal || []).join(', ')) ||
-      (target.attendeesExternal && target.attendeesExternal.length > 0
-        ? target.attendeesExternal.join(', ')
-        : `${clientName} 견적팀 담당자, 하이테크 설계팀`);
-
-    const attachedFile = (isEditingCurrent ? formAttachedFile : target.attachedFileName) || target.attachedFileName || '착수보고서_및_도면목록.pdf';
-
-    // Row 2: 대제목
-    rows[1][2] = '회   의   록';
-
-    // Row 4: 작성자
-    rows[3][1] = '작 성 자';
-    rows[3][2] = authorAffiliation;
-    rows[3][4] = authorPosition;
-    rows[3][6] = authorName;
-
-    // Row 5: 회의일시
-    rows[4][1] = '회의일시';
-    rows[4][2] = meetingDate;
-    rows[4][4] = '시 간';
-    rows[4][5] = startTime;
-    rows[4][6] = '~';
-    rows[4][7] = endTime;
-
-    // Row 6: 회의장소
-    rows[5][1] = '회의장소';
-    rows[5][2] = location;
-
-    // Row 7: 거래처명
-    rows[6][1] = '거 래 처 명';
-    rows[6][2] = clientName;
-
-    // Row 8: 보고부서
-    rows[7][1] = '보 고 부 서';
-    rows[7][2] = reportingDept;
-
-    // Row 9: 참조부서
-    rows[8][1] = '참 조 부 서';
-    rows[8][2] = referenceDept;
-
-    // Row 10: 참석자 (컨코스트)
-    rows[9][1] = '참석자 (컨코스트)';
-    rows[9][2] = attendeesInternal;
-
-    // Row 11: 참석자 (거 래 처)
-    rows[10][1] = '참석자 (거 래 처)';
-    rows[10][2] = attendeesExternal;
-
-    // Row 13: 회의명
-    rows[12][1] = '회  의  명';
-    rows[12][2] = title;
-
-    // Row 15: 첨부파일
-    rows[14][1] = '첨 부 파 일';
-    rows[14][2] = attachedFile;
-
-    // Row 16: 회의내용 및 지시사항 헤더
-    rows[15][1] = '회의내용 및 지시사항';
-
-    // Row 17 ~ Row 43: 본문 내용 줄별 분할 삽입 (27개 행)
-    let bodyLines: string[] = [];
-    const notes = isEditingCurrent ? formNotesAndInstructions : target.notesAndInstructions;
-    const summary = isEditingCurrent ? formSummary : target.summary;
-    const decisions = isEditingCurrent ? formDecisions.split('\n').filter(Boolean) : (target.decisions || []);
-    const transcript = isEditingCurrent ? formTranscript : target.rawTranscript;
-
-    if (notes && notes.trim()) {
-      bodyLines = notes.split('\n').map((l) => l.trim()).filter(Boolean);
-    } else {
-      if (summary) {
-        bodyLines.push('[핵심 요약]');
-        summary.split('\n').forEach((l) => l.trim() && bodyLines.push(`- ${l.trim()}`));
-      }
-      if (decisions.length > 0) {
-        bodyLines.push('');
-        bodyLines.push('[주요 결정사항]');
-        decisions.forEach((l) => l.trim() && bodyLines.push(`✓ ${l.trim()}`));
-      }
-      const actions = target.actionItems || [];
-      if (actions.length > 0) {
-        bodyLines.push('');
-        bodyLines.push('[공종별 실행 과제 (Action Items)]');
-        actions.forEach((act, idx) => {
-          bodyLines.push(`${idx + 1}. [${act.roleName}] ${act.title} (담당: ${act.assigneeName}, 기한: ${act.dueDate}, 상태: ${act.status})`);
-        });
-      }
-      if (bodyLines.length === 0 && transcript && transcript.trim()) {
-        bodyLines = transcript.split('\n').map((l) => l.trim()).filter(Boolean);
-      }
-    }
-
-    // 본문 내용이 비어있는 경우, 프로젝트 기반 정규 실무 회의 안건 및 실행 지시사항 자동 채움 (허구 깡통 방지)
-    if (bodyLines.length === 0) {
-      bodyLines = [
-        `1. 회의 안건: ${cleanProjName} 신축공사 견적용역 착수회의 및 공종별 물량산출 기준 협의`,
-        `2. 거래처: ${clientName} 견적팀 협의사항 검토 및 착수 조건 확정`,
-        `3. 적용 도면 기준:`,
-        `   - 2026-09-15 배포된 건축·구조 Rev.1 도면 기준선 일괄 적용`,
-        `   - 클린룸 하부 조적벽체 및 방화구획 창호 인터페이스 크로스체크`,
-        `4. 공종별 업무분장 및 인력 투입:`,
-        `   - 마감팀: 조적, 내외장재 상세 물량산출 및 3단 내역서(공내역, 설계예가, 실행가) 순차 산출`,
-        `   - 구조팀: 골조(RC) 콘크리트, 거푸집, 철근 배근 기준 검토 및 슬라브 물량 집계`,
-        `   - VIET QS(호치민 지사): 창호(WIN) 및 외벽 수량 상호 교차검증(Cross-Check) 수행`,
-        `5. 납품 및 중간 보고 일정:`,
-        `   - 1차 수량 산출 및 중간 체크: 착수 후 10일 이내 보고`,
-        `   - 최종 내역서 납품 기한 준수 및 발주처 승인 절차 진행`,
-        `6. 특기사항:`,
-        `   - 견적조건 및 설계 질의사항서(Q&A) 작성 후 발주처(${clientName}) 정식 제출 요망`
-      ];
-    }
-
-    // Row 17부터 최대 Row 43까지 본문 채우기 (27개 행)
-    for (let i = 0; i < 27; i++) {
-      rows[16 + i][1] = bodyLines[i] || '';
-    }
-
-    // Row 44: 푸터
-    rows[43][1] = '※거래처 명함은 PDF파일로 업로드';
-
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-
-    // 컬럼 너비 설정 (A열: 3, B열: 18, C열: 22, D열: 10, E열: 10, F열: 10, G열: 12, H열: 12)
-    ws['!cols'] = [
-      { wch: 3 },
-      { wch: 18 },
-      { wch: 22 },
-      { wch: 10 },
-      { wch: 10 },
-      { wch: 10 },
-      { wch: 12 },
-      { wch: 12 }
-    ];
-
-    // 셀 병합(Merges) 정의
-    ws['!merges'] = [
-      // Row 2: 대제목 C2:F2
-      { s: { r: 1, c: 2 }, e: { r: 1, c: 5 } },
-      // Row 4: 작성자 소속 C4:D4, 직급 E4:F4, 성명 G4:H4
-      { s: { r: 3, c: 2 }, e: { r: 3, c: 3 } },
-      { s: { r: 3, c: 4 }, e: { r: 3, c: 5 } },
-      { s: { r: 3, c: 6 }, e: { r: 3, c: 7 } },
-      // Row 5: 회의일시 C5:D5
-      { s: { r: 4, c: 2 }, e: { r: 4, c: 3 } },
-      // Row 6: 회의장소 C6:H6
-      { s: { r: 5, c: 2 }, e: { r: 5, c: 7 } },
-      // Row 7: 거래처명 C7:H7
-      { s: { r: 6, c: 2 }, e: { r: 6, c: 7 } },
-      // Row 8: 보고부서 C8:H8
-      { s: { r: 7, c: 2 }, e: { r: 7, c: 7 } },
-      // Row 9: 참조부서 C9:H9
-      { s: { r: 8, c: 2 }, e: { r: 8, c: 7 } },
-      // Row 10: 참석자(컨코스트) C10:H10
-      { s: { r: 9, c: 2 }, e: { r: 9, c: 7 } },
-      // Row 11: 참석자(거래처) C11:H11
-      { s: { r: 10, c: 2 }, e: { r: 10, c: 7 } },
-      // Row 13: 회의명 C13:H13
-      { s: { r: 12, c: 2 }, e: { r: 12, c: 7 } },
-      // Row 15: 첨부파일 C15:H15
-      { s: { r: 14, c: 2 }, e: { r: 14, c: 7 } },
-      // Row 16: 회의내용 및 지시사항 헤더 B16:H16
-      { s: { r: 15, c: 1 }, e: { r: 15, c: 7 } },
-      // Row 44: 푸터 B44:H44
-      { s: { r: 43, c: 1 }, e: { r: 43, c: 7 } }
-    ];
-
-    // Row 17 ~ Row 43 각각 B열~H열 병합
-    for (let r = 16; r < 43; r++) {
-      ws['!merges'].push({ s: { r, c: 1 }, e: { r, c: 7 } });
-    }
-
-    XLSX.utils.book_append_sheet(wb, ws, '회의록');
-
+    const output = isEditingCurrent ? { ...target, title: formTitle, meetingDate: formDate, startTime: formStartTime,
+      endTime: formEndTime, location: formLocation, clientName: formClientName, reportingDept: formReportingDept,
+      referenceDept: formReferenceDept, authorPosition: formAuthorPosition, authorAffiliation: formAuthorAffiliation,
+      attendeesInternal: formAttendeesInternal.split(',').map(v => v.trim()).filter(Boolean),
+      attendeesExternal: formAttendeesExternal.split(',').map(v => v.trim()).filter(Boolean),
+      attachedFileName: formAttachedFile, notesAndInstructions: formNotesAndInstructions,
+      rawTranscript: formTranscript, summary: formSummary, decisions: formDecisions.split('\n').filter(Boolean)
+    } : target;
+    const wb = buildMeetingWorkbook(output);
+    const clientName = output.clientName || getMeetingClientName(output);
+    const meetingDate = (output.meetingDate || '').slice(0,10).replace(/-/g,'.');
     const safeProjCode = (target.projectCode || 'PROJECT').replace(/[^a-zA-Z0-9_-]/g, '');
     const cleanClientForName = clientName.replace(/[\\/:*?"<>|]/g, '');
-    XLSX.writeFile(wb, `회의록_${safeProjCode}_${cleanClientForName}_${meetingDate}.xlsx`);
+    let translatedWorkbook;
+    try{translatedWorkbook = await translateWorkbook(wb);if(translatedWorkbook !== wb) translatedWorkbook = rebuildTranslatedMeetingWorkbook(output, translatedWorkbook);}
+    catch{setAiToast('회의록 번역을 완료하지 못했습니다. 다시 시도하거나 한국어로 전환해 주세요.');return;}
+    try{downloadMeetingWorkbook(translatedWorkbook, `${useLanguageStore.getState().lang==='vi'?'Bien_ban_hop':'회의록'}_${safeProjCode}_${cleanClientForName}_${meetingDate}.xlsx`);}
+    catch{setAiToast('회의록 엑셀 파일을 만들거나 다운로드하지 못했습니다. 다시 시도해 주세요.');return;}
 
     setAiToast(`📥 [${cleanClientForName}] 공식 서식 회의록 엑셀이 다운로드되었습니다.`);
     setTimeout(() => setAiToast(null), 3500);
@@ -800,16 +614,19 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
   const handleExportExcel = () => {
     if (currentMeeting) {
       handleExportMeetingExcel(currentMeeting);
-    }
+    } else setAiToast('내보낼 회의록을 선택하거나 새 회의록을 작성해 주세요.');
   };
 
   // 엑셀 가져오기 (.xlsx) - [회사 공식 서식 셀 좌표 기반 100% 자동 파싱 및 AI 연동]
   const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !currentMeeting) return;
+    const context=beginMeetingFileRead();
+    if(!context)return;
 
     const reader = new FileReader();
     reader.onload = (event) => {
+      if(!isCurrentMeetingFileRead(context))return;
       try {
         const data = new Uint8Array(event.target?.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: 'array' });
@@ -843,21 +660,12 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
         const parsedTitle = getVal('C13');
         const parsedAttached = getVal('C15');
 
-        // Row 17 ~ 43 본문 텍스트 추출
-        const parsedLines: string[] = [];
-        for (let r = 17; r <= 43; r++) {
-          const line = getVal(`B${r}`) || getVal(`C${r}`);
-          if (line && !line.startsWith('※')) {
-            parsedLines.push(line);
-          }
-        }
-        const fullBodyText = parsedLines.join('\n');
-
+        const fullBodyText = readMeetingBody(wb);
         // 폼 상태에 즉시 반영
         if (parsedTitle) setFormTitle(parsedTitle);
         if (parsedAffiliation) setFormAuthorAffiliation(parsedAffiliation);
         if (parsedPosition) setFormAuthorPosition(parsedPosition);
-        if (parsedDate) setFormDate(parsedDate);
+        if (parsedDate) setFormDate(parsedDate.replace(/\./g, '-'));
         if (parsedStartTime) setFormStartTime(parsedStartTime);
         if (parsedEndTime) setFormEndTime(parsedEndTime);
         if (parsedLocation) setFormLocation(parsedLocation);
@@ -908,7 +716,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
           );
         }
 
-        setAiToast('📥 공식 회의록 엑셀 양식 데이터 파싱 및 AI 자동 정리가 100% 성공적으로 완료되었습니다.');
+        setAiToast('📥 공식 회의록 엑셀 양식 데이터 파싱 및 원문 정리가 100% 성공적으로 완료되었습니다.');
         setTimeout(() => setAiToast(null), 5000);
       } catch (err) {
         console.error(err);
@@ -920,7 +728,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
   };
 
   return (
-    <div className="space-y-5 animate-fadeIn">
+    <div className="space-y-5 animate-fadeIn" onChangeCapture={() => {formRevision.current++;}}>
       
       {/* 0. 회의록 2단 하위 카테고리 탭: [📝 회의록 작성] | [📋 회의록 목록 (아카이브)] */}
       <div className="bg-slate-900/95 border-2 border-slate-700/80 p-2.5 rounded-2xl flex items-center justify-between flex-wrap gap-3 shadow-xl backdrop-blur-md">
@@ -977,7 +785,8 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
             )}
             <button
               type="button"
-              onClick={() => handleSaveCurrentMeeting(true)}
+              disabled={!canEditMeeting||saving}
+                onClick={() => handleSaveCurrentMeeting(true)}
               className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md cursor-pointer transition active:scale-95"
             >
               <Save size={13} />
@@ -1002,6 +811,13 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
       {/* CASE A: 회의록 목록 (아카이브 - 전 직원 열람 & 검색 & 엑셀 다운로드) */}
       {activeSubTab === 'list' && (
         <div className="space-y-4 animate-fadeIn">
+          {legacyOwned.length>0&&<details className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-4">
+            <summary className="cursor-pointer font-bold text-sm">이 PC의 기존 회의록 이관 · 본인 작성 {legacyOwned.length}건</summary>
+            <p className="text-sm my-3">아래 회의록을 중앙 목록과 프로젝트별 Drive에 저장합니다. 기존 승인 표시는 새 결재로 간주하지 않으며, 결재 상신은 별도로 진행하세요. 같은 원본을 다시 실행하면 중복 저장하지 않습니다.</p>
+            <ul className="text-sm list-disc pl-5">{legacyOwned.map(m=><li key={m.id}>{m.meetingDate} · {m.title}</li>)}</ul>
+            <button disabled={!ready||importingLegacy} onClick={()=>void importLegacyMinutes()} className="mt-3 px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50">{importingLegacy?'이관 중…':'확인한 기존 회의록 이관'}</button>
+            {legacyMessage&&<p role="status" className="text-sm mt-3">{legacyMessage}</p>}
+          </details>}
           {/* 목록 상단 검색 & 필터 바 */}
           <div className="bg-slate-900 border-2 border-slate-700 p-4 sm:p-5 rounded-2xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-3 text-white">
             <div className="flex items-center gap-3 w-full md:w-auto flex-1">
@@ -1083,11 +899,11 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                         className="hover:bg-blue-50/50 dark:hover:bg-slate-800/60 transition group cursor-pointer"
                         onClick={() => {
                           setSelectedProjectCode(m.projectCode || m.projectId);
-                          setCurrentMeetingId(m.id);
+                          void openMeeting(m.id);
                           setActiveSubTab('write');
                         }}
                       >
-                        <td className="p-3.5 text-center font-mono text-slate-400">
+                        <td className="p-3.5 text-center font-mono text-slate-600 dark:text-slate-400">
                           {idx + 1}
                         </td>
                         <td className="p-3.5 font-mono font-bold text-blue-600 dark:text-blue-400 whitespace-nowrap">
@@ -1116,17 +932,17 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                           <span className="font-bold text-slate-800 dark:text-slate-200 block">
                             {m.author}
                           </span>
-                          <span className="text-[10px] text-slate-400 block">
+                          <span className="text-[10px] text-slate-600 block dark:text-slate-400">
                             {m.authorPosition || (m.author?.includes('실장') ? '실장' : m.author?.includes('수석') ? '수석' : m.author?.includes('팀장') ? '팀장' : '실장')}
                           </span>
                         </td>
                         <td className="p-3.5 text-center whitespace-nowrap">
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
-                            m.directorApproved
+                            m.reviews?.some(v=>v.stage==='director'&&v.decision==='approve')
                               ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300'
                               : 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300'
                           }`}>
-                            {m.directorApproved ? '공식날인' : '작성중'}
+                            {m.reviews?.some(v=>v.stage==='director'&&v.decision==='approve') ? '본부장 승인' : '작성중'}
                           </span>
                         </td>
                         <td className="p-3.5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -1136,7 +952,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedProjectCode(m.projectCode || m.projectId);
-                                setCurrentMeetingId(m.id);
+                                void openMeeting(m.id);
                                 setActiveSubTab('write');
                               }}
                               className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 border border-blue-200 dark:border-blue-800 text-[11px] font-bold transition cursor-pointer"
@@ -1164,7 +980,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                                 setDeleteConfirmTarget(m);
                               }}
                               className="px-2 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-800 text-[11px] font-bold transition cursor-pointer flex items-center gap-1 active:scale-95"
-                              title="회의록 목록에서 영구 삭제"
+                              title="회의록 웹 목록에서 정리"
                             >
                               <Trash2 size={12} />
                               <span>삭제</span>
@@ -1217,7 +1033,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                   {projectMeetings.length > 1 && (
                     <select
                       value={currentMeetingId}
-                      onChange={(e) => setCurrentMeetingId(e.target.value)}
+                      onChange={(e) => void openMeeting(e.target.value)}
                       className="bg-slate-800 border border-slate-600 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg cursor-pointer"
                     >
                       {projectMeetings.map((m) => (
@@ -1264,6 +1080,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
 
               <button
                 type="button"
+                disabled={!canEditMeeting||saving}
                 onClick={() => handleSaveCurrentMeeting(false)}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-md transition cursor-pointer active:scale-95"
               >
@@ -1282,7 +1099,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
           )}
 
           {/* 2. 대화형 2단 메인 레이아웃 */}
-          {/* 좌측 (6열): 회의록 수동작성 & 자료 첨부시 AI 자동 정리 기능 */}
+          {/* 좌측 (6열): 회의록 수동작성 & 자료 첨부시 원문 정리 기능 */}
           {/* 우측 (6열): 클레임센터 표준 정식 서식 미리보기 & 결재라인 */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         
@@ -1303,7 +1120,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
 
             <div>
               <label className="block text-[11px] font-bold text-slate-300 mb-1">회 의 명 (제목)</label>
-              <input
+              <input readOnly={!canEditMeeting}
                 type="text"
                 value={formTitle}
                 onChange={(e) => setFormTitle(e.target.value)}
@@ -1316,7 +1133,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
             <div className="grid grid-cols-3 gap-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 mb-1">작성자 소속</label>
-                <input
+                <input readOnly={!canEditMeeting}
                   type="text"
                   value={formAuthorAffiliation}
                   onChange={(e) => setFormAuthorAffiliation(e.target.value)}
@@ -1326,7 +1143,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 mb-1">작성자 직급</label>
-                <input
+                <input readOnly={!canEditMeeting}
                   type="text"
                   value={formAuthorPosition}
                   onChange={(e) => setFormAuthorPosition(e.target.value)}
@@ -1336,7 +1153,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 mb-1">작성자 성명</label>
-                <input
+                <input readOnly={!canEditMeeting}
                   type="text"
                   value={currentMeeting?.author || '조한빈'}
                   disabled
@@ -1349,7 +1166,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block text-[11px] font-bold text-slate-300 mb-1">회의 일자</label>
-                <input
+                <input readOnly={!canEditMeeting}
                   type="date"
                   value={formDate.slice(0, 10)}
                   onChange={(e) => setFormDate(e.target.value)}
@@ -1358,7 +1175,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-slate-300 mb-1">시작 시간</label>
-                <input
+                <input readOnly={!canEditMeeting}
                   type="time"
                   value={formStartTime}
                   onChange={(e) => setFormStartTime(e.target.value)}
@@ -1367,7 +1184,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-slate-300 mb-1">종료 시간</label>
-                <input
+                <input readOnly={!canEditMeeting}
                   type="time"
                   value={formEndTime}
                   onChange={(e) => setFormEndTime(e.target.value)}
@@ -1380,7 +1197,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
             <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="block text-[11px] font-bold text-slate-300 mb-1">회의 장소</label>
-                <input
+                <input readOnly={!canEditMeeting}
                   type="text"
                   value={formLocation}
                   onChange={(e) => setFormLocation(e.target.value)}
@@ -1390,7 +1207,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-slate-300 mb-1">거 래 처 명</label>
-                <input
+                <input readOnly={!canEditMeeting}
                   type="text"
                   value={formClientName}
                   onChange={(e) => setFormClientName(e.target.value)}
@@ -1404,7 +1221,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
             <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="block text-[11px] font-bold text-slate-300 mb-1">보 고 부 서</label>
-                <input
+                <input readOnly={!canEditMeeting}
                   type="text"
                   value={formReportingDept}
                   onChange={(e) => setFormReportingDept(e.target.value)}
@@ -1414,7 +1231,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-slate-300 mb-1">참 조 부 서</label>
-                <input
+                <input readOnly={!canEditMeeting}
                   type="text"
                   value={formReferenceDept}
                   onChange={(e) => setFormReferenceDept(e.target.value)}
@@ -1428,7 +1245,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
             <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="block text-[11px] font-bold text-slate-300 mb-1">참석자 (컨코스트)</label>
-                <input
+                <input readOnly={!canEditMeeting}
                   type="text"
                   value={formAttendeesInternal}
                   onChange={(e) => setFormAttendeesInternal(e.target.value)}
@@ -1438,7 +1255,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-slate-300 mb-1">참석자 (거래처)</label>
-                <input
+                <input readOnly={!canEditMeeting}
                   type="text"
                   value={formAttendeesExternal}
                   onChange={(e) => setFormAttendeesExternal(e.target.value)}
@@ -1450,11 +1267,11 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
           </div>
 
           {/* 카드 B: 회의내용 및 지시사항 + 대화록 첨부 & AI 자동정리 */}
-          <div className="bg-gradient-to-br from-slate-900 via-indigo-950/40 to-slate-900 border-2 border-indigo-500/50 rounded-2xl p-4 text-white space-y-3 shadow-xl">
+          <div className="bg-slate-900 bg-gradient-to-br from-slate-900 via-indigo-950/40 to-slate-900 border-2 border-indigo-500/50 rounded-2xl p-4 text-white space-y-3 shadow-xl">
             <div className="flex items-center justify-between pb-2 border-b border-indigo-900/60">
               <span className="text-xs font-black text-indigo-300 flex items-center gap-1.5">
                 <Sparkles size={14} className="text-amber-400 animate-pulse" />
-                <span>2. 회의내용 및 지시사항 (공식 본문 & AI 자동 정리)</span>
+                <span>2. 회의내용 및 지시사항 (공식 본문 & 원문 정리)</span>
               </span>
               <button
                 type="button"
@@ -1487,11 +1304,11 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
               <label className="block text-[11px] font-bold text-slate-300 mb-1">
                 회의내용 및 지시사항 (공식 엑셀 본문 Row 17~43)
               </label>
-              <textarea
+              <textarea readOnly={!canEditMeeting}
                 rows={6}
                 value={formNotesAndInstructions}
                 onChange={(e) => setFormNotesAndInstructions(e.target.value)}
-                placeholder="공식 회의록 본문에 들어갈 내용 및 지시사항을 줄바꿈 단위로 작성하세요. (아래 AI 자동 정리를 실행하면 자동으로도 채워집니다.)"
+                placeholder="공식 회의록 본문에 들어갈 내용 및 지시사항을 줄바꿈 단위로 작성하세요. (아래 원문 정리를 실행하면 자동으로도 채워집니다.)"
                 className="w-full text-xs font-mono p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none leading-relaxed"
               />
             </div>
@@ -1504,16 +1321,16 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                 </label>
                 <span className="text-[10px] text-slate-400">자유 텍스트 입력</span>
               </div>
-              <textarea
+              <textarea readOnly={!canEditMeeting}
                 rows={4}
                 value={formTranscript}
                 onChange={(e) => setFormTranscript(e.target.value)}
-                placeholder="회의에서 오간 대화 내용이나 녹취록을 붙여넣으세요. 아래 [✨ AI 자동 정리]를 누르면 공식 서식 본문과 핵심 요약, 공종별 실행과제가 1초 만에 자동 생성됩니다."
+                placeholder="회의에서 오간 대화 내용이나 녹취록을 붙여넣으세요. 아래 [✨ 원문 정리]를 누르면 공식 서식 본문과 핵심 요약, 공종별 실행과제가 입력한 원문을 그대로 정리합니다. 결정사항은 직접 확인해 주세요."
                 className="w-full text-xs font-mono p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none leading-relaxed"
               />
             </div>
 
-            {/* AI 자동 정리 실행 버튼 (대형 하이라이트) */}
+            {/* 원문 정리 실행 버튼 (대형 하이라이트) */}
             <button
               type="button"
               onClick={handleRunAiAutoGenerate}
@@ -1523,12 +1340,12 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
               {isAiProcessing ? (
                 <>
                   <Loader2 size={16} className="animate-spin text-amber-300" />
-                  <span>AI 스마트 엔진이 대화록을 분석 및 요약 중입니다...</span>
+                  <span>입력한 원문을 정리 중입니다...</span>
                 </>
               ) : (
                 <>
                   <Sparkles size={16} className="text-amber-300 animate-pulse" />
-                  <span>✨ 회의 자료 기반 AI 자동 정리 및 공식 서식 반영 (AI Summarize)</span>
+                  <span>✨ 회의 자료 기반 원문 정리 및 공식 서식 반영 (원문 발췌)</span>
                 </>
               )}
             </button>
@@ -1543,7 +1360,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
 
             <div>
               <label className="block text-[11px] font-bold text-slate-300 mb-1">핵심 요약 (Summary)</label>
-              <textarea
+              <textarea readOnly={!canEditMeeting}
                 rows={3}
                 value={formSummary}
                 onChange={(e) => setFormSummary(e.target.value)}
@@ -1554,7 +1371,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
 
             <div>
               <label className="block text-[11px] font-bold text-slate-300 mb-1">주요 결정사항 (Decisions - 줄바꿈 구분)</label>
-              <textarea
+              <textarea readOnly={!canEditMeeting}
                 rows={3}
                 value={formDecisions}
                 onChange={(e) => setFormDecisions(e.target.value)}
@@ -1572,18 +1389,18 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
             
             {/* 공식 회의록 대제목 (C2 셀) */}
             <div className="text-center border-b-2 border-slate-900 dark:border-white pb-3 flex items-center justify-between">
-              <span className="text-[10px] font-mono font-bold text-slate-400">
+              <span className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-400">
                 CC-MIN-{currentMeeting?.projectCode || 'PROJECT'}
               </span>
               <h2 className="text-xl sm:text-2xl font-black tracking-widest text-slate-900 dark:text-white">
                 회   의   록
               </h2>
               <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border ${
-                currentMeeting?.directorApproved
+                currentMeeting?.reviews?.some(v=>v.stage==='director'&&v.decision==='approve')
                   ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300'
                   : 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300'
               }`}>
-                {currentMeeting?.directorApproved ? '✓ FINAL 최종승인' : '✎ DRAFT 작성중'}
+                {currentMeeting?.reviews?.some(v=>v.stage==='director'&&v.decision==='approve') ? '본부장 승인' : '✎ DRAFT 작성중'}
               </span>
             </div>
 
@@ -1637,7 +1454,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                       거 래 처 명
                     </th>
                     <td colSpan={5} className="p-2 font-bold text-slate-800 dark:text-slate-100">
-                      {formClientName || currentMeeting?.clientName || '삼성물산(주)'}
+                      {formClientName || currentMeeting?.clientName || ''}
                     </td>
                   </tr>
 
@@ -1733,7 +1550,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                           )}
                           {!formSummary && !formDecisions && (
                             <p className="text-slate-400 italic text-center py-6">
-                              회의내용을 직접 입력하거나 대화록을 붙여넣은 뒤 [✨ AI 자동 정리]를 누르면 공식 서식 본문이 완성됩니다.
+                              회의내용을 직접 입력하거나 대화록을 붙여넣은 뒤 [✨ 원문 정리]를 누르면 공식 서식 본문이 완성됩니다.
                             </p>
                           )}
                         </div>
@@ -1758,7 +1575,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                 <span>1. 회의 핵심 요약 (Summary)</span>
               </h4>
               <div className="bg-slate-50 dark:bg-slate-800/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs leading-relaxed whitespace-pre-line">
-                {formSummary || '대화록 원문을 입력하고 [AI 자동 정리]를 누르면 요약이 반영됩니다.'}
+                {formSummary || '대화록 원문을 입력하고 [원문 정리]를 누르면 요약이 반영됩니다.'}
               </div>
             </div>
 
@@ -1784,75 +1601,31 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
 
 
 
-            {/* 4. 하단 결재라인 (첨부 스크린샷 1:1 완벽 일치!) */}
-            <div className="pt-4 border-t-2 border-slate-200 dark:border-slate-750">
-              <div className="grid grid-cols-3 gap-3 text-center">
-                
-                {/* 1) 작성자 */}
-                <div
-                  onClick={() => handleToggleSignature('author')}
-                  className="p-3 rounded-2xl border border-slate-200 dark:border-slate-750 bg-slate-50 dark:bg-slate-800/80 hover:bg-blue-50/50 dark:hover:bg-slate-750 transition cursor-pointer"
-                  title="클릭하여 서명 전환"
-                >
-                  <span className="block text-[11px] text-slate-400 font-bold mb-1">작성자</span>
-                  <span className="font-black text-xs text-slate-900 dark:text-white block">
-                    {currentMeeting?.author || '조한빈 실장'}
-                  </span>
-                  <span className={`block text-[10px] font-bold mt-1.5 ${
-                    currentMeeting?.authorSigned ? 'text-emerald-600' : 'text-slate-400'
-                  }`}>
-                    {currentMeeting?.authorSigned ? '✓ 서명완료' : '서명 대기'}
-                  </span>
-                </div>
-
-                {/* 2) 주관 PM */}
-                <div
-                  onClick={() => handleToggleSignature('pm')}
-                  className="p-3 rounded-2xl border border-slate-200 dark:border-slate-750 bg-slate-50 dark:bg-slate-800/80 hover:bg-blue-50/50 dark:hover:bg-slate-750 transition cursor-pointer"
-                  title="클릭하여 결재 승인 전환"
-                >
-                  <span className="block text-[11px] text-slate-400 font-bold mb-1">주관 PM</span>
-                  <span className="font-black text-xs text-slate-900 dark:text-white block">
-                    조한빈 실장
-                  </span>
-                  <span className={`block text-[10px] font-bold mt-1.5 ${
-                    currentMeeting?.pmApproved ? 'text-emerald-600' : 'text-slate-400'
-                  }`}>
-                    {currentMeeting?.pmApproved ? '✓ 결재완료' : '결재 대기'}
-                  </span>
-                </div>
-
-                {/* 3) 기술본부장 */}
-                <div
-                  onClick={() => handleToggleSignature('director')}
-                  className="p-3 rounded-2xl border border-slate-200 dark:border-slate-750 bg-slate-50 dark:bg-slate-800/80 hover:bg-blue-50/50 dark:hover:bg-slate-750 transition cursor-pointer"
-                  title="클릭하여 공식 날인 전환"
-                >
-                  <span className="block text-[11px] text-slate-400 font-bold mb-1">기술본부장</span>
-                  <span className="font-black text-xs text-slate-900 dark:text-white block">
-                    (주)컨코스트 기술본부
-                  </span>
-                  <span className={`block text-[10px] font-bold mt-1.5 ${
-                    currentMeeting?.directorApproved ? 'text-blue-600 font-black' : 'text-slate-400'
-                  }`}>
-                    {currentMeeting?.directorApproved ? '공식 회의록 날인' : '날인 대기'}
-                  </span>
-                </div>
-
+            <section className="p-4 border rounded-xl border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100" aria-label="회의록 결재 및 보관">
+              <p className="font-bold">{!canEditMeeting&&'열람 전용 · '}작성자: {currentMeeting?.author || '미지정'} · {currentMeeting?.serverRevision ? `저장본 v${currentMeeting.serverRevision}` : '미저장 초안'}</p>
+              <p className="text-xs my-2">목록 저장은 직원 공유용입니다. 결재는 저장된 버전을 별도로 상신합니다. 수정 후에는 다시 상신해야 합니다.</p>
+              {currentMeeting?.reviews?.length ? currentMeeting.reviews.map(v=><p key={v.recipient_id} className="text-sm my-2">{directory.find(u=>u.id===v.recipient_id)?.name || v.recipient_id} {v.stage==='director'?'본부장':'팀 결재자'} · {v.read_at?`열람 ${new Date(v.read_at).toLocaleString('ko-KR')}`:'미열람'} · {v.decision==='approve'?'승인':v.decision==='reject'?'반려':'결재 대기'}</p>) : <p className="text-sm my-2">미상신</p>}
+              <div className="flex gap-3 flex-wrap">
+                {currentMeeting?.authorId===currentUser?.id&&<button disabled={saving} className="bg-blue-700 text-white rounded px-3 py-2" onClick={()=>void meetingAction('submit')}>저장본 결재 상신</button>}
+                {currentMeeting?.reviews?.some(v=>v.recipient_id===currentUser?.id&&!v.decision)&&<><button className="bg-emerald-700 text-white rounded px-3 py-2" onClick={()=>void meetingAction('approve')}>승인</button><button className="bg-rose-700 text-white rounded px-3 py-2" onClick={()=>void meetingAction('reject')}>반려</button></>}
+                {currentMeeting?.archiveUrl&&<a href={currentMeeting.archiveUrl} target="_blank" rel="noreferrer" className="underline py-2">Drive 보관본 보기</a>}
+                {currentMeeting?.archiveError&&<button className="underline" onClick={()=>void meetingAction('archive')}>Drive 보관 재시도</button>}
               </div>
-            </div>
+              <p className="text-xs mt-2">{currentMeeting?.archiveError || (currentMeeting?.archiveRevision===currentMeeting?.serverRevision&&currentMeeting?.serverRevision?'현재 저장본 Drive 보관 완료':'Drive 보관 대기')} · Drive 원본은 웹 목록 정리 시 유지됩니다.</p>
+            </section>
 
             {/* 5. 회의록 목록 저장 및 등록 버튼 */}
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800">
               <button
                 type="button"
+                disabled={!canEditMeeting||saving}
                 onClick={() => handleSaveCurrentMeeting(true)}
                 className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-blue-950/40 transition cursor-pointer active:scale-98"
               >
                 <Save size={16} />
                 <span>💾 회의록 저장 및 [회의록 목록]에 등록</span>
               </button>
-              <p className="text-[11px] text-slate-400 text-center mt-1.5 font-medium">
+              <p className="text-[11px] text-slate-600 text-center mt-1.5 font-medium dark:text-slate-400">
                 저장 후 회의록 목록(아카이브)으로 자동 이동하여 전 직원이 즉시 열람·출력할 수 있습니다.
               </p>
             </div>
@@ -1865,27 +1638,28 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
   )}
 
       {/* 숨김 파일 업로드 input들 */}
-      <input
+      <input readOnly={!canEditMeeting}
         ref={fileInputRef}
         type="file"
         accept=".txt, .docx, .pdf, .csv"
         onChange={handleFileUpload}
         className="hidden"
       />
-      {/* 회의록 영구 삭제 확인 커스텀 모달 (브라우저 confirm 차단 완전 방지) */}
+      {/* 회의록 웹 목록 정리 확인 커스텀 모달 (브라우저 confirm 차단 완전 방지) */}
       {deleteConfirmTarget && (
         <div className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white dark:bg-slate-900 border-2 border-rose-500 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center gap-3 text-rose-600">
+          <div className="relative bg-white dark:bg-slate-900 border-2 border-rose-500 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <button type="button" onClick={()=>setDeleteConfirmTarget(null)} aria-label="회의록 정리 확인 닫기" className="absolute top-3 right-3 !m-0 rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"><X size={20}/></button>
+            <div className="!mt-0 flex items-center gap-3 pr-10 text-rose-600">
               <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-950 flex items-center justify-center shrink-0">
                 <Trash2 size={22} className="text-rose-600" />
               </div>
               <div>
                 <h3 className="text-base font-black text-slate-900 dark:text-white">
-                  회의록 영구 삭제
+                  회의록 웹 목록 정리
                 </h3>
                 <p className="text-xs text-slate-500">
-                  선택한 회의록을 목록에서 완전히 삭제합니다.
+                  현재 버전이 Drive에 보관된 회의록을 웹 목록에서 정리합니다.
                 </p>
               </div>
             </div>
@@ -1895,12 +1669,12 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                 {deleteConfirmTarget.title || deleteConfirmTarget.projectName}
               </div>
               <div className="text-slate-500 text-[11px]">
-                프로젝트 코드: {deleteConfirmTarget.projectCode} · 작성자: {deleteConfirmTarget.author} ({deleteConfirmTarget.authorPosition || '실장'})
+                프로젝트 코드: {deleteConfirmTarget.projectCode} · 작성자: {deleteConfirmTarget.author} ({deleteConfirmTarget.authorPosition || ''})
               </div>
             </div>
 
             <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
-              ※ 삭제 후에는 로컬 저장소에서 영구히 지워지며 복구할 수 없습니다.
+              Drive 보관본은 유지됩니다. 결재 중이거나 보관에 실패한 회의록은 정리할 수 없습니다.
             </p>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
@@ -1917,7 +1691,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                 className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-md transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
               >
                 <Trash2 size={14} />
-                <span>영구 삭제</span>
+                <span>웹 목록에서 정리</span>
               </button>
             </div>
           </div>
@@ -1925,7 +1699,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
       )}
 
       {/* 엑셀 가져오기 숨김 input 복원 */}
-      <input
+      <input readOnly={!canEditMeeting}
         ref={excelImportRef}
         type="file"
         accept=".xlsx, .xls"

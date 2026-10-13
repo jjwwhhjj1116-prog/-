@@ -1,4 +1,15 @@
-import { useState, useEffect, useMemo } from 'react';
+import {usePersonalStore} from '../store/usePersonalStore';
+import {ProjectDetailPrint} from './ProjectDetailPrint';
+import {PostDeliverySchedule} from './PostDeliverySchedule';
+import {leavesFor,assignedTasksForAliases,assignmentAliases,taskAssignedTo,memberIds,assignmentSegments,nextDay} from '../utils/personalWork';
+import { projectProgress, percentLabel, plannedWorkDays, validDateRange, localDate } from '../utils/scheduleProgress';
+import {taskWithProjectDates,type ProjectPeriod} from '../utils/projectScheduleDates';
+import { withAllocationBounds, updateAssignmentMembers } from '../utils/scheduleAllocations';
+import { resolveVietTeams, vietIndividuals } from '../utils/vietPersonnel';
+import { rebaseProject } from '../utils/rebaseProject';
+import { canManageSchedule } from '../utils/schedulePermissions';
+import { projectPMId } from '../utils/pendingAssignment';
+import { useState, useEffect, useRef } from 'react';
 import {
   X,
   Save,
@@ -21,7 +32,9 @@ import {
 import {
   useProjectStore,
   TEAM_ROLES,
+  type Project,
   type SubTaskSchedule,
+  type ScheduleAllocation,
   type SubTaskStatus
 } from '../store/useProjectStore';
 import { useAuthStore } from '../store/useAuthStore';
@@ -30,26 +43,68 @@ import { VIET_TEAMS_DATA } from '../data/vietTeams';
 interface ProjectModalProps {
   projectId: string;
   onClose: () => void;
+  onOpenInquiries?: (projectId:string,role:string)=>void;
 }
 
-export default function ProjectModal({ projectId, onClose }: ProjectModalProps) {
+type AvailabilityPeriod = {startDate: string; endDate: string};
+type AvailabilityEntry = AvailabilityPeriod & {id: string; projectName: string; roleName: string; kind: 'project' | 'leave'};
+type AvailabilityGroup = {id: string; projectName: string; kind: 'project' | 'leave'; periods: AvailabilityPeriod[]; roles: Array<{name: string; periods: AvailabilityPeriod[]}>};
+
+// Fold display rows only. Disjoint assignment periods and original schedule records stay separate.
+export function groupAvailability(entries: AvailabilityEntry[]): AvailabilityGroup[] {
+  const mergePeriods = (periods: AvailabilityPeriod[]) => {
+    const merged: AvailabilityPeriod[] = [];
+    for (const period of [...periods].sort((a, b) => a.startDate.localeCompare(b.startDate) || a.endDate.localeCompare(b.endDate))) {
+      const last = merged.at(-1);
+      if (last && period.startDate <= nextDay(last.endDate)) last.endDate = last.endDate > period.endDate ? last.endDate : period.endDate;
+      else merged.push({startDate: period.startDate, endDate: period.endDate});
+    }
+    return merged;
+  };
+  const groups = new Map<string, AvailabilityGroup>();
+  for (const entry of entries) {
+    const key = `${entry.kind}:${entry.id}`;
+    let group = groups.get(key);
+    if (!group) { group = {id: key, projectName: entry.projectName, kind: entry.kind, periods: [], roles: []}; groups.set(key, group); }
+    group.periods.push(entry);
+    let role = group.roles.find(role => role.name === entry.roleName);
+    if (!role) { role = {name: entry.roleName, periods: []}; group.roles.push(role); }
+    role.periods.push(entry);
+  }
+  return [...groups.values()].map(group => ({...group, periods: mergePeriods(group.periods), roles: group.roles.map(role => ({...role, periods: mergePeriods(role.periods)}))}));
+}
+
+const availabilityDates = (periods: AvailabilityPeriod[]) => periods.map(({startDate, endDate}) => startDate === endDate ? startDate : `${startDate} ~ ${startDate.slice(0, 4) === endDate.slice(0, 4) ? endDate.slice(5) : endDate}`).join(', ');
+const availabilityLabel = (groups: AvailabilityGroup[]) => {
+  const projects = groups.filter(group => group.kind === 'project').length;
+  const leaves = groups.filter(group => group.kind === 'leave').length;
+  return [projects ? `겹치는 프로젝트 ${projects}개` : '', leaves ? `휴가 ${leaves}건` : ''].filter(Boolean).join(' · ');
+};
+
+export default function ProjectModal({ projectId, onClose, onOpenInquiries }: ProjectModalProps) {
+  const leaves=usePersonalStore(s=>s.leaves);
   const {
     projects,
     updateProjectSubTasks
   } = useProjectStore();
 
-  const { users } = useAuthStore();
+  const { users, currentUser } = useAuthStore();
 
   const project = projects.find((p) => p.id === projectId);
 
   // 로컬 편집 상태
-  const [localSubTasks, setLocalSubTasks] = useState<Record<string, SubTaskSchedule>>({});
+  const [localSubTasks, setLocalSubTasks] = useState<Record<string, SubTaskSchedule>>(project?.subTasks || {});
+  const [localPeriod,setLocalPeriod]=useState<ProjectPeriod>({startDate:project?.startDate||'',endDate:project?.endDate||''});
+  const editBase = useRef<Project | undefined>(undefined);
+  const remoteMerge = useRef<{blocked:boolean;pending?:{tasks:Record<string,SubTaskSchedule>;period:ProjectPeriod}}>({blocked:false});
+  const [syncError, setSyncError] = useState('');
 
   // 현재 좌측에서 포커스/선택된 공종 (우측 팀원 클릭 시 이 공종에 즉시 배정됨)
   const [selectedRole, setSelectedRole] = useState<string>('');
 
   // 우측 패널 필터: ALL, AVAILABLE, KOREA, VIETNAM
   const [rightFilter, setRightFilter] = useState<'ALL' | 'AVAILABLE' | 'KOREA' | 'VIETNAM'>('ALL');
+  const [vietSelection, setVietSelection] = useState<'TEAM' | 'INDIVIDUAL'>('TEAM');
   // 우측 팀원 검색어
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -58,25 +113,80 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
 
   // 그룹웨어 수주 세부 스펙 아코디언 토글 (기본 펼침)
   const [isSpecExpanded, setIsSpecExpanded] = useState(true);
+  const [printPreview, setPrintPreview] = useState(false);
+
+  const canSaveTaskDates = (tasks: Record<string, SubTaskSchedule>) => {
+    if (!project) return false;
+    const original = {...project.roles, ...project.subTasks};
+    return Object.entries(tasks).every(([role, task]) => {
+      if (task.allocations?.some(period => !period.personIds.length || !validDateRange(period.startDate, period.endDate))) return false;
+      if (task.allocations !== undefined) return true;
+      const start = task.startDate || localPeriod.startDate, end = task.endDate || localPeriod.endDate;
+      if (!start && !end) return true;
+      if (validDateRange(start, end)) return true;
+      const old = original[role];
+      // Match the server's preservation rule; only unchanged legacy periods may remain unconfirmed.
+      return !!old && project.subTasks[role]?.allocations === undefined
+        && start === (old.startDate || project.startDate) && end === (old.endDate || project.endDate);
+    });
+  };
+  const canSavePeriod=()=>!!project&&(!localPeriod.startDate&&!localPeriod.endDate&&!project.startDate&&!project.endDate||validDateRange(localPeriod.startDate,localPeriod.endDate));
 
   useEffect(() => {
     if (project) {
-      setLocalSubTasks(project.subTasks || {});
-      const roles = TEAM_ROLES[project.department] || TEAM_ROLES.마감팀;
-      if (roles.length > 0 && !selectedRole) {
-        setSelectedRole(roles[0]);
+      const previous = editBase.current;
+      try {
+        const draft = previous?.id === project.id && (JSON.stringify(localSubTasks)!==JSON.stringify(previous.subTasks||{})||localPeriod.startDate!==previous.startDate||localPeriod.endDate!==previous.endDate)
+          ? rebaseProject(project, previous, {...previous,...localPeriod,subTasks:localSubTasks}, true) : project;
+        const tasks = draft.subTasks || {},period={startDate:draft.startDate,endDate:draft.endDate};
+        editBase.current = project;
+        remoteMerge.current = {blocked:false,...(tasks!==localSubTasks||period.startDate!==localPeriod.startDate||period.endDate!==localPeriod.endDate?{pending:{tasks,period}}:{})};
+        setLocalSubTasks(tasks);
+        setLocalPeriod(previous=>previous.startDate===period.startDate&&previous.endDate===period.endDate?previous:period);
+        setSyncError('');
+      } catch (error) {
+        remoteMerge.current = {blocked:true};
+        setSyncError(error instanceof Error ? error.message : '다른 화면의 변경을 확인해 주세요. 입력은 유지됩니다.');
       }
+      const roles = [...new Set([...(TEAM_ROLES[project.department] || TEAM_ROLES.마감팀), ...Object.keys(project.subTasks || {}), ...Object.keys(project.roles || {})])];
+      setSelectedRole(previous => roles.includes(previous) ? previous : roles[0]);
     }
+    // Editor input is merged only when the shared project changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project]);
 
+  useEffect(()=>{
+    if(remoteMerge.current.blocked||syncError||!project||!canManageSchedule(currentUser,project.department))return;
+    if(remoteMerge.current.pending){const pending=remoteMerge.current.pending;if(localSubTasks!==pending.tasks||localPeriod.startDate!==pending.period.startDate||localPeriod.endDate!==pending.period.endDate)return;delete remoteMerge.current.pending;}
+    if(JSON.stringify(localSubTasks)===JSON.stringify(project.subTasks)&&localPeriod.startDate===project.startDate&&localPeriod.endDate===project.endDate)return;
+    if(!canSavePeriod()||!canSaveTaskDates(localSubTasks))return;
+    try{updateProjectSubTasks(project.id,localSubTasks,localPeriod);}catch{setAssignToast({role:'저장 실패',name:'입력 유지 · 저장 공간 확인 필요'});}
+    // Trigger only on editor input; remote updates are merged by the effect above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[localSubTasks,localPeriod]);
+
   if (!project) return null;
+  if (printPreview) return <ProjectDetailPrint project={{...project,subTasks:localSubTasks}} people={[...useProjectStore.getState().personnel,...users,...VIET_TEAMS_DATA.flatMap(t=>[{id:t.id,name:t.displayName},{id:t.code,name:t.displayName}])]} leaves={leaves} onClose={()=>setPrintPreview(false)} />;
+  const canEdit = canManageSchedule(currentUser, project.department);
+  const progress = projectProgress(project);
+  // Read legacy assignments without creating tasks merely by opening the editor.
+  const getSubTask = (tasks: Record<string, SubTaskSchedule>, roleName: string): SubTaskSchedule => {
+    const task = tasks[roleName] || {
+      roleName,
+      personId: project.roles?.[roleName]?.personId || (roleName === 'PM' ? project.pmId : '') || '',
+      startDate: project.roles?.[roleName]?.startDate || project.startDate,
+      endDate: project.roles?.[roleName]?.endDate || project.endDate,
+      status: '예정' as const, memo: '', version: 'v1',dateMode:project.roles?.[roleName]?'CUSTOM' as const:'PROJECT' as const
+    };
+    return taskWithProjectDates({ ...task, startDate: task.startDate || localPeriod.startDate, endDate: task.endDate || localPeriod.endDate },localPeriod);
+  };
 
   // 프로젝트 팀에 해당하는 공종 목록
-  const rolesForTeam = TEAM_ROLES[project.department] || TEAM_ROLES.마감팀;
+  const rolesForTeam = [...new Set([...(TEAM_ROLES[project.department] || TEAM_ROLES.마감팀), ...Object.keys(localSubTasks), ...Object.keys(project.roles || {})])];
 
   // 해당 부서 한국 본사 인원
   const deptKoreaUsers = users.filter((u) => {
-    if (u.company !== '컨코스트') return false;
+    if (u.company !== '컨코스트' || u.active === false) return false;
     if (project.department === '마감팀') return u.department.includes('마감');
     if (project.department === '구조팀') return u.department.includes('구조');
     if (project.department === '토목&조경팀') return u.department.includes('토목') || u.department.includes('조경');
@@ -84,7 +194,18 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
   });
 
   // 해당 부서 베트남 팀 목록
-  const deptVietTeams = VIET_TEAMS_DATA.filter((vt) => vt.department === project.department);
+  const deptVietTeams = resolveVietTeams(users, project.department);
+  const deptVietUsers = vietIndividuals(users, project.department);
+  const getUnitAliases = (unitId: string, unitName: string) => {
+    const person = users.find(person => person.id === unitId);
+    return person ? assignmentAliases(person, users) : [unitId, unitName];
+  };
+  const explicitlyAssigned = (task: SubTaskSchedule, unitId: string, unitName: string) => {
+    const group = deptVietTeams.find(team => team.id === unitId);
+    return group ? !!group.members.length && group.members.every(member => memberIds(task).some(id => getUnitAliases(member.id, member.name).includes(id)))
+      : deptVietUsers.some(person => person.id === unitId) ? memberIds(task).some(id => getUnitAliases(unitId, unitName).includes(id))
+      : taskAssignedTo(task, unitId, getUnitAliases(unitId, unitName));
+  };
 
   // 개별 공종 필드 업데이트
   const handleFieldChange = (
@@ -92,68 +213,111 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
     field: keyof SubTaskSchedule,
     value: any
   ) => {
+    if (!canEdit) return;
     setLocalSubTasks((prev) => {
-      const current = prev[roleName] || {
-        roleName,
-        personId: '',
-        startDate: project.startDate,
-        endDate: project.endDate,
-        status: '예정' as SubTaskStatus,
-        memo: '',
-        version: 'v1'
-      };
+      const current = getSubTask(prev, roleName);
       return {
         ...prev,
         [roleName]: {
           ...current,
+          ...(['startDate','endDate'].includes(field)?{dateMode:'CUSTOM' as const}:{}),
           [field]: value
         }
       };
     });
   };
 
-  // 원클릭 인원 배정 핸들러 (다중 인원 지원: 이미 배정되어 있으면 해제, 없으면 추가)
-  const handleTogglePerson = (roleName: string, unitId: string, unitName: string) => {
-    const targetRole = roleName || selectedRole || rolesForTeam[0];
-    setLocalSubTasks((prev) => {
-      const current = prev[targetRole] || {
-        roleName: targetRole,
-        personId: unitId,
-        personIds: [unitId],
-        startDate: project.startDate,
-        endDate: project.endDate,
-        status: '예정' as SubTaskStatus,
-        memo: '',
-        version: 'v1'
-      };
+  // Aggregate dates describe the whole role; each employee keeps their own periods.
+  const replaceAllocations = (roleName: string, change: (periods: ScheduleAllocation[]) => ScheduleAllocation[]) => {
+    if (!canEdit) return;
+    setLocalSubTasks(previous => {
+      const task = getSubTask(previous, roleName);
+      if (task.scopeExcluded) return previous;
+      const allocations = change(task.allocations || []);
+      const assigned = [...new Set([...(roleName==='PM'&&task.personId?[task.personId]:[]),...allocations.flatMap(period => period.personIds)])];
+      return {...previous, [roleName]: withAllocationBounds({...task, allocations, personIds: assigned, personId: assigned.includes(task.personId) ? task.personId : assigned[0] || ''})};
+    });
+  };
+  const changeAllocation = (roleName: string, id: string, patch: Partial<ScheduleAllocation>) => replaceAllocations(roleName, periods => periods.map(period => period.id === id ? {...period, ...patch,...(('startDate'in patch||'endDate'in patch)&&!('dateMode'in patch)?{dateMode:'CUSTOM' as const}:{})} : period));
+  const changeProjectPeriod=(field:keyof ProjectPeriod,value:string)=>{
+    const period={...localPeriod,[field]:value};setLocalPeriod(period);
+    setLocalSubTasks(previous=>Object.fromEntries(Object.entries(previous).map(([name,task])=>[name,taskWithProjectDates(task,period)])));
+  };
+  const changeTaskDateMode=(roleName:string,dateMode:'PROJECT'|'CUSTOM')=>setLocalSubTasks(previous=>({...previous,[roleName]:taskWithProjectDates({...getSubTask(previous,roleName),dateMode},localPeriod)}));
+  const applyCommonPeriod=()=>{
+    if(!canEdit||!validDateRange(localPeriod.startDate,localPeriod.endDate))return;
+    setLocalSubTasks(previous=>Object.fromEntries(Object.entries(previous).map(([role,task])=>[role,task.allocations===undefined&&task.dateMode!=='CUSTOM'&&!task.scopeExcluded?taskWithProjectDates({...task,dateMode:'PROJECT'},localPeriod):task])));
+  };
 
-      const existingIds = current.personIds && current.personIds.length > 0
-        ? [...current.personIds]
-        : (current.personId ? [current.personId] : []);
+  const handleScopeChange = (roleName: string, scopeExcluded: boolean) => {
+    if (!canEdit || roleName === 'PM') return;
+    setLocalSubTasks(previous => ({...previous, [roleName]: {
+      ...getSubTask(previous, roleName), scopeExcluded, personId: '', personIds: [], allocations: []
+    }}));
+  };
+
+  // 원클릭 인원 배정 핸들러 (다중 인원 지원: 이미 배정되어 있으면 해제, 없으면 추가)
+  const handleTogglePerson = (roleName: string, unitId: string, unitName: string, restoreScope = false) => {
+    const targetRole = roleName || selectedRole || rolesForTeam[0];
+    if (!canEdit) return;
+    const group = deptVietTeams.find(team => team.id === unitId);
+    if (group || deptVietUsers.some(person => person.id === unitId)) {
+      setLocalSubTasks(previous => {
+        const current = getSubTask(previous, targetRole);
+        if (current.scopeExcluded && !restoreScope) return previous;
+        const people = group?.members || [{id: unitId, name: unitName}];
+        if (!people.length) return previous;
+        const remove = explicitlyAssigned(current, unitId, unitName);
+        try {
+          const updated = updateAssignmentMembers(current, {
+            ...(remove ? {removeIds: people.flatMap(person => getUnitAliases(person.id, person.name))} : {addIds: people.map(person => person.id)}), restoreScope
+          });
+          const inherited = !group && taskAssignedTo({...updated,personIds:memberIds(updated)}, unitId, getUnitAliases(unitId, unitName));
+          setAssignToast({role:targetRole,name:`${unitName} (${remove ? `개인 배정 해제${inherited ? ' · 기존 팀 배정 유지' : ''}` : group ? '팀 전체 인원 배정' : '개인 배정'})`});
+          return {...previous, [targetRole]: updated};
+        } catch (error) {
+          setAssignToast({role:'배정 확인',name:error instanceof Error ? error.message : '배정 기간과 담당자를 확인해 주세요.'});
+          return previous;
+        }
+      });
+      setTimeout(() => setAssignToast(null), 3000);
+      return;
+    }
+    setLocalSubTasks((prev) => {
+      const current = getSubTask(prev, targetRole);
+      if (current.scopeExcluded && !restoreScope) return prev;
+
+      const existingIds = memberIds(current);
+      const aliases = getUnitAliases(unitId, unitName);
 
       let updatedIds: string[];
-      if (existingIds.includes(unitId)) {
-        updatedIds = existingIds.filter((id) => id !== unitId);
+      if (taskAssignedTo(current, unitId, aliases)) {
+        updatedIds = existingIds.filter((id) => !aliases.includes(id));
       } else {
         updatedIds = [...existingIds, unitId];
       }
 
       const primaryPersonId = updatedIds[0] || '';
+      if (current.allocations) {
+        const remove = taskAssignedTo(current, unitId, aliases);
+        const allocations = remove
+          ? current.allocations.map(period => ({...period, personIds: period.personIds.filter(id => !aliases.includes(id))})).filter(period => period.personIds.length)
+          : [...current.allocations, {id: `manual-${crypto.randomUUID()}`, personIds: [unitId], startDate: current.startDate, endDate: current.endDate}];
+        return {...prev, [targetRole]: withAllocationBounds({...current, ...(current.scopeExcluded ? {scopeExcluded: false} : {}), allocations, personId: primaryPersonId, personIds: updatedIds})};
+      }
       return {
         ...prev,
         [targetRole]: {
           ...current,
+          ...(current.scopeExcluded ? {scopeExcluded: false} : {}),
           personId: primaryPersonId,
           personIds: updatedIds
         }
       };
     });
 
-    const currentSub = localSubTasks[targetRole];
-    const currentIds = currentSub?.personIds && currentSub.personIds.length > 0
-      ? currentSub.personIds
-      : (currentSub?.personId ? [currentSub.personId] : []);
-    const isRemovedAction = currentIds.includes(unitId);
+    const currentSub = getSubTask(localSubTasks, targetRole);
+    const isRemovedAction = explicitlyAssigned(currentSub, unitId, unitName);
 
     setAssignToast({
       role: targetRole,
@@ -164,13 +328,19 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
 
   // 개별 인원 칩 X 클릭시 제거
   const handleRemovePerson = (roleName: string, unitId: string) => {
+    if (!canEdit) return;
     setLocalSubTasks((prev) => {
-      const current = prev[roleName];
-      if (!current) return prev;
-      const existing = current.personIds && current.personIds.length > 0
-        ? current.personIds
-        : (current.personId ? [current.personId] : []);
-      const updated = existing.filter((id) => id !== unitId);
+      const current = getSubTask(prev, roleName);
+      const existing = memberIds(current), unit = getAvailabilityForReference(unitId);
+      const aliases = [unitId, ...(unit ? getUnitAliases(unit.id, unit.name) : [])];
+      if (deptVietUsers.some(person => person.id === unitId)) {
+        return {...prev, [roleName]: updateAssignmentMembers(current, {removeIds: aliases})};
+      }
+      const updated = existing.filter((id) => !aliases.includes(id));
+      if (current.allocations) {
+        const allocations = current.allocations.map(period => ({...period, personIds: period.personIds.filter(id => !aliases.includes(id))})).filter(period => period.personIds.length);
+        return {...prev, [roleName]: withAllocationBounds({...current, allocations, personId: updated[0] || '', personIds: updated})};
+      }
       return {
         ...prev,
         [roleName]: {
@@ -184,10 +354,16 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
 
   // 전체 공종 일괄 원자적 저장 (PM, 공종별 산출인원, roles 100% 동기화 및 localStorage 영구 보존)
   const handleSaveAll = () => {
-    updateProjectSubTasks(project.id, localSubTasks);
+    if (!canEdit) return;
+    if (remoteMerge.current.blocked||syncError) { setAssignToast({role: '일정 확인', name: syncError||'다른 화면의 변경을 확인한 뒤 다시 저장해 주세요.'}); return; }
+    if (!canSavePeriod()||!canSaveTaskDates(localSubTasks)) {
+      setAssignToast({role: '입력 확인', name: '공종 시작일과 종료일을 확인해 주세요.'}); return;
+    }
+    try { updateProjectSubTasks(project.id, localSubTasks,localPeriod); }
+    catch { setAssignToast({role: '저장 실패', name: '입력은 유지됩니다. 저장 공간을 확인해 주세요.'}); return; }
     setAssignToast({
       role: '전체 공종',
-      name: 'PM 및 산출 인원이 일정표에 성공적으로 저장·동기화되었습니다'
+      name: '일정표에 반영했습니다. 중앙 전송 상태는 상단에서 확인하세요.'
     });
     setTimeout(() => {
       onClose();
@@ -195,75 +371,50 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
   };
 
   // 타 프로젝트와의 날짜 중복(Overlap) 검사 로직
+  const openInquiries=()=>{
+    if(!onOpenInquiries)return;
+    if(remoteMerge.current.blocked||syncError||canEdit&&(!canSavePeriod()||!canSaveTaskDates(localSubTasks))){setAssignToast({role:'입력 확인',name:'기간 입력과 중앙 변경 확인을 완료한 뒤 질의사항을 열어 주세요.'});return;}
+    if(canEdit&&(JSON.stringify(localSubTasks)!==JSON.stringify(project.subTasks)||localPeriod.startDate!==project.startDate||localPeriod.endDate!==project.endDate)){
+      try{updateProjectSubTasks(project.id,localSubTasks,localPeriod);}catch{setAssignToast({role:'저장 실패',name:'입력은 유지됩니다. 일정을 저장한 뒤 다시 열어 주세요.'});return;}
+    }
+    const role=selectedRole==='PM'?rolesForTeam.find(name=>name!=='PM')||'':selectedRole;
+    onClose();onOpenInquiries(project.id,role);
+  };
   const getOverlappingTasks = (unitId: string, unitName: string, isViet: boolean) => {
-    const overlaps: { projectName: string; roleName: string; startDate: string; endDate: string; status: string }[] = [];
-    const pStart = project.startDate;
-    const pEnd = project.endDate;
+    const overlaps: AvailabilityEntry[] = [];
+    const focusedTask=getSubTask(localSubTasks, selectedRole);
+    const pStart=focusedTask.startDate,pEnd=focusedTask.endDate;
 
     const otherProjects = projects.filter((p) => p.id !== project.id);
 
-    otherProjects.forEach((op) => {
-      if (op.subTasks) {
-        Object.values(op.subTasks).forEach((st) => {
-          const stAssignedIds = st.personIds && st.personIds.length > 0
-            ? st.personIds
-            : (st.personId ? [st.personId] : []);
+    const person=users.find(person=>person.id===unitId),team=deptVietTeams.find(team=>team.id===unitId);
+    const aliases=isViet&&team?[unitId,unitName,...team.members.flatMap(member=>getUnitAliases(member.id,member.name))]:assignmentAliases(person||{id:unitId},users);
+    const ownPeriods=assignmentSegments(focusedTask).filter(period=>aliases.some(id=>taskAssignedTo(period,id)));
+    const today=localDate(new Date());
+    const checkedPeriods=(ownPeriods.length?ownPeriods:[{startDate:pStart,endDate:pEnd}]).map(period=>focusedTask.allocations===undefined&&focusedTask.dateMode!=='CUSTOM'&&validDateRange(localPeriod.startDate,localPeriod.endDate)?{...period,startDate:period.startDate<localPeriod.startDate?localPeriod.startDate:period.startDate,endDate:period.endDate>localPeriod.endDate?localPeriod.endDate:period.endDate}:period).filter(period=>validDateRange(period.startDate,period.endDate)&&period.endDate>=today).map(period=>({...period,startDate:period.startDate<today?today:period.startDate}));
+    for(const task of assignedTasksForAliases(aliases,otherProjects)){
+      const owner=otherProjects.find(other=>other.id===task.projectId);
+      const followup=owner?.postDeliveryTasks?.some(follow=>task.id===`gen-${owner.id}-followup-${follow.id}`);
+      const source=owner?.subTasks?.[task.roleName];
+      const bound=owner&&!followup&&source?.allocations===undefined&&source?.dateMode!=='CUSTOM'&&validDateRange(owner.startDate,owner.endDate);
+      const startDate=bound&&task.startDate<owner.startDate?owner.startDate:task.startDate,endDate=bound&&task.endDate>owner.endDate?owner.endDate:task.endDate;
+      if(task.status==='완료'||task.progress>=100||!followup&&(owner?.status==='납품'||(owner?.progress??0)>=100)||!validDateRange(startDate,endDate)||endDate<today||!checkedPeriods.some(period=>endDate>=period.startDate&&startDate<=period.endDate))continue;
+      overlaps.push({id:task.projectId,kind:'project',projectName:task.projectName,roleName:task.roleName,startDate,endDate});
+    }
 
-          const koreaUserNo = String(deptKoreaUsers.find(k => k.id === unitId)?.no || '');
-          const isMatched = isViet
-            ? (stAssignedIds.includes(unitId) || st.roleName.includes(unitName) || (unitId === 'IN1' && (st.roleName === '내부' || st.roleName === '세대')))
-            : (stAssignedIds.includes(unitId) || stAssignedIds.includes(unitName) || (koreaUserNo && stAssignedIds.includes(koreaUserNo)));
-
-          if (isMatched && st.startDate && st.endDate) {
-            // 날짜 겹침 조건: !(endA < startB || startA > endB)
-            if (!(st.endDate < pStart || st.startDate > pEnd)) {
-              overlaps.push({
-                projectName: op.name,
-                roleName: st.roleName,
-                startDate: st.startDate,
-                endDate: st.endDate,
-                status: st.status
-              });
-            }
-          }
-        });
-      }
-
-      if (op.roles) {
-        Object.entries(op.roles).forEach(([rName, rInfo]) => {
-          if (!rInfo) return;
-          const isMatched = isViet
-            ? (rInfo.personId === unitId)
-            : (rInfo.personId === unitId || rInfo.personId === unitName);
-
-          if (isMatched && !(op.endDate < pStart || op.startDate > pEnd)) {
-            const exists = overlaps.some((o) => o.projectName === op.name && o.roleName === rName);
-            if (!exists) {
-              overlaps.push({
-                projectName: op.name,
-                roleName: rName,
-                startDate: op.startDate,
-                endDate: op.endDate,
-                status: '진행중'
-              });
-            }
-          }
-        });
-      }
-    });
-
-    return overlaps;
+    if(!team)for(const l of leavesFor(leaves,unitId,pStart,pEnd).filter(leave=>checkedPeriods.some(period=>leave.end_date>=period.startDate&&leave.start_date<=period.endDate)))overlaps.push({id:l.id,kind:'leave',projectName:`휴가 · ${l.kind} (본인 등록)`,roleName:'휴가',startDate:l.start_date,endDate:l.end_date});
+    return groupAvailability(overlaps);
   };
 
   // 팀원 유닛 목록 (한국 본사 + 베트남 팀) 가용성 분석 데이터
-  const availabilityList = useMemo(() => {
+  const availabilityList = (() => {
     const list: Array<{
       id: string;
       name: string;
       subTitle: string;
       badge: string;
       isVietnam: boolean;
-      overlaps: Array<{ projectName: string; roleName: string; startDate: string; endDate: string; status: string }>;
+      overlaps: AvailabilityGroup[];
       isAssignedToCurrent: boolean;
       assignedRoleInCurrent?: string;
     }> = [];
@@ -272,7 +423,7 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
     deptKoreaUsers.forEach((u) => {
       const overlaps = getOverlappingTasks(u.id, u.name, false);
       // 현재 프로젝트에서 배정된 공종이 있는지 확인
-      const currentAssigned = Object.entries(localSubTasks).find(([_, st]) => st.personId === u.id || st.personId === u.name);
+      const currentAssigned = Object.entries(localSubTasks).find(([_, st]) => taskAssignedTo(st, u.id, assignmentAliases(u, users)));
 
       list.push({
         id: u.id,
@@ -287,9 +438,9 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
     });
 
     // 2. 베트남 팀
-    deptVietTeams.forEach((vt) => {
+    if (vietSelection === 'TEAM') deptVietTeams.forEach((vt) => {
       const overlaps = getOverlappingTasks(vt.id, vt.displayName, true);
-      const currentAssigned = Object.entries(localSubTasks).find(([_, st]) => st.personId === vt.id || st.personId === vt.displayName);
+      const currentAssigned = Object.entries(localSubTasks).find(([_, st]) => explicitlyAssigned(st, vt.id, vt.displayName));
 
       list.push({
         id: vt.id,
@@ -302,9 +453,25 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
         assignedRoleInCurrent: currentAssigned ? currentAssigned[0] : undefined
       });
     });
+    else deptVietUsers.forEach(person => {
+      const group = deptVietTeams.find(team => team.members.some(member => member.id === person.id));
+      const currentAssigned = Object.entries(localSubTasks).find(([, task]) => taskAssignedTo(task, person.id, getUnitAliases(person.id, person.name)));
+      list.push({id: person.id, name: person.name, subTitle: `${person.position} · ${group?.name || '그룹 미지정'} · ${person.idPrefix}`, badge: '베트남 개인', isVietnam: true,
+        overlaps: getOverlappingTasks(person.id, person.name, true), isAssignedToCurrent: !!currentAssigned, assignedRoleInCurrent: currentAssigned?.[0]});
+    });
 
     return list;
-  }, [deptKoreaUsers, deptVietTeams, localSubTasks, project.startDate, project.endDate, projects]);
+  })();
+  const getAvailabilityForReference = (reference: string) => {
+    const canonical = availabilityList.find(unit => unit.id === reference);
+    if (canonical) return canonical;
+    const matches = availabilityList.filter(unit => getUnitAliases(unit.id, unit.name).includes(reference));
+    if (matches.length === 1) return matches[0];
+    const person = users.find(user => user.id === reference);
+    const group = [...deptVietTeams, ...VIET_TEAMS_DATA].find(team => [team.id,team.code,team.displayName].includes(reference));
+    return person ? {id:person.id,name:person.name,isVietnam:person.company==='VIETQS',badge:person.position,overlaps:getOverlappingTasks(person.id,person.name,person.company==='VIETQS')}
+      : group ? {id:group.id,name:group.displayName,isVietnam:true,badge:'기존 팀 배정',overlaps:[]} : undefined;
+  };
 
   // 필터링된 가용성 목록
   const filteredAvailability = availabilityList.filter((item) => {
@@ -323,7 +490,7 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
   // 색상 팔레트
   const getBadgeColor = (idx: number) => {
     const colors = [
-      'bg-amber-500 text-white',
+      'bg-amber-500 text-slate-950',
       'bg-rose-500 text-white',
       'bg-blue-600 text-white',
       'bg-emerald-600 text-white',
@@ -341,7 +508,8 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-7xl max-h-[94vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         
         {/* 1. 모달 헤더 */}
-        <div className="p-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-wrap items-start justify-between gap-4">
+        <div className="relative p-5 pr-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-wrap items-start justify-between gap-4">
+          <button type="button" onClick={onClose} aria-label="프로젝트 일정 편집 닫기" className="absolute top-3 right-3 p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={22} /></button>
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="text-[11px] font-black tracking-wider text-[#00338d] dark:text-blue-400 uppercase">
@@ -359,23 +527,24 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               좌측에서 공종을 선택하고, 우측의 실시간 가용성 및 중복 일정 간트를 확인하여 원클릭으로 최적의 인원을 배정합니다.
             </p>
+            <div className="mt-3 grid max-w-xl grid-cols-2 gap-3">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-200">프로젝트 시작일<input aria-label="프로젝트 시작일" type="date" disabled={!canEdit} value={localPeriod.startDate} onChange={event=>changeProjectPeriod('startDate',event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white"/></label>
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-200">프로젝트 완료일<input aria-label="프로젝트 완료일" type="date" disabled={!canEdit} min={localPeriod.startDate||undefined} value={localPeriod.endDate} onChange={event=>changeProjectPeriod('endDate',event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white"/></label>
+              <p className="col-span-2 text-[11px] text-slate-600 dark:text-slate-300">기본 공종은 공통 기간을 따릅니다. 기존 별도·개인별 기간은 유지되며 필요한 공종만 별도 설정하세요.</p>
+              <div className="col-span-2 flex flex-wrap items-center gap-2"><button type="button" onClick={applyCommonPeriod} disabled={!canEdit||!validDateRange(localPeriod.startDate,localPeriod.endDate)||!Object.values(localSubTasks).some(task=>task.allocations===undefined&&task.dateMode!=='CUSTOM'&&!task.scopeExcluded)} className="rounded-lg border border-blue-300 px-3 py-1.5 text-xs font-bold text-blue-800 disabled:opacity-50 dark:border-blue-700 dark:text-blue-200">공종에 공통 기간 적용</button><span className="text-[11px] text-slate-600 dark:text-slate-300">개인 투입 기간·별도 설정 공종은 유지합니다.</span></div>
+              {!canSavePeriod()&&<p role="alert" className="col-span-2 text-xs text-rose-700 dark:text-rose-300">프로젝트 시작일과 완료일을 확인하세요. 입력을 완료하면 저장됩니다.</p>}
+            </div>
           </div>
 
           <div className="flex items-center gap-4">
             <div className="text-right bg-slate-50 dark:bg-slate-800/80 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
               <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                산출 공정률 <span className="text-[#00338d] dark:text-blue-400 font-extrabold text-sm">{project.progress}%</span>
+                실제 공정률 <span className="text-[#00338d] dark:text-blue-400 font-extrabold text-sm">{percentLabel(progress.actual)}</span><span className="ml-2 text-xs">계획 {percentLabel(progress.planned)}</span>
               </div>
               <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5 flex items-center gap-1 justify-end">
                 <Calendar size={12} /> {project.startDate} ~ {project.endDate}
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <X size={22} />
-            </button>
           </div>
         </div>
 
@@ -384,7 +553,7 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
           <div className="bg-emerald-600 text-white px-5 py-2.5 flex items-center justify-between text-xs font-bold animate-fadeIn shadow-md">
             <div className="flex items-center gap-2">
               <CheckCircle2 size={16} />
-              <span>[{assignToast.role}] 공종 담당자로 '{assignToast.name}' 인원이 즉시 지정되었습니다!</span>
+              <span>[{assignToast.role}] {assignToast.name}</span>
             </div>
             <span className="text-[11px] bg-emerald-700 px-2 py-0.5 rounded">실시간 반영</span>
           </div>
@@ -429,7 +598,7 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                   {project.area || '미기재'}
                 </div>
                 {project.buildings && (
-                  <div className="text-[10px] text-slate-400 dark:text-slate-400 mt-0.5 font-medium">
+                  <div className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 font-medium">
                     동수: {project.buildings}
                   </div>
                 )}
@@ -442,9 +611,9 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                   건물 용도 및 층수
                 </div>
                 <div className="text-sm font-black text-slate-900 dark:text-white mt-1 line-clamp-1">
-                  {project.usage || '일반 건축물'}
+                  {project.usage || '미기재'}
                 </div>
-                <div className="text-[10px] text-slate-400 dark:text-slate-400 mt-0.5 font-medium">
+                <div className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 font-medium">
                   {project.floors ? `층수: ${project.floors}` : (project.buildings ? `동수: ${project.buildings}` : '규모: 정보 확인중')}
                 </div>
               </div>
@@ -456,9 +625,9 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                   발주처 / 의뢰처
                 </div>
                 <div className="text-sm font-black text-slate-900 dark:text-white mt-1 line-clamp-1">
-                  {project.client || '삼성물산(주)'}
+                  {project.client || '미기재'}
                 </div>
-                <div className="text-[10px] text-slate-400 dark:text-slate-400 mt-0.5 font-medium line-clamp-1" title={project.contacts?.join(', ')}>
+                <div className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 font-medium line-clamp-1" title={project.contacts?.join(', ')}>
                   {project.contacts && project.contacts.length > 0 ? project.contacts.join(' / ') : '담당자 미지정'}
                 </div>
               </div>
@@ -470,7 +639,7 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                   견적조건 및 특기사항
                 </div>
                 <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-1 line-clamp-2" title={project.notes || project.request}>
-                  {project.notes || project.request || '공내역서 및 설계도서 기준 산출'}
+                  {project.notes || project.request || '미기재'}
                 </div>
               </div>
 
@@ -502,25 +671,22 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                   현재 선택된 공종: <strong className="text-[#00338d] dark:text-blue-400 font-extrabold text-sm">[{selectedRole || '선택 없음'}]</strong>
                 </span>
               </div>
-              <span className="text-[11px] text-slate-400 dark:text-slate-400 font-medium">
+              <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
                 👉 우측 팀원 [배정] 클릭 시 즉시 지정
               </span>
             </div>
 
             {/* 공종 카드 그리드 (뭉개짐 없이 정돈된 모던 카드) */}
+            {syncError&&<p role="alert" className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-950 dark:text-amber-200 p-3 text-xs font-bold">{syncError}</p>}
+            {!projectPMId(project)&&<p role="status" className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-950 dark:text-amber-200 p-3 text-xs font-bold">신규 프로젝트 · PM 및 담당 인원 배정 필요. 해당 팀 실장·팀장이 아래 공종과 날짜를 확인하고 배정해 주세요.</p>}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              <p className="md:col-span-2 text-xs text-slate-600 dark:text-slate-300">{canEdit ? '일정 조정 권한 있음' : '조회 전용 · 관리자 또는 해당 팀 실장/팀장만 조정 가능'} · 한국 공휴일 확인 범위(2026~2027) · 시작/종료일 포함, 오늘 종료 기준 계획률 · PM 제외 · 실제 진척률은 승인 업무일지 기준</p>
               {rolesForTeam.map((roleName, idx) => {
-                const subTask = localSubTasks[roleName] || {
-                  roleName,
-                  personId: project.roles[roleName]?.personId || '',
-                  startDate: project.startDate,
-                  endDate: project.endDate,
-                  status: '예정',
-                  memo: '',
-                  version: 'v1'
-                };
+                const subTask = getSubTask(localSubTasks, roleName);
+                const assignedIds = memberIds(subTask);
 
                 const isSelected = selectedRole === roleName;
+                const duration = plannedWorkDays(subTask);
 
                 return (
                   <div
@@ -529,9 +695,10 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                     className={`rounded-xl border p-3.5 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
                       isSelected
                         ? 'bg-blue-50/50 dark:bg-blue-950/40 border-[#00338d] dark:border-blue-500 shadow-md ring-2 ring-[#00338d]/20'
-                        : 'bg-white dark:bg-slate-850 border-slate-200 dark:border-slate-750 shadow-2xs hover:border-slate-300 dark:hover:border-slate-600'
+                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-2xs hover:border-slate-300 dark:hover:border-slate-600'
                     }`}
                   >
+                    <div className={`text-xs ${subTask.scopeExcluded ? 'text-slate-700 dark:text-slate-300' : 'text-slate-500'}`}>{subTask.scopeExcluded ? '용역 범위 없음' : <>작업일 {duration === undefined ? '미산정' : `${duration}일`} · 실제 {percentLabel(subTask.progress)}</>}</div>
                     {/* 카드 상단: 공종 뱃지 + 명칭 + 기준버전 + 상태 셀렉트 */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
@@ -549,7 +716,7 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                               포커스
                             </span>
                           )}
-                          <span className="text-[10px] text-slate-400 font-mono shrink-0 whitespace-nowrap">
+                          <span className="text-[10px] text-slate-600 font-mono shrink-0 whitespace-nowrap dark:text-slate-400">
                             · {subTask.version || 'v1'}
                           </span>
                         </div>
@@ -557,7 +724,7 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
 
                       {/* 상태 선택 셀렉트 */}
                       <div onClick={(e) => e.stopPropagation()} className="shrink-0">
-                        <select
+                        <select disabled={!canEdit || !!subTask.scopeExcluded}
                           value={subTask.status}
                           onChange={(e) => handleFieldChange(roleName, 'status', e.target.value as SubTaskStatus)}
                           className={`text-[11px] font-extrabold px-2 py-1 rounded-md border focus:outline-none transition ${
@@ -585,17 +752,17 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <UserCheck size={14} className={((subTask.personIds && subTask.personIds.length > 0) || subTask.personId) ? "text-emerald-600 dark:text-emerald-400 shrink-0" : "text-slate-400 shrink-0"} />
+                          <UserCheck size={14} className={assignedIds.length > 0 ? "text-emerald-600 dark:text-emerald-400 shrink-0" : "text-slate-400 shrink-0"} />
                           <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
-                            투입 인원 {((subTask.personIds && subTask.personIds.length > 0) ? subTask.personIds.length : (subTask.personId ? 1 : 0))}명
+                            투입 인원 {assignedIds.length}명
                           </span>
                         </div>
 
                         {/* 가용성 현황 요약 */}
-                        {((subTask.personIds && subTask.personIds.length > 0) ? subTask.personIds : (subTask.personId ? [subTask.personId] : [])).length > 0 && (
+                        {assignedIds.length > 0 && (
                           <div className="shrink-0 flex items-center gap-1">
-                            {((subTask.personIds && subTask.personIds.length > 0) ? subTask.personIds : (subTask.personId ? [subTask.personId] : [])).map((pId) => {
-                              const avail = availabilityList.find(a => a.id === pId || a.name === pId);
+                            {assignedIds.map((pId) => {
+                              const avail = getAvailabilityForReference(pId);
                               const hasOverlap = (avail?.overlaps.length || 0) > 0;
                               return (
                                 <span
@@ -605,7 +772,7 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                                       ? 'text-amber-700 bg-amber-100 dark:bg-amber-950 dark:text-amber-300'
                                       : 'text-emerald-700 bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300'
                                   }`}
-                                  title={hasOverlap ? `${avail?.name || pId}: ⚠ ${avail?.overlaps.length}건 겹침` : `${avail?.name || pId}: 🟢 여유`}
+                                  title={hasOverlap ? `${avail?.name || pId}: ${availabilityLabel(avail?.overlaps || [])}` : `${avail?.name || pId}: 여유`}
                                 >
                                   {avail?.name || pId}{hasOverlap ? '⚠' : '✓'}
                                 </span>
@@ -617,14 +784,12 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
 
                       {/* 배정된 다중 인원 칩 목록 (X 버튼으로 개별 제외) */}
                       {(() => {
-                        const currentIds = subTask.personIds && subTask.personIds.length > 0
-                          ? subTask.personIds
-                          : (subTask.personId ? [subTask.personId] : []);
+                        const currentIds = assignedIds;
 
                         if (currentIds.length === 0) {
                           return (
-                            <div className="text-xs text-slate-400 italic py-0.5">
-                              담당자 미배정 (우측 목록에서 [배정] 클릭)
+                            <div className={`text-xs py-0.5 ${subTask.scopeExcluded ? 'text-slate-600 dark:text-slate-300' : 'text-slate-400 italic'}`}>
+                              {subTask.scopeExcluded ? '용역 범위 없음 · 담당자를 선택하면 범위에 다시 포함됩니다.' : '담당자 미배정 (우측 목록에서 [배정] 클릭)'}
                             </div>
                           );
                         }
@@ -632,10 +797,10 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                         return (
                           <div className="flex flex-wrap gap-1.5">
                             {currentIds.map((pId) => {
-                              const kUser = deptKoreaUsers.find(k => k.id === pId || String(k.no) === pId || k.name === pId);
-                              const vTeam = deptVietTeams.find(vt => vt.id === pId || vt.code === pId || vt.displayName.includes(pId));
-                              const avail = availabilityList.find(a => a.id === pId || a.name === pId);
-                              const displayName = kUser?.name || vTeam?.displayName || avail?.name || pId;
+                              const avail = getAvailabilityForReference(pId);
+                              const kUser = avail && !avail.isVietnam ? deptKoreaUsers.find(person => person.id === avail.id) : undefined;
+                              const vTeam = deptVietTeams.find(vt => vt.id === (avail?.isVietnam ? avail.id : pId) || vt.code === pId || vt.displayName === pId);
+                              const displayName = kUser?.name || vTeam?.displayName || avail?.name || users.find(user=>user.id===pId)?.name || pId;
                               const badge = kUser?.position || (vTeam ? '베트남팀' : avail?.badge || '배정');
 
                               return (
@@ -663,20 +828,26 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                       })()}
 
                       {/* 추가 인원 지정 드롭다운 */}
-                      <select
-                        value=""
+                      <select disabled={!canEdit}
+                        aria-label={`${roleName} 담당자 배정`}
+                        value={subTask.scopeExcluded ? 'scope-excluded' : ''}
                         onChange={(e) => {
-                          if (e.target.value) {
-                            const unitName = deptKoreaUsers.find(k => k.id === e.target.value)?.name || deptVietTeams.find(v => v.id === e.target.value)?.displayName || e.target.value;
-                            handleTogglePerson(roleName, e.target.value, unitName);
+                          if (e.target.value === 'scope-excluded') {
+                            handleScopeChange(roleName, true);
+                          } else if (e.target.value) {
+                            const unitName = users.find(k => k.id === e.target.value)?.name || deptVietTeams.find(v => v.id === e.target.value)?.displayName || e.target.value;
+                            handleTogglePerson(roleName, e.target.value, unitName, true);
+                          } else if (subTask.scopeExcluded) {
+                            handleScopeChange(roleName, false);
                           }
                         }}
                         className="w-full text-xs font-medium px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none"
                       >
+                        {roleName !== 'PM' && <option value="scope-excluded">용역 범위 없음</option>}
                         <option value="">+ 인원 추가 투입 선택...</option>
                         <optgroup label="🇰🇷 한국 본사 인원">
                           {deptKoreaUsers.map((u) => {
-                            const isAssigned = (subTask.personIds || [subTask.personId]).includes(u.id);
+                            const isAssigned = taskAssignedTo(subTask, u.id, assignmentAliases(u, users));
                             return (
                               <option key={u.id} value={u.id}>
                                 {isAssigned ? '✓ ' : ''}{u.name} ({u.position}) {isAssigned ? '(배정됨)' : ''}
@@ -684,15 +855,18 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                             );
                           })}
                         </optgroup>
-                        <optgroup label="🇻🇳 베트남 팀 유닛">
+                        <optgroup label="🇻🇳 베트남 팀 전체 인원">
                           {deptVietTeams.map((vt) => {
-                            const isAssigned = (subTask.personIds || [subTask.personId]).includes(vt.id);
+                            const isAssigned = explicitlyAssigned(subTask, vt.id, vt.displayName);
                             return (
-                              <option key={vt.id} value={vt.id}>
-                                {isAssigned ? '✓ ' : ''}{vt.displayName} (팀장: {vt.leaderName}) {isAssigned ? '(배정됨)' : ''}
+                              <option key={vt.id} value={vt.id} disabled={!vt.members.length}>
+                                {isAssigned ? '✓ ' : ''}{vt.displayName} ({vt.members.length}명) {isAssigned ? '(개인 배정됨)' : ''}
                               </option>
                             );
                           })}
+                        </optgroup>
+                        <optgroup label="🇻🇳 베트남 개인">
+                          {deptVietUsers.map(person => <option key={person.id} value={person.id}>{person.name} ({person.position} · {deptVietTeams.find(team => team.members.some(member => member.id === person.id))?.name || '그룹 미지정'} · {person.idPrefix}) {explicitlyAssigned(subTask,person.id,person.name) ? '(개인 배정됨)' : ''}</option>)}
                         </optgroup>
                       </select>
                     </div>
@@ -733,21 +907,41 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                       </div>
                     )}
 
+                    {subTask.allocations && !subTask.scopeExcluded && (
+                      <details className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" onClick={event=>event.stopPropagation()}>
+                        <summary className="cursor-pointer text-xs font-bold">인원별 투입 기간 ({subTask.allocations.length}개)</summary>
+                        <div className="mt-2 space-y-2">
+                          {subTask.allocations.map((period,index)=><div key={period.id} className="space-y-1 rounded border border-slate-200 bg-white p-2 dark:border-slate-600 dark:bg-slate-900">
+                            <div className="flex items-center justify-between gap-2 text-xs font-bold"><span>{period.personIds.map(id=>getAvailabilityForReference(id)?.name||users.find(user=>user.id===id)?.name||id).join(', ')}</span><button type="button" disabled={!canEdit} aria-label={`${roleName} 투입 기간 ${index+1} 삭제`} onClick={()=>replaceAllocations(roleName,periods=>periods.filter(item=>item.id!==period.id))} className="rounded p-1 text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950"><X size={12}/></button></div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="text-[10px]">시작일<input aria-label={`${roleName} 투입 기간 ${index+1} 시작일`} type="date" disabled={!canEdit} value={period.startDate} onChange={event=>changeAllocation(roleName,period.id,{startDate:event.target.value})} className="block w-full rounded border border-slate-300 bg-white px-1 py-1 text-xs text-slate-900 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"/></label>
+                              <label className="text-[10px]">종료일<input aria-label={`${roleName} 투입 기간 ${index+1} 종료일`} type="date" disabled={!canEdit} value={period.endDate} onChange={event=>changeAllocation(roleName,period.id,{endDate:event.target.value})} className="block w-full rounded border border-slate-300 bg-white px-1 py-1 text-xs text-slate-900 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"/></label>
+                            </div>
+                            <label className="flex items-center gap-2 text-[10px] text-slate-700 dark:text-slate-200"><input type="checkbox" aria-label={`${roleName} 투입 기간 ${index+1} 공통 기간 사용`} disabled={!canEdit} checked={period.dateMode==='PROJECT'} onChange={event=>changeAllocation(roleName,period.id,event.target.checked?{...localPeriod,dateMode:'PROJECT'}:{dateMode:'CUSTOM'})}/>프로젝트 공통 기간 사용</label>
+                            {!validDateRange(period.startDate,period.endDate)&&<p role="alert" className="text-[10px] text-rose-600 dark:text-rose-300">시작일과 종료일을 확인해 주세요. 입력을 완료하면 저장됩니다.</p>}
+                            <input aria-label={`${roleName} 투입 기간 ${index+1} 메모`} disabled={!canEdit} value={period.memo||''} placeholder="담당 작업 메모" onChange={event=>changeAllocation(roleName,period.id,{memo:event.target.value})} className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"/>
+                            <button type="button" disabled={!canEdit} onClick={()=>replaceAllocations(roleName,periods=>[...periods,{id:`manual-${crypto.randomUUID()}`,personIds:[...period.personIds],startDate:period.endDate,endDate:period.endDate}])} className="text-[10px] font-bold text-blue-700 dark:text-blue-300">이 인원 투입 기간 추가</button>
+                          </div>)}
+                          <p className="text-[10px] text-slate-600 dark:text-slate-300">인원별 기간은 개인 일정표·할 일·업무일지에 함께 반영됩니다. 아래 공종 기간은 전체 투입 기간으로 자동 표시됩니다.</p>
+                        </div>
+                      </details>
+                    )}
                     {/* 일정 입력 행: 시작일 ~ 종료일 (컴팩트 인라인) */}
+                    {subTask.allocations===undefined&&<label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-200" onClick={event=>event.stopPropagation()}><input type="checkbox" aria-label={`${roleName} 별도 기간 사용`} disabled={!canEdit||!!subTask.scopeExcluded} checked={subTask.dateMode!=='PROJECT'} onChange={event=>changeTaskDateMode(roleName,event.target.checked?'CUSTOM':'PROJECT')}/>공종 기간 별도 설정{subTask.dateMode==='CUSTOM'&&validDateRange(localPeriod.startDate,localPeriod.endDate)&&(subTask.startDate<localPeriod.startDate||subTask.endDate>localPeriod.endDate)&&' · 프로젝트 공통 기간 밖 투입'}</label>}
                     <div className="grid grid-cols-2 gap-2" onClick={(e) => e.stopPropagation()}>
                       <div>
-                        <span className="block text-[10px] font-bold text-slate-400 mb-0.5">시작일</span>
+                        <span className="block text-[10px] font-bold text-slate-600 mb-0.5 dark:text-slate-400">시작일</span>
                         <input
-                          type="date"
+                          type="date" disabled={!canEdit || !!subTask.allocations || subTask.dateMode==='PROJECT'}
                           value={subTask.startDate}
                           onChange={(e) => handleFieldChange(roleName, 'startDate', e.target.value)}
                           className="w-full text-xs px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none"
                         />
                       </div>
                       <div>
-                        <span className="block text-[10px] font-bold text-slate-400 mb-0.5">종료일</span>
+                        <span className="block text-[10px] font-bold text-slate-600 mb-0.5 dark:text-slate-400">종료일</span>
                         <input
-                          type="date"
+                          type="date" disabled={!canEdit || !!subTask.allocations || subTask.dateMode==='PROJECT'}
                           value={subTask.endDate}
                           onChange={(e) => handleFieldChange(roleName, 'endDate', e.target.value)}
                           className="w-full text-xs px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none"
@@ -758,7 +952,7 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                     {/* 슬림한 비고/메모 입력란 (더 이상 불필요하게 길고 뚱뚱하지 않음) */}
                     <div onClick={(e) => e.stopPropagation()}>
                       <input
-                        type="text"
+                        type="text" disabled={!canEdit}
                         value={subTask.memo}
                         onChange={(e) => handleFieldChange(roleName, 'memo', e.target.value)}
                         placeholder="특이사항 및 전달 메모 (선택)"
@@ -769,13 +963,14 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                 );
               })}
             </div>
+            <PostDeliverySchedule project={project}/>
           </div>
 
           {/* ======================= 우측 패널: 팀원 실시간 가용성 & 투입 현황판 (5 cols, ~42%, 좌측과 완전한 시각적 대비) ======================= */}
           <div className="lg:col-span-5 p-5 overflow-y-auto custom-scrollbar flex flex-col gap-3.5 bg-slate-50/90 dark:bg-slate-950 border-t-2 lg:border-t-0 lg:border-l-2 border-indigo-500/40 dark:border-indigo-500/40 shadow-inner">
             
             {/* 우측 패널 헤더: 눈에 확 띄는 인디고/앰버 테마 박스 */}
-            <div className="bg-gradient-to-r from-indigo-900/20 via-slate-900 to-indigo-950/40 border border-indigo-500/30 dark:border-indigo-500/40 p-3.5 rounded-2xl shadow-sm space-y-2">
+            <div className="bg-indigo-50 dark:bg-slate-900 border border-indigo-500/30 dark:border-indigo-500/40 p-3.5 rounded-2xl shadow-sm space-y-2">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-black text-indigo-900 dark:text-indigo-200 flex items-center gap-2">
                   <span className="p-1 rounded-lg bg-indigo-600 text-white shadow-xs">
@@ -784,13 +979,13 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                   <span>팀원 실시간 가용성 & 투입 현황판</span>
                 </h3>
                 <span className="text-[10px] font-mono font-bold bg-indigo-950 text-indigo-300 px-2.5 py-0.5 rounded-full border border-indigo-500/40">
-                  {project.startDate} ~ {project.endDate}
+                  {getSubTask(localSubTasks, selectedRole).startDate} ~ {getSubTask(localSubTasks, selectedRole).endDate}
                 </span>
               </div>
               <div className="text-xs bg-amber-500/15 border border-amber-500/40 text-amber-900 dark:text-amber-200 px-3 py-1.5 rounded-xl font-bold flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                  <span>[+ 배정] 클릭 시 포커스된 공종에 실시간 투입</span>
+                  <span>{getSubTask(localSubTasks, selectedRole).scopeExcluded ? '용역 범위 없음 · 좌측 담당자 선택으로 범위를 다시 포함하세요.' : '[+ 배정] 클릭 시 포커스된 공종에 실시간 투입'}</span>
                 </span>
                 <span className="bg-amber-500 text-slate-950 font-black px-2 py-0.5 rounded-md text-[11px] shadow-xs">
                   [{selectedRole || rolesForTeam[0]}] 공종
@@ -861,6 +1056,12 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
               </div>
             </div>
 
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700 dark:text-slate-200">
+              <span>베트남 배정:</span>
+              {(['TEAM', 'INDIVIDUAL'] as const).map(mode => <button key={mode} type="button" aria-label={`베트남 배정 ${mode === 'TEAM' ? '팀 전체' : '개인 선택'}`} aria-pressed={vietSelection === mode} onClick={() => setVietSelection(mode)} className={`rounded-lg border px-2.5 py-1 font-bold ${vietSelection === mode ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}>{mode === 'TEAM' ? '팀 전체' : '개인 선택'}</button>)}
+              <span className="text-[11px]">팀 전체 배정은 현재 소속 직원의 개인 ID로 저장됩니다.</span>
+            </div>
+
             {/* 인원/팀 가용성 카드 목록 */}
             <div className="space-y-2.5">
               {filteredAvailability.map((unit) => {
@@ -868,18 +1069,17 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                 const isAvailable = overlapCount === 0;
 
                 const targetRole = selectedRole || rolesForTeam[0];
-                const targetSub = localSubTasks[targetRole];
-                const pIds = targetSub?.personIds && targetSub.personIds.length > 0
-                  ? targetSub.personIds
-                  : (targetSub?.personId ? [targetSub.personId] : []);
-                const isAssignedToFocusedRole = pIds.includes(unit.id) || pIds.includes(unit.name);
+                const targetSub = getSubTask(localSubTasks, targetRole);
+                const isAssignedToFocusedRole = explicitlyAssigned(targetSub, unit.id, unit.name);
+                const inheritedAssignment = deptVietUsers.some(person => person.id === unit.id) && taskAssignedTo(targetSub, unit.id, getUnitAliases(unit.id, unit.name));
+                const emptyGroup = deptVietTeams.some(team => team.id === unit.id && !team.members.length);
 
                 return (
                   <div
                     key={unit.id}
                     className={`p-3.5 rounded-2xl border-2 transition-all ${
                       isAssignedToFocusedRole
-                        ? 'bg-indigo-950/70 border-indigo-500 shadow-lg shadow-indigo-950/50 ring-2 ring-indigo-500/40'
+                        ? 'bg-indigo-50 dark:bg-indigo-950/70 border-indigo-500 shadow-lg shadow-indigo-950/20 ring-2 ring-indigo-500/40'
                         : isAvailable
                         ? 'bg-white dark:bg-slate-900/95 border-emerald-500/30 hover:border-emerald-400 shadow-xs'
                         : overlapCount === 1
@@ -900,11 +1100,11 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                           {unit.name.slice(0, 1)}
                         </div>
                         <div className="min-w-0">
-                          <div className="flex items-center gap-2 truncate">
-                            <span className="font-black text-slate-900 dark:text-white text-xs truncate">
+                          <div className={unit.isVietnam ? 'space-y-0.5' : 'flex items-center gap-2 truncate'}>
+                            <span title={unit.name} className={`font-black text-slate-900 dark:text-white text-xs ${unit.isVietnam ? 'block whitespace-normal break-words' : 'truncate'}`}>
                               {unit.name}
                             </span>
-                            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                            <span className={`text-[11px] text-slate-500 dark:text-slate-400 font-medium ${unit.isVietnam ? 'block whitespace-normal' : 'truncate'}`}>
                               {unit.subTitle}
                             </span>
                           </div>
@@ -917,11 +1117,11 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                               </span>
                             ) : overlapCount === 1 ? (
                               <span className="text-[10px] font-black text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 border border-amber-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                🟡 1건 겹침 (조율)
+                                {availabilityLabel(unit.overlaps)}
                               </span>
                             ) : (
                               <span className="text-[10px] font-black text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-950/80 border border-rose-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                🔴 중복 {overlapCount}건 (과부하)
+                                {availabilityLabel(unit.overlaps)}
                               </span>
                             )}
 
@@ -930,6 +1130,7 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                                 현재 [{unit.assignedRoleInCurrent}]
                               </span>
                             )}
+                            {inheritedAssignment && !isAssignedToFocusedRole && <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">기존 팀 배정 상속 · 개인 해제 후에도 유지</span>}
 
                             {isAssignedToFocusedRole && (
                               <span className="text-[10px] font-black text-white bg-indigo-600 px-2 py-0.5 rounded-full shadow-xs flex items-center gap-1 animate-pulse">
@@ -943,8 +1144,9 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                       {/* 원클릭 배정/해제 토글 액션 버튼 */}
                       <button
                         type="button"
+                        disabled={!canEdit || !!targetSub.scopeExcluded || emptyGroup}
                         onClick={() => handleTogglePerson(targetRole, unit.id, unit.name)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-black shadow-md flex items-center gap-1 shrink-0 transition active:scale-95 cursor-pointer ${
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black shadow-md flex items-center gap-1 shrink-0 transition active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                           isAssignedToFocusedRole
                             ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-900/40'
                             : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/40'
@@ -965,21 +1167,20 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
                       </button>
                     </div>
 
-                    {/* 타 프로젝트 중복 표시 (정돈된 뱃지 스타일) */}
+                    {/* 프로젝트별로 기간을 모아 표시하고 공종별 구간은 펼쳐서 확인 */}
                     {overlapCount > 0 ? (
                       <div className="mt-2 pt-1.5 border-t border-slate-200/60 dark:border-slate-800/60 space-y-1">
-                        {unit.overlaps.map((ov, oIdx) => (
-                          <div
-                            key={oIdx}
-                            className="bg-white/80 dark:bg-slate-800 px-2 py-1 rounded border border-slate-200 dark:border-slate-700 flex items-center justify-between text-[10px]"
-                          >
-                            <span className="font-bold text-slate-700 dark:text-slate-300 truncate mr-2">
-                              {ov.projectName.length > 18 ? ov.projectName.slice(0, 18) + '...' : ov.projectName}
-                            </span>
-                            <span className="font-mono text-slate-500 dark:text-slate-400 shrink-0">
-                              [{ov.roleName}] {ov.startDate.slice(5)}~{ov.endDate.slice(5)}
-                            </span>
-                          </div>
+                        {unit.overlaps.map((group) => (
+                          <details key={group.id} data-availability-project={group.kind === 'project' ? group.id.slice(8) : undefined} className="border-b border-slate-200 py-1.5 last:border-b-0 dark:border-slate-700">
+                            <summary className="cursor-pointer rounded text-xs text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 dark:text-slate-200">
+                              <span className="font-bold break-words">{group.projectName}</span>
+                              <span className="mt-0.5 block pl-4 text-[11px] tabular-nums text-slate-600 dark:text-slate-300">{availabilityDates(group.periods)}</span>
+                              {group.kind === 'project' && <span className="block pl-4 text-[11px] text-slate-600 dark:text-slate-300">{group.roles.map(role => role.name).join(' · ')} · 공종별 기간 보기</span>}
+                            </summary>
+                            <ul className="mt-1 space-y-1 pl-4 text-[11px] text-slate-600 dark:text-slate-300">
+                              {group.roles.map(role => <li key={role.name}><span className="font-semibold">{role.name}</span> · <span className="tabular-nums">{availabilityDates(role.periods)}</span></li>)}
+                            </ul>
+                          </details>
                         ))}
                       </div>
                     ) : (
@@ -1000,7 +1201,7 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={() => setPrintPreview(true)}
               className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold flex items-center gap-1.5 transition"
             >
               <Printer size={14} /> 이 프로젝트 상세 일정 출력
@@ -1008,7 +1209,7 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
             <button
               type="button"
               onClick={() => {
-                if (project) setLocalSubTasks(project.subTasks || {});
+                if (project) { editBase.current = project; remoteMerge.current={blocked:false}; setLocalSubTasks(project.subTasks || {}); setLocalPeriod({startDate:project.startDate,endDate:project.endDate}); setSyncError(''); }
               }}
               className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold flex items-center gap-1.5 transition"
             >
@@ -1019,11 +1220,12 @@ export default function ProjectModal({ projectId, onClose }: ProjectModalProps) 
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={handleSaveAll}
+              disabled={!canEdit||!!syncError} onClick={handleSaveAll}
               className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-black shadow-md flex items-center gap-1.5 transition active:scale-95"
             >
-              <Save size={14} /> 전체 일정 저장 완료
+              <Save size={14} /> 전체 일정 저장
             </button>
+            {onOpenInquiries&&<button type="button" onClick={openInquiries} disabled={!!syncError} className="rounded-xl border border-blue-300 px-4 py-2 text-xs font-bold text-blue-800 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-200 dark:hover:bg-blue-950">프로젝트 질의사항</button>}
             <button
               type="button"
               onClick={onClose}

@@ -12,26 +12,29 @@ import {
   Lock,
   RefreshCw,
   Trash2,
-  Save,
   Copy,
   ChevronDown,
   ChevronUp,
   ExternalLink,
+  X,
 } from 'lucide-react';
 import { useAuthStore, isUserAdmin } from '../store/useAuthStore';
+import { VIET_ASSIGNMENT_GROUPS } from '../utils/vietPersonnel';
 
 type SettingsTab = 'GDRIVE' | 'MEMBERS' | 'MY_PROFILE';
 
 export const SettingsView: React.FC = () => {
   const {
     currentUser,
+    loginError,
+    clearError,
     users,
     googleDriveConfig,
-    updateGoogleDriveConfig,
     testGoogleDriveConnection,
     changePassword,
     adminResetPassword,
     adminAddUser,
+    adminUpdateUser,
     adminDeleteUser,
   } = useAuthStore();
 
@@ -48,9 +51,6 @@ export const SettingsView: React.FC = () => {
   }, [isAdmin]);
 
   // 1. Google Drive 설정 폼 상태 (사용자 실제 OAuth 2.0 Credentials 연동)
-  const [clientIdInput, setClientIdInput] = useState(googleDriveConfig.clientId);
-  const [clientSecretInput, setClientSecretInput] = useState(googleDriveConfig.clientSecret);
-  const [redirectUriInput, setRedirectUriInput] = useState(googleDriveConfig.redirectUri);
   const [showConsoleGuide, setShowConsoleGuide] = useState(false);
   const [isTestingDrive, setIsTestingDrive] = useState(false);
   const [driveToast, setDriveToast] = useState<string | null>(null);
@@ -71,46 +71,26 @@ export const SettingsView: React.FC = () => {
   const [newUserDept, setNewUserDept] = useState('마감팀');
   const [newUserPos, setNewUserPos] = useState('사원');
   const [newUserId, setNewUserId] = useState('');
-  const [newUserPw, setNewUserPw] = useState('1234');
+  const [newUserPw, setNewUserPw] = useState('');
+  const [accountAction, setAccountAction] = useState<{id:string;name:string;company?:string;extension?:string;action:'reset'|'deactivate'}|null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetMode, setResetMode] = useState<'extension'|'temporary'>('extension');
+  const [resetExtension, setResetExtension] = useState('');
+  const [resetIssued, setResetIssued] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [accountBusy, setAccountBusy] = useState(false);
   const [newUserCompany, setNewUserCompany] = useState('컨코스트');
+  const [newUserVietTeamId, setNewUserVietTeamId] = useState('');
+  const [vietTeamBusy, setVietTeamBusy] = useState('');
 
-  // Google Drive 설정 저장 (루트 폴더는 '기술본부 자료실'로 자동 관리)
-  const handleSaveGDrive = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateGoogleDriveConfig({
-      clientId: clientIdInput,
-      clientSecret: clientSecretInput,
-      redirectUri: redirectUriInput,
-      rootFolderId: '',
-    });
-    setDriveToast('Google Drive 연동 환경설정이 안전하게 저장되었습니다.');
-    setTimeout(() => setDriveToast(null), 3000);
-  };
-
-  // Google Drive 연결 테스트 및 실시간 상태 점검
   const handleTestConnection = async () => {
     setIsTestingDrive(true);
     try {
-      const res = await fetch('/api/google/status');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.connected) {
-          setDriveToast(`회사 Google Drive (${data.companyEmail || 'concost_dt@gmail.com'}) 정상 연동됨 (Status 200 OK)`);
-        } else {
-          setDriveToast('회사 Google Drive 연동이 필요합니다. 아래 [회사 Google Drive 1회 연동] 버튼을 클릭하세요.');
-        }
-      } else {
-        await testGoogleDriveConnection();
-        setDriveToast('Google Drive OAuth 2.0 API 상태 점검 완료: 정상 연결됨 (Status 200 OK)');
-      }
-    } catch {
-      await testGoogleDriveConnection();
-      setDriveToast('Google Drive OAuth 2.0 API 상태 점검 완료');
-    } finally {
-      setIsTestingDrive(false);
-      setTimeout(() => setDriveToast(null), 4000);
-    }
+      const connected = await testGoogleDriveConnection();
+      setDriveToast(connected ? '회사 Google Drive 연결을 서버에서 확인했습니다.' : 'Google Drive 연결을 확인하지 못했습니다. 서버 설정과 회사 계정 연동을 확인하세요.');
+    } finally { setIsTestingDrive(false); }
   };
+  useEffect(() => { if (isAdmin) void testGoogleDriveConnection(); }, [isAdmin, testGoogleDriveConnection]);
 
   // 관리자 회사 Google Drive OAuth 1회 연동 시작
   const handleStartCompanyOAuth = () => {
@@ -120,19 +100,19 @@ export const SettingsView: React.FC = () => {
   // Google OAuth 콜백 복귀 알림 감지
   useEffect(() => {
     if (window.location.search.includes('gdrive=connected') || window.location.hash.includes('gdrive=connected')) {
-      setDriveToast('회사 Google Drive (concost_dt@gmail.com) 연동이 완벽하게 완료되었습니다! 모든 팀원이 바로 자료실을 사용할 수 있습니다.');
+      setDriveToast('Google 승인에서 돌아왔습니다. 서버 연결 상태를 확인하고 있습니다.');
       setTimeout(() => setDriveToast(null), 6000);
     }
   }, []);
 
   // 개인 비밀번호 변경 처리
-  const handleChangePassword = (e: React.FormEvent) => {
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPw !== confirmPw) {
       setPwMsg({ success: false, text: '새 비밀번호와 확인 입력이 일치하지 않습니다.' });
       return;
     }
-    const res = changePassword(currentPw, newPw);
+    const res = await changePassword(currentPw, newPw);
     setPwMsg({ success: res.success, text: res.message });
     if (res.success) {
       setCurrentPw('');
@@ -142,11 +122,11 @@ export const SettingsView: React.FC = () => {
   };
 
   // 신규 회원 등록
-  const handleCreateUser = (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUserName.trim() || !newUserId.trim()) return;
 
-    adminAddUser({
+    const saved=await adminAddUser({
       no: users.length + 1,
       name: newUserName.trim(),
       engName: newUserName.trim(),
@@ -159,15 +139,19 @@ export const SettingsView: React.FC = () => {
       idPrefix: newUserId.trim().toLowerCase(),
       password: newUserPw.trim(),
       role: newUserPos.includes('실장') || newUserPos.includes('본부장') ? 'ADMIN' : 'MEMBER',
+      ...(newUserCompany === 'VIETQS' ? {vietTeamId: newUserVietTeamId} : {}),
     });
 
+    if(!saved)return;
     setIsAddUserOpen(false);
     setNewUserName('');
     setNewUserId('');
-    setNewUserPw('1234');
+    setNewUserPw('');
+    setNewUserVietTeamId('');
   };
 
   const filteredMembers = users.filter((u) => {
+    if(u.active===false)return false;
     const matchDept = memberDeptFilter === '전체' || u.department.includes(memberDeptFilter);
     const matchSearch =
       u.name.includes(searchMember) ||
@@ -177,7 +161,9 @@ export const SettingsView: React.FC = () => {
   });
 
   return (
-    <div className="space-y-6 animate-fadeIn">
+    <div data-no-field-translate className="space-y-6 animate-fadeIn">
+      {loginError&&<p role="alert" className="p-3 rounded bg-rose-100 text-rose-900 dark:bg-rose-950 dark:text-rose-100">{loginError}</p>}
+      {driveToast&&<p role="status" className="p-3 rounded bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-100">{driveToast}</p>}
       {/* 타이틀 및 헤더 */}
       <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -257,7 +243,7 @@ export const SettingsView: React.FC = () => {
           )}
 
           {/* 클레임센터 스튜디오 3단계 프로토콜 안내 카드 */}
-          <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 text-white p-6 rounded-2xl border border-slate-800 shadow-md">
+          <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-6 rounded-2xl border border-slate-800 shadow-md">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 border-b border-slate-700/70 pb-3">
               <div>
                 <span className="text-[10px] font-extrabold text-orange-400 tracking-widest uppercase block mb-0.5">
@@ -267,12 +253,12 @@ export const SettingsView: React.FC = () => {
                   Google Drive 클라우드 중앙 저장소 연결
                   <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-400/30 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    연결 완료됨 (ACTIVE)
+                    {googleDriveConfig.connected ? '연결 확인됨' : '연결 미확인'}
                   </span>
                 </h3>
               </div>
               <span className="text-xs text-slate-400 font-mono">
-                최종 동기화: {googleDriveConfig.lastCheckedAt}
+                최종 확인: {googleDriveConfig.lastCheckedAt || '아직 확인하지 않음'}
               </span>
             </div>
 
@@ -314,7 +300,7 @@ export const SettingsView: React.FC = () => {
                 <ShieldCheck className="w-4 h-4 text-blue-600" />
                 Google Cloud Console 등록 파라미터 가이드 (필요시 클릭하여 펼침)
               </span>
-              <div className="flex items-center gap-2 text-slate-400">
+              <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
                 <span className="text-[11px] font-mono">{showConsoleGuide ? '접기' : '상세보기'}</span>
                 {showConsoleGuide ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </div>
@@ -351,12 +337,12 @@ export const SettingsView: React.FC = () => {
                   <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
                     <div>
                       <span className="text-[10px] text-slate-400 block font-sans font-bold">2. 사용자 지원 및 개발자 이메일</span>
-                      <span className="font-bold text-slate-800 dark:text-white">concost_dt@gmail.com</span>
+                      <span className="font-bold text-slate-800 dark:text-white">concost.dt@gmail.com</span>
                     </div>
                     <button
                       type="button"
                       onClick={() => {
-                        navigator.clipboard.writeText('concost_dt@gmail.com');
+                        navigator.clipboard.writeText('concost.dt@gmail.com');
                         setDriveToast('이메일 주소가 복사되었습니다.');
                         setTimeout(() => setDriveToast(null), 2500);
                       }}
@@ -501,63 +487,22 @@ export const SettingsView: React.FC = () => {
           </div>
 
           {/* Google Drive 상세 설정 폼 (필수 OAuth 키 3개만 깔끔하게 표시) */}
-          <form onSubmit={handleSaveGDrive} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 text-blue-600" />
                 Google Cloud API OAuth 2.0 Credentials
               </h4>
-              <span className="text-[11px] text-slate-400 font-medium">
+              <span className="text-[11px] text-slate-500 font-medium">
                 클라우드 저장소: <strong className="text-blue-700">기술본부 자료실 (자동 매핑)</strong>
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Google Client ID
-                </label>
-                <input
-                  type="text"
-                  value={clientIdInput}
-                  onChange={(e) => setClientIdInput(e.target.value)}
-                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg outline-none font-mono font-bold text-slate-800"
-                  placeholder="326035468474-...apps.googleusercontent.com"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Google Client Secret
-                </label>
-                <input
-                  type="password"
-                  value={clientSecretInput}
-                  onChange={(e) => setClientSecretInput(e.target.value)}
-                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg outline-none font-mono"
-                  placeholder="GOCSPX-..."
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Authorized Redirect URI
-                </label>
-                <input
-                  type="text"
-                  value={redirectUriInput}
-                  onChange={(e) => setRedirectUriInput(e.target.value)}
-                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg outline-none font-mono"
-                  required
-                />
-              </div>
-            </div>
+            <p className="text-sm text-slate-700">Google 연결 설정은 서버에서 관리합니다. 관리자는 연결 상태를 확인하고 회사 계정 연동을 진행할 수 있습니다.</p>
 
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-500 flex items-center justify-between">
               <span>※ 루트 폴더는 Google Drive 내 최상위 <strong className="text-slate-800 font-semibold">'기술본부 자료실'</strong>로 자동 생성 및 관리됩니다. (수동 ID 입력 불필요)</span>
-              <span className="text-emerald-600 font-bold flex items-center gap-1">
+              <span className="text-emerald-700 font-bold flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                 자동 폴더 트리 매핑 활성
               </span>
@@ -578,7 +523,7 @@ export const SettingsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleStartCompanyOAuth}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition shadow-xs flex items-center gap-1.5"
+                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg transition shadow-xs flex items-center gap-1.5"
                   title="관리자 1회 승인으로 회사 구글 드라이브 영구 연동"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -586,15 +531,8 @@ export const SettingsView: React.FC = () => {
                 </button>
               </div>
 
-              <button
-                type="submit"
-                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition shadow-xs flex items-center justify-center gap-1.5"
-              >
-                <Save className="w-3.5 h-3.5" />
-                설정값 저장
-              </button>
             </div>
-          </form>
+          </div>
         </div>
       )}
 
@@ -645,7 +583,7 @@ export const SettingsView: React.FC = () => {
                 value={searchMember}
                 onChange={(e) => setSearchMember(e.target.value)}
                 placeholder="이름, 사번, ID 검색..."
-                className="pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white w-56"
+                className="pl-8 pr-3 py-1.5 text-xs bg-slate-50 text-slate-900 placeholder:text-slate-500 border border-slate-200 rounded-lg outline-none focus:bg-white w-56"
               />
             </div>
           </div>
@@ -668,11 +606,11 @@ export const SettingsView: React.FC = () => {
               <tbody className="divide-y divide-slate-100">
                 {filteredMembers.map((member) => (
                   <tr key={member.id} className="hover:bg-slate-50/70 transition">
-                    <td className="py-2.5 px-3 font-mono text-slate-400">{member.no}</td>
+                    <td className="py-2.5 px-3 font-mono text-slate-500">{member.no}</td>
                     <td className="py-2.5 px-3 font-bold text-slate-900">
                       {member.name}
                       {member.engName && (
-                        <span className="text-[10px] text-slate-400 block font-normal font-mono">
+                        <span className="text-[10px] text-slate-500 block font-normal font-mono">
                           {member.engName}
                         </span>
                       )}
@@ -688,7 +626,14 @@ export const SettingsView: React.FC = () => {
                         {member.company}
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 font-medium text-slate-700">{member.department}</td>
+                    <td className="py-2.5 px-3 font-medium text-slate-700">{member.department}
+                      {member.company === 'VIETQS' && <select aria-label={`${member.name} 베트남 소속 그룹`} value={member.vietTeamId || ''} disabled={!!vietTeamBusy} onChange={async event=>{
+                        const groupId=event.target.value;
+                        if(groupId&&!VIET_ASSIGNMENT_GROUPS.some(group=>group.id===groupId&&group.department===member.department)){setDriveToast('같은 부서의 소속 그룹을 선택하세요.');return;}
+                        setVietTeamBusy(member.id);clearError();
+                        try{if(await adminUpdateUser(member.id,{vietTeamId:groupId}))setDriveToast(`${member.name} 소속 그룹을 변경했습니다.`);}finally{setVietTeamBusy('');}
+                      }} className="mt-1 block w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 disabled:bg-slate-100"><option value="">그룹 미지정</option>{VIET_ASSIGNMENT_GROUPS.filter(group=>group.department===member.department).map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</select>}
+                    </td>
                     <td className="py-2.5 px-3 text-slate-600">{member.position}</td>
                     <td className="py-2.5 px-3 font-mono text-slate-500">{member.idPrefix}</td>
                     <td className="py-2.5 px-3">
@@ -705,28 +650,15 @@ export const SettingsView: React.FC = () => {
                     <td className="py-2.5 px-3 text-right">
                       <div className="inline-flex items-center gap-1">
                         <button
-                          onClick={() => {
-                            const newPwInput = prompt(
-                              `${member.name} 님의 새로운 비밀번호를 입력하세요:`,
-                              '1234'
-                            );
-                            if (newPwInput) {
-                              adminResetPassword(member.id, newPwInput);
-                              alert(`${member.name} 님의 비밀번호가 초기화되었습니다.`);
-                            }
-                          }}
+                          onClick={() => {clearError();setResetPassword('');setResetMode(member.company==='VIETQS'?'temporary':'extension');setResetExtension(member.extension||'');setResetIssued(false);setShowResetPassword(false);setAccountAction({id:member.id,name:member.name,company:member.company,extension:member.extension,action:'reset'});}}
                           title="비밀번호 초기화"
                           className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-semibold transition"
                         >
                           비번리셋
                         </button>
                         <button
-                          onClick={() => {
-                            if (confirm(`${member.name} 회원을 삭제하시겠습니까?`)) {
-                              adminDeleteUser(member.id);
-                            }
-                          }}
-                          title="회원 삭제"
+                          onClick={() => {clearError();setAccountAction({id:member.id,name:member.name,action:'deactivate'});}}
+                          title="계정 비활성화"
                           className="p-1 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded transition"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -822,7 +754,7 @@ export const SettingsView: React.FC = () => {
                   value={currentPw}
                   onChange={(e) => setCurrentPw(e.target.value)}
                   placeholder="현재 설정된 비밀번호를 입력하세요"
-                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg outline-none focus:bg-white"
+                  className="w-full text-xs p-2.5 bg-slate-50 text-slate-900 placeholder:text-slate-500 border border-slate-300 rounded-lg outline-none focus:bg-white"
                   required
                 />
               </div>
@@ -836,7 +768,7 @@ export const SettingsView: React.FC = () => {
                   value={newPw}
                   onChange={(e) => setNewPw(e.target.value)}
                   placeholder="새로운 비밀번호 (4자리 이상)"
-                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg outline-none focus:bg-white"
+                  className="w-full text-xs p-2.5 bg-slate-50 text-slate-900 placeholder:text-slate-500 border border-slate-300 rounded-lg outline-none focus:bg-white"
                   required
                 />
               </div>
@@ -850,7 +782,7 @@ export const SettingsView: React.FC = () => {
                   value={confirmPw}
                   onChange={(e) => setConfirmPw(e.target.value)}
                   placeholder="새 비밀번호를 다시 입력하세요"
-                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg outline-none focus:bg-white"
+                  className="w-full text-xs p-2.5 bg-slate-50 text-slate-900 placeholder:text-slate-500 border border-slate-300 rounded-lg outline-none focus:bg-white"
                   required
                 />
               </div>
@@ -872,8 +804,9 @@ export const SettingsView: React.FC = () => {
       {/* 신규 회원 등록 모달 (관리자 전용) */}
       {isAdmin && isAddUserOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4">
-            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+          <div className="relative bg-white text-slate-900 [color-scheme:light] rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4">
+            <button type="button" onClick={() => setIsAddUserOpen(false)} aria-label="신규 회원 등록 닫기" className="absolute top-3 right-3 !m-0 rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"><X size={20}/></button>
+            <h3 className="!mt-0 pr-10 text-base font-bold text-slate-900 flex items-center gap-2">
               <Plus className="w-5 h-5 text-blue-600" />
               신규 기술본부 회원 등록
             </h3>
@@ -896,7 +829,7 @@ export const SettingsView: React.FC = () => {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">부서</label>
                   <select
                     value={newUserDept}
-                    onChange={(e) => setNewUserDept(e.target.value)}
+                    onChange={(e) => {setNewUserDept(e.target.value);setNewUserVietTeamId('');}}
                     className="w-full text-xs p-2.5 border border-slate-300 rounded-lg bg-white"
                   >
                     <option value="마감팀">마감팀</option>
@@ -939,6 +872,10 @@ export const SettingsView: React.FC = () => {
                   <input
                     type="password"
                     value={newUserPw}
+                    minLength={newUserCompany==='VIETQS'?4:8}
+                    pattern={newUserCompany==='VIETQS'?'(?:[0-9]{4}|.{8,256})':undefined}
+                    maxLength={256}
+                    autoComplete="new-password"
                     onChange={(e) => setNewUserPw(e.target.value)}
                     className="w-full text-xs p-2.5 border border-slate-300 rounded-lg"
                     required
@@ -950,13 +887,14 @@ export const SettingsView: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">소속 회사</label>
                 <select
                   value={newUserCompany}
-                  onChange={(e) => setNewUserCompany(e.target.value)}
+                  onChange={(e) => {setNewUserCompany(e.target.value);setNewUserVietTeamId('');}}
                   className="w-full text-xs p-2.5 border border-slate-300 rounded-lg bg-white"
                 >
                   <option value="컨코스트">컨코스트 (한국 본사)</option>
                   <option value="VIETQS">VIETQS (베트남 법인)</option>
                 </select>
               </div>
+              {newUserCompany === 'VIETQS' && <label className="block text-xs font-semibold text-slate-700">베트남 소속 그룹<select aria-label="신규 베트남 소속 그룹" value={newUserVietTeamId} onChange={event=>setNewUserVietTeamId(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs text-slate-900"><option value="">그룹 미지정</option>{VIET_ASSIGNMENT_GROUPS.filter(group=>group.department===newUserDept).map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</select></label>}
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
@@ -975,6 +913,30 @@ export const SettingsView: React.FC = () => {
               </div>
             </form>
           </div>
+        </div>
+      )}
+      {accountAction && (
+        <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4">
+          <form role="dialog" aria-modal="true" aria-labelledby="account-action-title" className="relative bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-6 rounded-xl w-full max-w-md space-y-4" onSubmit={async e=>{
+            e.preventDefault();if(accountBusy||resetIssued)return;setAccountBusy(true);
+            try{const ok=accountAction.action==='reset'?await adminResetPassword(accountAction.id,resetMode==='extension'?resetExtension:resetPassword,{resetMode,extension:resetMode==='extension'?resetExtension:undefined}):await adminDeleteUser(accountAction.id);
+              if(ok){setDriveToast(`${accountAction.name} 계정 ${accountAction.action==='reset'?(resetMode==='extension'?'내선번호로 초기화':'임시 비밀번호 발급'):'비활성화'} 완료`);if(accountAction.action==='reset'&&resetMode==='temporary'){setResetIssued(true);}else{setAccountAction(null);setResetPassword('');}}
+            }finally{setAccountBusy(false);}
+          }}>
+            <button type="button" disabled={accountBusy} onClick={()=>{setAccountAction(null);setResetPassword('');setResetIssued(false);setShowResetPassword(false);}} aria-label="회원 계정 관리 닫기" className="absolute top-3 right-3 !m-0 rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white disabled:opacity-50"><X size={20}/></button>
+            <h3 id="account-action-title" className="!mt-0 pr-10 font-bold">{accountAction.name} · {accountAction.action==='reset'?'비밀번호 리셋':'계정 비활성화'}</h3>
+            {accountAction.action==='reset'?<>
+              {!resetIssued&&<label className="block text-sm">리셋 방식<select disabled={accountBusy} value={resetMode} onChange={e=>{setResetMode(e.target.value as 'extension'|'temporary');setResetPassword('');setShowResetPassword(false);}} className="mt-2 w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white p-2"><option value="extension">내선번호 4자리로 초기화</option><option value="temporary">임시 비밀번호 발급</option></select></label>}
+              {resetMode==='extension'?<label className="block text-sm">내선번호 (4자리)<input autoFocus type="text" inputMode="numeric" autoComplete="off" required pattern="[0-9]{4}" minLength={4} maxLength={4} disabled={accountBusy} value={resetExtension} onChange={e=>setResetExtension(e.target.value)} className="mt-2 w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white p-2"/><span className="block mt-2 text-xs text-slate-600 dark:text-slate-300">확인한 본인 내선번호를 입력하세요. 초기화한 비밀번호는 이 4자리 숫자입니다.</span></label>:<>
+                {resetIssued&&<p role="status" className="rounded bg-emerald-100 text-emerald-950 dark:bg-emerald-950 dark:text-emerald-100 p-3 text-sm">임시 비밀번호 발급이 완료되었습니다. 회원에게 전달해 주세요. 창을 닫으면 발급한 값을 다시 표시하지 않습니다.</p>}
+                <label className="block text-sm">임시 비밀번호 ({accountAction.company==='VIETQS'?'숫자 4자리 또는 8~256자':'8~256자'})<input autoFocus type={showResetPassword?'text':'password'} autoComplete="new-password" required={!resetIssued} readOnly={resetIssued} disabled={accountBusy} minLength={accountAction.company==='VIETQS'?4:8} pattern={accountAction.company==='VIETQS'?'(?:[0-9]{4}|.{8,256})':undefined} maxLength={256} value={resetPassword} onChange={e=>setResetPassword(e.target.value)} className="mt-2 w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white p-2"/></label>
+                <div className="flex flex-wrap items-center gap-3 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={showResetPassword} onChange={e=>setShowResetPassword(e.target.checked)}/>임시 비밀번호 표시</label>{!resetIssued&&<button type="button" disabled={accountBusy} className="underline" onClick={()=>{const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';setResetPassword(Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>alphabet[b&31]).join(''));}}>임시 비밀번호 생성</button>}{resetIssued&&<button type="button" className="underline" onClick={()=>void navigator.clipboard.writeText(resetPassword).then(()=>setDriveToast('임시 비밀번호를 복사했습니다.')).catch(()=>setDriveToast('복사하지 못했습니다. 임시 비밀번호 표시를 선택해 확인하세요.'))}>임시 비밀번호 복사</button>}</div>
+              </>}
+              <p className="text-xs text-slate-600 dark:text-slate-300">리셋하면 해당 회원의 기존 로그인은 종료됩니다. 로그인 후 개인 설정에서 비밀번호를 변경하도록 안내해 주세요.</p>
+            </>:<p className="text-sm">로그인 권한을 중지합니다. 기존 일정·회의록과 작성 기록은 유지됩니다.</p>}
+            {loginError&&<p role="alert" className="text-red-600 dark:text-red-400 text-sm">{loginError}</p>}
+            <div className="flex justify-end gap-2"><button type="button" disabled={accountBusy} onClick={()=>{setAccountAction(null);setResetPassword('');setResetIssued(false);setShowResetPassword(false);}} className="px-4 py-2 rounded bg-slate-100 dark:bg-slate-700">{resetIssued?'닫기':'취소'}</button>{!resetIssued&&<button disabled={accountBusy} type="submit" className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50">{accountBusy?'처리 중…':accountAction.action==='reset'?(resetMode==='extension'?'내선번호로 초기화':'임시 비밀번호 발급'):'확인'}</button>}</div>
+          </form>
         </div>
       )}
     </div>

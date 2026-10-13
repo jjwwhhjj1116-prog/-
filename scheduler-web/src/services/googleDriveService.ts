@@ -1,3 +1,4 @@
+import {resumableVaultUpload, type UploadProgress} from './resumableUpload';
 /**
  * Google Drive API 및 기술본부 통합 자료실 서비스
  * 
@@ -37,6 +38,10 @@ export const SUBTITLES = [
   // 구조팀
   '1.프로그램파일(RC)',
   '1.프로그램파일 (RC)',
+  '2.프로그램파일(RC)',
+  '3.CAD작업도면',
+  '4.견적조건 및 질의사항',
+  '5.VIET QS 작업자료',
   '2.CAD작업도면',
   '3.견적조건 및 질의사항',
   '4.VIET QS 작업자료',
@@ -65,12 +70,19 @@ export const FOLDER_SUBTITLES: Record<MainFolderType, readonly SubtitleType[]> =
     '6.타분야자료',
   ],
   '03.구조자료': [
-    '1.프로그램파일(RC)',
-    '2.CAD작업도면',
-    '3.견적조건 및 질의사항',
-    '4.VIET QS 작업자료',
+    '1.납품자료',
+    '2.프로그램파일(RC)',
+    '3.CAD작업도면',
+    '4.견적조건 및 질의사항',
+    '5.VIET QS 작업자료',
   ],
 };
+
+// 새 업로드는 새 번호를 쓰고, 이전 구조팀 폴더의 파일은 기존 Drive 위치 그대로 보여준다.
+export function displaySubtitle(mainFolder:string, subtitle:string):string {
+  if(mainFolder!=='03.구조자료')return subtitle;
+  return ({'1.프로그램파일(RC)':'2.프로그램파일(RC)','1.프로그램파일 (RC)':'2.프로그램파일(RC)','2.CAD작업도면':'3.CAD작업도면','3.견적조건 및 질의사항':'4.견적조건 및 질의사항','4.VIET QS 작업자료':'5.VIET QS 작업자료'} as Record<string,string>)[subtitle]||subtitle;
+}
 
 export interface SubtitleMeta {
   code: string;
@@ -160,6 +172,10 @@ export const SUBTITLE_METAS: Record<string, SubtitleMeta> = {
     icon: 'ETC',
   },
   // 구조팀
+  '2.프로그램파일(RC)': {
+    code: 'RC', title: '2.프로그램파일(RC)',
+    description: '철근콘크리트(RC) 구조물량 산출 프로그램 원본, 산출 데이터 백업', icon: 'RC',
+  },
   '1.프로그램파일(RC)': {
     code: 'RC',
     title: '1.프로그램파일(RC)',
@@ -249,6 +265,7 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
 // 용량 표기 포맷
 export function formatBytes(bytes: number): string {
   if (bytes <= 0) return '0 B';
+  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(2)} GB`;
   if (bytes < 1_000) return `${bytes} B`;
   if (bytes < 1_000_000) return `${(bytes / 1_000).toFixed(1)} KB`;
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
@@ -260,8 +277,8 @@ const LOCAL_STORAGE_KEY = 'concost_tech_vault_files_v2';
 function getLocalVaultFiles(): TechVaultFile[] {
   try {
     // 과거 레거시 유령 캐시 자동 정리
-    localStorage.removeItem('concost_tech_vault_files_cache');
-    localStorage.removeItem('concost_drive_vault_files');
+    // 기존 캐시는 임의 삭제하지 않는다.
+
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
     return saved ? JSON.parse(saved) : [];
   } catch {
@@ -323,7 +340,7 @@ export async function checkServerGoogleDriveConnected(): Promise<boolean> {
   } catch (e) {
     console.warn('Failed to check Google Drive server connection:', e);
   }
-  return true; // 기본값 활성화 (클레임센터 스튜디오 정책)
+  return false; // 연결 확인 실패를 정상으로 표시하지 않는다.
 }
 
 /**
@@ -534,7 +551,8 @@ export async function fetchVaultFiles(projectCode?: string): Promise<TechVaultFi
           id: f.id,
           projectCode: f.project_code || projectCode || '',
           projectName: f.project_name || '',
-          teamName: f.team_name || '마감팀',
+          teamName: f.team_name || '분류 미확인',
+          mainFolder: f.main_folder || undefined,
           roleName: f.role_name || '공종',
           subtitle: (f.category as SubtitleType) || '1.프로그램파일 (FIN)',
           originalName: f.original_name || f.name,
@@ -550,147 +568,31 @@ export async function fetchVaultFiles(projectCode?: string): Promise<TechVaultFi
         return mapped;
       }
     }
-  } catch (err) {
-    console.warn('Server fetch failed, using local cache:', err);
-  }
-
-  const locals = getLocalVaultFiles();
-  if (projectCode) {
-    return locals.filter((f) => f.projectCode === projectCode);
-  }
-  return locals;
+  } catch { throw new Error('자료실 서버에 연결하지 못했습니다. 마지막 표시 목록은 유지됩니다.'); }
+  throw new Error('자료실 목록 조회에 실패했습니다. 서버 연결을 확인하세요.');
 }
 
 /**
  * 기술본부 5단계 분류 파일 업로드 실행
  */
 export async function uploadVaultFile(params: {
-  projectCode: string;
-  projectName: string;
-  mainFolder?: MainFolderType;
-  teamName: string;
-  roleName: string;
-  subtitle: SubtitleType;
-  file: File;
-  uploadedBy: string;
-}): Promise<TechVaultFile> {
-  const { projectCode, projectName, mainFolder, teamName, roleName, subtitle, file, uploadedBy } = params;
-  const sha256 = await calculateSha256(file);
-  const fileId = `vault_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-  const uploadedAt = new Date().toISOString();
-
-  // Base64 생성 (서버로 전송하여 회사 Google Drive API 업로드 및 D1 보관)
-  let base64Data = '';
-  try {
-    if (file.size <= 15 * 1024 * 1024) {
-      const buffer = await file.arrayBuffer();
-      base64Data = arrayBufferToBase64(buffer);
-    }
-  } catch (e) {
-    console.warn('Base64 encoding skipped for large file', e);
-  }
-
-  let serverDriveUrl = `https://drive.google.com/drive/u/0/search?q=${encodeURIComponent(file.name)}`;
-
-  const payload = {
-    id: fileId,
-    projectCode,
-    projectName,
-    mainFolder: mainFolder || '02.마감팀자료',
-    teamName,
-    roleName,
-    category: subtitle,
-    originalName: file.name,
-    mimeType: file.type || 'application/octet-stream',
-    byteSize: file.size,
-    sha256,
-    uploadedBy,
-    uploadedAt,
-    driveUrl: serverDriveUrl,
-    fileData: base64Data,
-  };
-
-  const res = await fetch('/api/drive/files', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) {
-    const errorJson = await res.json().catch(() => ({}));
-    throw new Error(errorJson.message || errorJson.error || 'Google Drive 서버 업로드 실패');
-  }
-
-  const data = await res.json();
-  if (data.file?.driveUrl) {
-    serverDriveUrl = data.file.driveUrl;
-  }
-
-  const fileRecord: TechVaultFile = {
-    id: fileId,
-    projectCode,
-    projectName,
-    mainFolder,
-    teamName,
-    roleName,
-    subtitle,
-    originalName: file.name,
-    mimeType: file.type || 'application/octet-stream',
-    byteSize: file.size,
-    sha256,
-    storageProvider: 'GOOGLE_DRIVE',
-    uploadedBy,
-    uploadedAt,
-    downloadUrl: `/api/drive/files/download?id=${encodeURIComponent(fileId)}`,
-    driveUrl: serverDriveUrl,
-  };
-
-  const locals = getLocalVaultFiles();
-  locals.unshift(fileRecord);
-  saveLocalVaultFiles(locals);
-
-  return fileRecord;
+  projectCode:string;projectName:string;mainFolder?:MainFolderType;teamName:string;roleName:string;subtitle:SubtitleType;file:File;uploadedBy:string;
+  signal?:AbortSignal;onProgress?:(progress:UploadProgress)=>void;
+}):Promise<TechVaultFile>{
+ const {file,signal,onProgress,...metadata}=params;
+ const id=await resumableVaultUpload(file,{...metadata,category:params.subtitle},signal,onProgress);
+ const record=(await fetchVaultFiles(params.projectCode)).find(f=>f.id===id);
+ if(!record)throw new Error('Drive 전송은 끝났지만 목록 확인에 실패했습니다. 같은 파일을 다시 선택하면 등록 상태를 복구합니다.');
+ return record;
 }
 
-/**
- * 파일 다운로드 실행 (엑셀 및 한글 파일명 깨짐 방지 2중 잠금)
- */
-export async function downloadVaultFile(file: TechVaultFile): Promise<void> {
-  try {
-    const res = await fetch(`/api/drive/files/download?id=${encodeURIComponent(file.id)}`);
-    if (res.ok) {
-      const blob = await res.blob();
-      const mimeType =
-        file.mimeType ||
-        (file.originalName.endsWith('.xlsx')
-          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-          : file.originalName.endsWith('.xls')
-          ? 'application/vnd.ms-excel'
-          : 'application/octet-stream');
-
-      const typedBlob = new Blob([blob], { type: mimeType });
-      const url = URL.createObjectURL(typedBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      const downloadFileName = file.originalName || 'download.xlsx';
-      a.setAttribute('download', downloadFileName);
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 300);
-      return;
-    }
-  } catch (err) {
-    console.warn('API download failed, fallback to direct notification', err);
-  }
-
-  if (file.driveUrl) {
-    window.open(file.driveUrl, '_blank');
-  } else {
-    alert(`[${file.originalName}] 다운로드를 완료할 수 없습니다.`);
-  }
+/** 전체 파일을 Blob으로 만들지 않고 브라우저 다운로드 관리자로 전송한다. */
+export async function downloadVaultFile(file:TechVaultFile):Promise<void>{
+ const url=`/api/drive/files/download?id=${encodeURIComponent(file.id)}`;
+ const ready=await fetch(url,{method:'HEAD'});
+ if(!ready.ok)throw new Error(ready.status===409?'Drive 원본이 변경되었거나 연결 정보가 없습니다. 원본을 확인하세요.':'다운로드 준비 실패: 로그인·회사 Drive 연결·원본 접근 권한을 확인하세요.');
+ const a=document.createElement('a');a.href=url;a.download=file.originalName;
+ document.body.appendChild(a);a.click();a.remove();
 }
 
 /**
@@ -702,10 +604,11 @@ export async function deleteVaultFile(fileId: string): Promise<boolean> {
       method: 'DELETE',
     });
     if (!res.ok) {
-      console.warn('Server delete returned non-200');
+      return false;
     }
   } catch (err) {
     console.warn('Server delete failed:', err);
+    return false;
   }
 
   // 로컬 캐시에서도 삭제

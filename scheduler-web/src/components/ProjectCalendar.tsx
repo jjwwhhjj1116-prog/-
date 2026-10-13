@@ -1,3 +1,5 @@
+import {printTranslated,translatedAlert} from '../services/translationService';
+import { projectProgress, percentLabel,projectScheduleRange } from '../utils/scheduleProgress';
 import { useState, useMemo, useRef } from 'react';
 import {
   format,
@@ -11,26 +13,35 @@ import {
   getDay,
   isWeekend
 } from 'date-fns';
-import { ko } from 'date-fns/locale';
+import { ko, vi } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Printer, Info } from 'lucide-react';
-import { useProjectStore, type Department } from '../store/useProjectStore';
+import { useProjectStore, type Department, type PostDeliveryTask } from '../store/useProjectStore';
 import { exportProjectsToExcel, importProjectsFromExcel } from '../services/excelService';
 
-import { HOLIDAYS_2026 } from '../constants/holidays';
+import { HOLIDAYS } from '../constants/holidays';
+import { projectHasNoPM, projectPMId, type PendingIntakeProject } from '../utils/pendingAssignment';
 
 interface ProjectCalendarProps {
-  onOpenPrintModal?: () => void;
-  onExportExcel?: () => void;
+  date?: Date;
+  onDateChange?: (date: Date) => void;
+  onOpenPrintModal?: (date?: Date) => void;
+  onExportExcel?: (date?: Date) => void;
   onImportExcel?: () => void;
   onSelectProject?: (projectCode: string) => void;
+  pendingIntake?: PendingIntakeProject[];
+  onSelectIntake?: (item: PendingIntakeProject) => void;
   lang?: 'ko' | 'vi';
 }
 
 export default function ProjectCalendar({
+  date,
+  onDateChange,
   onOpenPrintModal,
   onExportExcel,
   onImportExcel,
   onSelectProject,
+  pendingIntake = [],
+  onSelectIntake,
   lang = 'ko',
 }: ProjectCalendarProps) {
   const {
@@ -38,18 +49,20 @@ export default function ProjectCalendar({
     personnel,
     filterDepartment,
     setSelectedProjectId,
-    setProjects,
+    importProjects,
   } = useProjectStore();
 
   // 실시간 오늘 기준일 (2026-09-21)
-  const [currentDate, setCurrentDate] = useState(() => {
+  const [localDate, setLocalDate] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), now.getDate());
   });
+  const currentDate = date ?? localDate;
+  const setCurrentDate = onDateChange ?? setLocalDate;
 
   // 다국어 라벨 사전
   const t = {
-    titleDate: lang === 'vi' ? format(currentDate, 'Tháng M năm yyyy') : format(currentDate, 'yyyy년 M월', { locale: ko }),
+    titleDate: lang === 'vi' ? format(currentDate, "'Tháng' M 'năm' yyyy") : format(currentDate, 'yyyy년 M월', { locale: ko }),
     activeCount: lang === 'vi' ? 'Dự án đang tiến hành' : '진행 프로젝트',
     hiddenCount: (count: number) => lang === 'vi' ? `(Ẩn ${count} dự án không có lịch)` : `(일정 없는 ${count}개 프로젝트 숨김됨)`,
     guideNotice: lang === 'vi' ? 'Lịch trình kỹ thuật CONCOST Trụ sở chính & VIETQS' : '한국 본사 · VIETQS 정밀 캘린더 (날짜 칸의 무늬와 마우스 오버로 어느 지사의 휴일인지 확인하세요.)',
@@ -91,19 +104,24 @@ export default function ProjectCalendar({
     if (!onlyCurrentMonth) return deptProjects;
 
     return deptProjects.filter((project) => {
+      // 접수된 미배정 프로젝트는 기간이 과거/다음 달이어도 배정될 때까지 숨기지 않는다.
+      if (projectHasNoPM(project) || pendingIntake.some(item => item.code === project.code)) return true;
       // 1) 메인 일정이 당월과 겹치는지 여부
-      const hasMainOverlap = !(project.endDate < monthStartStr || project.startDate > monthEndStr);
-      if (!hasMainOverlap) return false;
+      const range=projectScheduleRange(project);
+      const hasMainOverlap = Boolean(range.start&&range.end) && !(range.end < monthStartStr || range.start > monthEndStr);
+      if(!project.startDate||!project.endDate)return true;
+      const hasFollowUp=(project.postDeliveryTasks||[]).some(task=>task.startDate<=monthEndStr&&task.endDate>=monthStartStr);
+      if (!hasMainOverlap&&!hasFollowUp) return false;
 
       // 2) 이미 납품 완료된 프로젝트(100% 완료)는 9월 진행 중 목록에서 제외
-      if (project.status === '납품' || project.progress >= 100) return false;
+      if (!hasFollowUp&&(project.status === '납품' || project.progress >= 100)) return false;
 
       // 3) 당월 초순(9월 5일 이전)에 이미 종결된 구 프로젝트 제외
-      if (project.endDate < '2026-09-05') return false;
+
 
       return true;
     });
-  }, [deptProjects, onlyCurrentMonth, monthStartStr, monthEndStr]);
+  }, [deptProjects, onlyCurrentMonth, monthStartStr, monthEndStr, pendingIntake]);
 
   // 3차: 사용자 요청 핵심 반영 - "프로젝트하나에서 2갈래로 나뉘어져서 구조 마감팀 일정이 같이 보이게 통합"
   const groupedProjects = useMemo(() => {
@@ -120,10 +138,15 @@ export default function ProjectCalendar({
         projectId: string;
         department: Department;
         pmPerson?: (typeof personnel)[0];
+        pmId:string;
+        unassigned: boolean;
         startDate: string;
         endDate: string;
         progress: number;
+        planned?: number;
+        actual?: number;
         status: string;
+        postDeliveryTasks: PostDeliveryTask[];
       }[];
     }> = {};
 
@@ -147,16 +170,22 @@ export default function ProjectCalendar({
         groupMap[code].departments.push(p.department);
       }
 
-      const pmPerson = personnel.find((pe) => pe.id === p.pmId);
+      const pmId = projectPMId(p);
+      const pmPerson = personnel.find((pe) => pe.id === pmId);
 
       groupMap[code].lanes.push({
         projectId: p.id,
         department: p.department,
         pmPerson,
-        startDate: p.startDate,
-        endDate: p.endDate,
+        pmId,
+        unassigned: projectHasNoPM(p),
+        startDate: projectScheduleRange(p).start,
+        endDate: projectScheduleRange(p).end,
         progress: p.progress,
+        planned: projectProgress(p).planned,
+        actual: projectProgress(p).actual,
         status: p.status,
+        postDeliveryTasks:(p.postDeliveryTasks||[]).filter(task=>task.startDate<=monthEndStr&&task.endDate>=monthStartStr),
       });
     });
 
@@ -169,8 +198,16 @@ export default function ProjectCalendar({
     return Object.values(groupMap).map((grp) => {
       grp.lanes.sort((a, b) => (deptOrder[a.department] || 99) - (deptOrder[b.department] || 99));
       return grp;
-    });
-  }, [filteredProjects, personnel]);
+    }).sort((a, b) => Number(b.lanes.some(lane => lane.unassigned)) - Number(a.lanes.some(lane => lane.unassigned)));
+  }, [filteredProjects, personnel, monthStartStr, monthEndStr]);
+
+  const waitingIntake = filterDepartment === 'ALL'
+    ? pendingIntake.filter((item, index, all) => all.findIndex(other => other.code === item.code) === index && !groupedProjects.some(group => group.code === item.code))
+    : [];
+  const pendingProjectCount = new Set([
+    ...groupedProjects.filter(group => group.lanes.some(lane => lane.unassigned)).map(group => group.code),
+    ...pendingIntake.filter(item => filterDepartment === 'ALL' || item.missingDepartments?.includes(filterDepartment)).map(item => item.code),
+  ]).size;
 
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
   // 오늘 기준일 (2026-09-21 등 실제 현재 날짜 실시간 연동)
@@ -191,9 +228,9 @@ export default function ProjectCalendar({
   // 엑셀 내보내기 안전 실행
   const handleSafeExportExcel = () => {
     if (onExportExcel) {
-      onExportExcel();
+      onExportExcel(currentDate);
     } else {
-      exportProjectsToExcel(projects, personnel, currentDate);
+      exportProjectsToExcel(projects, personnel, currentDate, 1, filterDepartment);
     }
   };
 
@@ -213,13 +250,13 @@ export default function ProjectCalendar({
     try {
       const imported = await importProjectsFromExcel(file, personnel);
       if (imported.length > 0) {
-        setProjects(imported);
-        alert(`성공: 엑셀에서 ${imported.length}개 프로젝트 일정을 동기화하였습니다.`);
+        importProjects(imported);
+        void translatedAlert(`성공: 엑셀에서 ${imported.length}개 프로젝트 일정을 동기화하였습니다.`);
       } else {
-        alert('엑셀 파일에서 유효한 프로젝트 데이터를 찾지 못했습니다.');
+        void translatedAlert('엑셀 파일에서 유효한 프로젝트 데이터를 찾지 못했습니다.');
       }
     } catch (err: any) {
-      alert('엑셀 파싱 오류: ' + (err?.message || err));
+      void translatedAlert('엑셀 파싱 오류: ' + (err?.message || err));
     } finally {
       if (internalFileInputRef.current) internalFileInputRef.current.value = '';
     }
@@ -228,14 +265,15 @@ export default function ProjectCalendar({
   // 인쇄 안전 실행
   const handleSafePrint = () => {
     if (onOpenPrintModal) {
-      onOpenPrintModal();
+      onOpenPrintModal(currentDate);
     } else {
-      window.print();
+      void printTranslated();
     }
   };
 
   // 레인별 간트 바 위치 계산 (2갈래 타임라인 대응)
   const getLaneBarStyle = (startDateStr: string, endDateStr: string) => {
+    if(!startDateStr||!endDateStr)return null;
     const start = new Date(startDateStr);
     const end = new Date(endDateStr);
 
@@ -244,12 +282,12 @@ export default function ProjectCalendar({
 
     if (effStart > monthEnd || effEnd < monthStart) return null;
 
-    const left = differenceInDays(effStart, monthStart) * cellWidth;
-    const width = (differenceInDays(effEnd, effStart) + 1) * cellWidth;
+    const left = differenceInDays(effStart, monthStart) / daysInMonth.length * 100;
+    const width = (differenceInDays(effEnd, effStart) + 1) / daysInMonth.length * 100;
 
     return {
-      left: `${left + 2}px`,
-      width: `${Math.max(width - 4, 30)}px`,
+      left: `calc(${left}% + 2px)`,
+      width: `calc(${width}% - 4px)`,
     };
   };
 
@@ -259,7 +297,7 @@ export default function ProjectCalendar({
   };
 
   return (
-    <div className="corporate-card overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+    <div className="corporate-card min-w-0 w-full overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
       {/* 숨김 엑셀 파일 입력 필드 (자체 fallback) */}
       <input
         ref={internalFileInputRef}
@@ -272,13 +310,16 @@ export default function ProjectCalendar({
       {/* 1. 상단 컨트롤 헤더 (다크모드 단일 톤 적용) */}
       <div className="p-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xl font-extrabold text-slate-900 dark:text-white">
-              {lang === 'vi' ? format(currentDate, 'Tháng M năm yyyy') : format(currentDate, 'yyyy년 M월', { locale: ko })}
+              {lang === 'vi' ? format(currentDate, "'Tháng' M 'năm' yyyy") : format(currentDate, 'yyyy년 M월', { locale: ko })}
             </span>
             <span className="text-xs font-bold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/70 dark:text-emerald-300 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-              {format(currentDate, 'M')}월 {t.activeCount}: 실 진행 {groupedProjects.length}개 프로젝트
+              {lang === 'vi' ? `Hiển thị ${groupedProjects.length + waitingIntake.length} dự án` : `${format(currentDate, 'M')}월 프로젝트: ${groupedProjects.length + waitingIntake.length}개 표시`}
             </span>
+            {pendingProjectCount > 0 && <span className="text-xs font-bold text-amber-900 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/70 px-2 py-0.5 rounded border border-amber-300 dark:border-amber-800">
+              {lang === 'vi' ? `Mới · chưa phân công ${pendingProjectCount} dự án` : `신규 · 미배정 ${pendingProjectCount}개`}
+            </span>}
             {onlyCurrentMonth && (
               <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">
                 (마감·구조·토목 협업 통합 표현, 완료·타월 {projects.length - filteredProjects.length}건 숨김)
@@ -301,7 +342,7 @@ export default function ProjectCalendar({
                 ? 'bg-blue-50 dark:bg-blue-950/60 text-[#00338d] dark:text-blue-300 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200'
             }`}
-            title="현재 조회 중인 월에 일정이 있는 프로젝트만 필터링합니다."
+            title="현재 월의 일정을 표시합니다. 신규·미배정 프로젝트는 월과 관계없이 표시합니다."
           >
             <span className={`w-2 h-2 rounded-full ${onlyCurrentMonth ? 'bg-[#00338d] dark:bg-blue-400' : 'bg-slate-400'}`} />
             {onlyCurrentMonth ? t.btnMonthOnly(format(currentDate, 'M')) : t.btnAllProjects}
@@ -375,11 +416,11 @@ export default function ProjectCalendar({
       </div>
 
       {/* 2. 범례 및 공종 표시 툴바 */}
-      <div className="px-4 py-2 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
+      <div className="px-4 py-2 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-800 flex flex-wrap gap-2 items-center justify-between text-xs text-slate-600 dark:text-slate-400">
         <span className="font-bold text-slate-700 dark:text-slate-300">
           물량산출 프로젝트 공정 타임라인
         </span>
-        <div className="flex items-center gap-4 text-[11px]">
+        <div className="flex flex-wrap items-center gap-4 text-[11px]">
           <span className="flex items-center gap-1.5">
             <span className="w-3.5 h-3.5 rounded-sm border border-red-300 pattern-holiday-kr"></span>
             한국 공휴일
@@ -396,12 +437,12 @@ export default function ProjectCalendar({
       </div>
 
       {/* 3. 간트 그리드 본체 (수평 스크롤) */}
-      <div className="overflow-x-auto custom-scrollbar">
-        <div style={{ minWidth: `${410 + daysInMonth.length * cellWidth}px` }}>
+      <div className="schedule-calendar-scrollport overflow-auto custom-scrollbar" role="region" aria-label={`${t.titleDate} 프로젝트 캘린더`} tabIndex={0}>
+        <div data-calendar-month={format(monthStart, 'yyyy-MM')} style={{ width: '100%', minWidth: `${410 + daysInMonth.length * cellWidth}px` }}>
           {/* 3-1. 날짜 헤더 행 */}
-          <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-850 text-xs font-semibold text-slate-700 dark:text-slate-200 select-none">
+          <div className="sticky top-0 z-40 flex border-b border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 select-none">
             {/* 고정 열 1: 프로젝트 정보 (본문 w-[230px]와 1:1 일치) */}
-            <div className="w-[230px] flex-shrink-0 px-3 py-2.5 border-r border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <div className="sticky left-0 z-50 bg-slate-100 dark:bg-slate-800 w-[230px] flex-shrink-0 px-3 py-2.5 border-r border-slate-200 dark:border-slate-800 flex items-center justify-between">
               <span className="font-extrabold text-slate-900 dark:text-white">{t.colProject}</span>
               <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">클릭시 세부일정</span>
             </div>
@@ -414,10 +455,10 @@ export default function ProjectCalendar({
               {t.colPm}
             </div>
             {/* 날짜 그리드 열 (헤더와 본문 그리드 픽셀 1:1 고정) */}
-            <div className="flex shrink-0" style={{ width: `${daysInMonth.length * cellWidth}px` }}>
+            <div className="flex flex-1 min-w-0">
               {daysInMonth.map((day) => {
                 const dateKey = format(day, 'yyyy-MM-dd');
-                const holiday = HOLIDAYS_2026[dateKey];
+                const holiday = HOLIDAYS[dateKey];
                 const dayNum = getDay(day);
                 const isSun = dayNum === 0;
                 const isSat = dayNum === 6;
@@ -431,8 +472,9 @@ export default function ProjectCalendar({
                 return (
                   <div
                     key={dateKey}
-                    style={{ width: `${cellWidth}px` }}
-                    className={`flex-shrink-0 flex flex-col items-center justify-center py-1.5 border-r border-slate-200 dark:border-slate-700 relative ${patternClass} ${
+                    data-calendar-day={dateKey}
+                    style={{ minWidth: `${cellWidth}px` }}
+                    className={`flex-1 flex flex-col items-center justify-center py-1.5 border-r border-slate-200 dark:border-slate-700 relative ${patternClass} ${
                       isCurrent ? 'bg-sky-100/70 dark:bg-blue-950/60 font-bold' : ''
                     }`}
                     title={holiday ? `${holiday.name} (${holiday.country})` : undefined}
@@ -444,8 +486,8 @@ export default function ProjectCalendar({
                     >
                       {format(day, 'd')}
                     </span>
-                    <span className="text-[9px] text-slate-400 dark:text-slate-500">
-                      {format(day, 'E', { locale: ko })}
+                    <span className="text-[9px] text-slate-600 dark:text-slate-300">
+                      {format(day, 'E', { locale: lang==='vi'?vi:ko })}
                     </span>
                     {holiday && (
                       <span
@@ -466,11 +508,26 @@ export default function ProjectCalendar({
 
           {/* 3-2. 통합 프로젝트별 간트 행 목록 (마감+구조+토목 2~3갈래 통합 렌더링, 단일 다크톤 통일) */}
           <div className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
+            {waitingIntake.map(item => <div key={item.code} data-pending-intake={item.code} className="flex items-stretch bg-amber-50/60 dark:bg-amber-950/20 text-xs">
+              <div className="sticky left-0 z-30 w-[230px] flex-shrink-0 p-3 border-r border-slate-200 dark:border-slate-800 bg-amber-50 dark:bg-slate-900">
+                <span className="block text-[10px] font-bold text-slate-600 dark:text-slate-300">{item.code}</span>
+                <button type="button" onClick={() => onSelectIntake?.(item)} title={item.name} className="w-full text-left font-bold text-slate-900 dark:text-white break-words focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
+                  {item.name}
+                </button>
+                <span className="block mt-1 font-bold text-amber-900 dark:text-amber-200">{lang === 'vi' ? 'Mới · chưa phân công' : '신규 · 미배정'}</span>
+              </div>
+              <div className="w-[85px] flex-shrink-0 p-2 border-r border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300">{lang === 'vi' ? 'Chưa xác định' : '미산정'}</div>
+              <div className="w-[95px] flex-shrink-0 p-2 border-r border-slate-200 dark:border-slate-800 flex items-center justify-center font-bold text-amber-900 dark:text-amber-200">{lang === 'vi' ? 'Chưa phân công' : '미배정'}</div>
+              <div className="flex-1 min-w-0 p-3 flex flex-col items-start justify-center gap-1 text-amber-900 dark:text-amber-200">
+                <p>{item.reason === 'archived' ? (lang === 'vi' ? 'Cần kiểm tra lịch đã lưu trữ' : '보관된 일정 확인 필요') : (lang === 'vi' ? 'Cần xác nhận bộ phận phụ trách' : '담당 팀 확인 필요')}{item.missingDepartments?.length ? ` · ${item.missingDepartments.join(', ')}` : ''}</p>
+                <button type="button" onClick={() => onSelectIntake?.(item)} className="font-bold underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">{lang === 'vi' ? 'Mở thông tin tiếp nhận để phân công' : '접수 내용 확인하고 배정하기'}</button>
+              </div>
+            </div>)}
             {groupedProjects.map((group) => {
               const laneCount = group.lanes.length;
               const isMultiLane = laneCount > 1;
-              // 1단: 50px, 2단: 76px, 3단: 108px, N단: laneCount * 32 + 12px
-              const rowMinHeight = laneCount <= 1 ? 50 : laneCount === 2 ? 76 : laneCount * 32 + 14;
+              const laneOffsets=group.lanes.map((_,index)=>group.lanes.slice(0,index).reduce((height,lane)=>height+Math.max(32,32+lane.postDeliveryTasks.length*22),0));
+              const rowMinHeight=Math.max(50,14+group.lanes.reduce((height,lane)=>height+Math.max(32,32+lane.postDeliveryTasks.length*22),0));
               const rowBgClass = 'bg-white dark:bg-slate-900';
 
               const handleRowClick = () => {
@@ -490,7 +547,7 @@ export default function ProjectCalendar({
                   {/* 고정 열 1: 프로젝트 통합 정보 (클릭 시 프로젝트 통합 공종 투입 현황 팝업 열림) */}
                   <div
                     onClick={handleRowClick}
-                    className="w-[230px] flex-shrink-0 p-3 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center cursor-pointer hover:bg-blue-50/50 dark:hover:bg-slate-800/70 transition-colors"
+                    className="sticky left-0 z-30 bg-white dark:bg-slate-900 w-[230px] flex-shrink-0 p-3 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-center cursor-pointer hover:bg-blue-50/50 dark:hover:bg-slate-800/70 transition-colors"
                     title="클릭하여 프로젝트 통합 공종 투입 현황 열기"
                   >
                     <div className="flex items-center gap-1.5 flex-wrap mb-1">
@@ -518,6 +575,8 @@ export default function ProjectCalendar({
                     <div className="font-black text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2 leading-tight">
                       {group.name}
                     </div>
+                    {group.lanes.some(lane=>lane.unassigned)&&<button type="button" onClick={event=>{event.stopPropagation();handleRowClick();}} className="mt-1 text-left text-[11px] font-bold text-amber-900 dark:text-amber-200 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">{lang==='vi'?'Mới · chưa phân công: phân công PM và nhân viên':'신규 · 미배정: PM·담당 인원 배정 필요'}</button>}
+                    {pendingIntake.some(item=>item.code===group.code)&&<button type="button" onClick={event=>{event.stopPropagation();const item=pendingIntake.find(item=>item.code===group.code);if(item)onSelectIntake?.(item);}} className="mt-1 text-left text-[11px] font-bold text-amber-900 dark:text-amber-200 underline underline-offset-2">{lang==='vi'?'Cần xác nhận bộ phận còn thiếu':'참여 팀 확인 필요'}</button>}
                     {(group as any).area && (
                       <div className="mt-1 flex items-center gap-1 flex-wrap">
                         <span className="text-[10px] font-black text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/80 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-800">
@@ -556,12 +615,12 @@ export default function ProjectCalendar({
                         <div key={lane.projectId} className="my-0.5">
                           <div className="flex items-center justify-between text-[10px] font-bold">
                             <span className="text-slate-600 dark:text-slate-300 font-semibold">{lane.department.slice(0, 2)}</span>
-                            <span className={`${colorText} font-black`}>{lane.progress}%</span>
+                            <span className={`${colorText} font-black`}>실제 {percentLabel(lane.actual)}<br />계획 {percentLabel(lane.planned)}</span>
                           </div>
                           <div className="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden mt-0.5">
                             <div
                               className={`h-full rounded-full ${colorBg}`}
-                              style={{ width: `${lane.progress}%` }}
+                              style={{ width: `${percentLabel(lane.actual)}` }}
                             />
                           </div>
                         </div>
@@ -589,7 +648,7 @@ export default function ProjectCalendar({
                             {lane.department.slice(0, 2)}
                           </span>
                           <span className="font-black text-slate-900 dark:text-white text-xs">
-                            {lane.pmPerson ? lane.pmPerson.name.split(' ')[0] : 'PM'}
+                            {lane.pmPerson ? lane.pmPerson.name : '미배정'}
                           </span>
                         </div>
                       );
@@ -598,9 +657,8 @@ export default function ProjectCalendar({
 
                   {/* 일자별 간트 타임라인 영역 (행 전체 높이에 100% 맞춰 휴일 빗금 끊김 원천 차단) */}
                   <div
-                    className="flex shrink-0 relative self-stretch"
+                    className="flex-1 min-w-0 overflow-hidden relative self-stretch"
                     style={{
-                      width: `${daysInMonth.length * cellWidth}px`,
                       minHeight: `${rowMinHeight}px`,
                     }}
                   >
@@ -608,7 +666,7 @@ export default function ProjectCalendar({
                     <div className="absolute inset-0 flex pointer-events-none h-full">
                       {daysInMonth.map((day) => {
                         const dateKey = format(day, 'yyyy-MM-dd');
-                        const holiday = HOLIDAYS_2026[dateKey];
+                        const holiday = HOLIDAYS[dateKey];
                         const weekend = isWeekend(day);
                         let bgPattern = '';
 
@@ -627,8 +685,8 @@ export default function ProjectCalendar({
                         return (
                           <div
                             key={dateKey}
-                            style={{ width: `${cellWidth}px` }}
-                            className={`flex-shrink-0 border-r border-slate-200/80 dark:border-slate-800 h-full ${bgPattern}`}
+                            style={{ minWidth: `${cellWidth}px` }}
+                            className={`flex-1 border-r border-slate-200/80 dark:border-slate-800 h-full ${bgPattern}`}
                           />
                         );
                       })}
@@ -640,8 +698,8 @@ export default function ProjectCalendar({
                         className="absolute top-0 bottom-0 z-10 border-l-2 border-red-500 pointer-events-none"
                         style={{
                           left: `${
-                            differenceInDays(today, monthStart) * cellWidth + cellWidth / 2
-                          }px`,
+                            (differenceInDays(today, monthStart) + 0.5) / daysInMonth.length * 100
+                          }%`,
                         }}
                       />
                     )}
@@ -649,16 +707,16 @@ export default function ProjectCalendar({
                     {/* 부서별 간트 바 렌더링 (마감 1단 / 구조 2단 / 토목 3단 완전 분리) */}
                     {group.lanes.map((lane, laneIdx) => {
                       const barStyle = getLaneBarStyle(lane.startDate, lane.endDate);
-                      if (!barStyle) return null;
+                      if (!barStyle) return lane.unassigned ? <button key={lane.projectId} type="button" onClick={handleRowClick} style={{top:`${laneOffsets[laneIdx]+8}px`}} className="absolute left-3 z-20 text-xs font-bold text-amber-900 dark:text-amber-200 underline underline-offset-2">{lane.department} · {lang==='vi'?'Chưa phân công PM · cần lập lịch':'PM 미배정 · 일정 배정 필요'}</button> : null;
 
                       // 동적 레인 수직 위치 계산: 1개면 11px 중앙, 다중 레인이면 각 32px 간격으로 1단(8px), 2단(40px), 3단(72px) 완벽 분리
-                      const topPos = isMultiLane ? (laneIdx * 32 + 8) : 11;
+                      const topPos = laneOffsets[laneIdx]+(isMultiLane||lane.postDeliveryTasks.length?8:11);
                       const laneGradient =
                         lane.department === '마감팀'
-                          ? 'bg-gradient-to-r from-blue-600 via-blue-650 to-blue-700 border-blue-400'
+                          ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 border-blue-400'
                           : lane.department === '구조팀'
-                          ? 'bg-gradient-to-r from-purple-600 via-indigo-650 to-purple-700 border-purple-400'
-                          : 'bg-gradient-to-r from-emerald-600 via-teal-650 to-emerald-700 border-emerald-400';
+                          ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 border-purple-400'
+                          : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 border-emerald-400';
 
                       return (
                         <div
@@ -672,7 +730,7 @@ export default function ProjectCalendar({
                             top: `${topPos}px`,
                             height: '26px',
                           }}
-                          title={`[${lane.department}] ${group.name}\n기간: ${lane.startDate} ~ ${lane.endDate}\n진척률: ${lane.progress}%\n담당: ${lane.pmPerson?.name || 'PM'}\n상태: ${lane.status}\n클릭하여 프로젝트 통합 공종 투입 현황 확인`}
+                          title={`[${lane.department}] ${group.name}\n기간: ${lane.startDate} ~ ${lane.endDate}\n진척률: ${percentLabel(lane.actual)}\n담당: ${lane.pmPerson?.name || 'PM 미배정'}\n상태: ${lane.status}\n클릭하여 프로젝트 통합 공종 투입 현황 확인`}
                           className={`absolute rounded-lg border text-white flex items-center px-2.5 text-[11px] font-bold shadow-md hover:scale-[1.01] hover:brightness-110 transition-all z-20 cursor-pointer overflow-hidden ${laneGradient}`}
                         >
                           <span className="text-[9px] font-black bg-white/25 px-1 py-0.2 rounded mr-1.5 shrink-0">
@@ -682,11 +740,15 @@ export default function ProjectCalendar({
                             {getCleanProjectName(group.name)}
                           </span>
                           <span className="ml-auto text-[9px] bg-black/25 px-1 py-0.2 rounded font-mono shrink-0 pl-1">
-                            {lane.pmPerson ? lane.pmPerson.name.split(' ')[0] : 'PM'} · {lane.progress}%
+                            {lane.pmPerson ? lane.pmPerson.name : 'PM 미배정'} · {percentLabel(lane.actual)}
                           </span>
                         </div>
                       );
                     })}
+                    {group.lanes.flatMap((lane,laneIdx)=>lane.postDeliveryTasks.map((task,index)=>{
+                      const barStyle=getLaneBarStyle(task.startDate,task.endDate);
+                      return barStyle?<button key={task.id} type="button" onClick={handleRowClick} style={{...barStyle,top:`${laneOffsets[laneIdx]+35+index*22}px`,height:19}} title={`${lane.department} · 납품 후 ${task.kind}\n${task.startDate} ~ ${task.endDate}\n${task.memo}`} className="absolute z-20 overflow-hidden rounded border border-violet-300 bg-violet-700 text-white text-[10px] font-bold text-left px-1.5 truncate">{lane.department.slice(0,2)} · {task.kind}: {task.memo}</button>:null;
+                    }))}
                   </div>
                 </div>
               );
@@ -696,8 +758,8 @@ export default function ProjectCalendar({
       </div>
 
       {/* 4. 하단 상태 안내 범례 바 */}
-      <div className="p-3 bg-slate-50 dark:bg-slate-850 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-        <div className="flex items-center gap-3">
+      <div className="p-3 bg-slate-50 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+        <div className="flex flex-wrap items-center gap-3">
           <span className="flex items-center gap-1.5 font-semibold">
             <span className="w-3 h-2.5 rounded bg-blue-600 border border-blue-400"></span> 마감팀 일정
           </span>

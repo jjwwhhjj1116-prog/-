@@ -1,0 +1,55 @@
+import assert from 'node:assert/strict';
+import {createServer} from 'vite';
+import {readFileSync,writeFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
+import {runInNewContext} from 'node:vm';
+import ts from 'typescript';
+import {createElement} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+const require=createRequire(import.meta.url),React=require('react');
+const storage=new Map();globalThis.localStorage={getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,String(value)),removeItem:key=>storage.delete(key)};globalThis.window={localStorage:globalThis.localStorage};
+const realFetch=globalThis.fetch,RealDate=globalThis.Date;
+globalThis.Date=class extends RealDate{constructor(...args){super(...(args.length?args:['2026-10-06T03:00:00Z']));}static now(){return new RealDate('2026-10-06T03:00:00Z').getTime();}};
+const before=process.argv.includes('--before'),results=[];
+const paths=['src/components/PersonalWorkView.tsx','src/components/DailyWorkLogView.tsx','src/store/useWorkLogStore.ts','src/utils/personalWork.ts'];
+const source=path=>readFileSync(new URL(before?'../../private-provisioning/original-before-personal-alias-20261006/scheduler-web/'+path:'../'+path,import.meta.url),'utf8');
+const server=await createServer({plugins:before?[{name:'protected-before-client-alias',enforce:'pre',load(id){const path=paths.find(path=>id.replaceAll('\\','/').endsWith('/'+path));if(path)return source(path);}}]:[],server:{middlewareMode:true,hmr:false},appType:'custom'});
+const day='2026-10-06',actor={id:'qa-actor',name:'유일합성직원',no:7001,department:'마감팀',company:'컨코스트',position:'프로',active:true};
+const reviewer={id:'u_12',name:'합성검토자',no:7002,department:'마감팀',company:'컨코스트',position:'실장',active:true};
+const project=identifier=>({id:'alias-qa',code:'QA-ALIAS',name:'합성 별칭 프로젝트',department:'마감팀',pmId:'u_12',startDate:day,endDate:'2026-10-08',status:'진행중',progress:35,roles:{},subTasks:{내부:{roleName:'내부',personIds:[identifier],personId:identifier,startDate:day,endDate:'2026-10-08',memo:'합성 별칭 배정',status:'진행중',progress:35,reportingModes:{[identifier]:'TASK'}}}});
+async function test(name,fn){try{await fn();results.push({name,status:'PASS'});console.log('PASS',name);}catch(error){results.push({name,status:'FAIL',reason:error.stack});console.error('FAIL',name,error.message);process.exitCode=1;}}
+try{
+ const {useAuthStore:auth}=await server.ssrLoadModule('/src/store/useAuthStore.ts'),{useWorkLogStore:logs,TEAM_APPROVAL_LINES}=await server.ssrLoadModule('/src/store/useWorkLogStore.ts'),{useProjectStore:projects}=await server.ssrLoadModule('/src/store/useProjectStore.ts'),{usePersonalStore:personal}=await server.ssrLoadModule('/src/store/usePersonalStore.ts');
+ const {PersonalWorkView}=await server.ssrLoadModule('/src/components/PersonalWorkView.tsx'),{DailyWorkLogView}=await server.ssrLoadModule('/src/components/DailyWorkLogView.tsx'),work=await server.ssrLoadModule('/src/utils/personalWork.ts'),permissions=await server.ssrLoadModule('/src/utils/schedulePermissions.ts');
+ const state=(store,value)=>{Object.assign(store.getInitialState(),value);store.setState(value);};
+ const setup=(p,directory=[actor,reviewer],current=actor,rows=[])=>{state(auth,{users:directory,currentUser:current});state(projects,{projects:[p]});state(logs,{workLogs:rows,selectedWorkLogId:rows[0]?.id||null});state(personal,{leaves:[],checks:[],loaded:true,openDate:null,openExtension:null,openWorkLogId:null});};
+ const generate=identifier=>logs.getState().generateItemsFromSchedule(identifier,day,projects.getState().projects);
+ const todo=()=>renderToStaticMarkup(createElement(PersonalWorkView,{onWorklog:()=>{}}));
+ const daily=()=>renderToStaticMarkup(createElement(DailyWorkLogView));
+ const taskSelect=html=>html.match(/<select[^>]*aria-label="보고 작업"[^>]*>(.*?)<\/select>/s)?.[1]||'';
+ await test('일지 자동 생성: canonical ID가 유일한 활성 직원번호 배정을 연결',()=>{setup(project(String(actor.no)));const rows=generate(actor.id);assert.equal(rows.length,1);assert.equal(rows[0].reportBasis,'TASK');assert.equal(rows[0].id,'gen-alias-qa-내부');});
+ await test('일지 자동 생성: canonical ID가 유일한 활성 이름 배정을 연결',()=>{setup(project(actor.name));assert.equal(generate(actor.id).length,1);});
+ await test('구형 identifier: 유일한 활성 이름 lookup도 같은 canonical 배정 연결',()=>{setup(project(actor.name));assert.equal(generate(actor.name).length,1);});
+ await test('구형 identifier: 유일한 활성 직원번호 lookup도 같은 canonical 배정 연결',()=>{setup(project(actor.id));assert.equal(generate(String(actor.no)).length,1);});
+ await test('구형 identifier: 중복 활성 이름은 첫 직원으로 연결하지 않음',()=>{const second={...reviewer,id:'qa-other',name:actor.name};setup(project(actor.id),[actor,second]);assert.equal(generate(actor.name).length,0);});
+ await test('구형 identifier: 비활성 이름은 개인 배정에 연결하지 않음',()=>{setup(project(actor.id),[{...actor,active:false},reviewer]);assert.equal(generate(actor.name).length,0);});
+ await test('canonical ID 우선: 다른 직원 이름과 충돌해도 그 직원으로 확장하지 않음',()=>{const collision={...reviewer,name:actor.id};setup(project(actor.id),[actor,collision]);assert.equal(generate(actor.id).length,1);assert.equal(generate(collision.id).length,0);});
+ await test('명시적 빈 담당자 배열은 이름/번호 fallback으로 복원되지 않음',()=>{const p=project(actor.name);p.subTasks.내부.personIds=[];setup(p);assert.equal(generate(actor.id).length,0);assert.ok(!todo().includes('합성 별칭 프로젝트'));});
+ await test('빈 역할에는 새로운 배정·작성 항목을 만들지 않음',()=>{const p=project(actor.name);p.subTasks={};setup(p);assert.equal(generate(actor.id).length,0);assert.ok(!taskSelect(daily()).includes('gen-alias-qa-내부'));});
+ await test('실제 할 일 SSR: 직원번호 배정은 본인의 오늘/내일 후보에 표시',()=>{setup(project(String(actor.no)));const html=todo();assert.equal((html.match(/합성 별칭 프로젝트/g)||[]).length,2);assert.ok(html.includes('2026-10-06'));assert.ok(html.includes('2026-10-07'));});
+ await test('실제 일지 SSR: 직원번호·이름 배정이 보고 작업 선택에 표시',()=>{for(const token of [String(actor.no),actor.name]){setup(project(token));assert.ok(taskSelect(daily()).includes('value="gen-alias-qa-내부"'));}});
+ await test('실제 일지 SSR: 검토자는 작성자 별칭으로 진행 업무를 집계',()=>{const p=project(actor.name),row={id:'author-log',userId:actor.id,userName:actor.name,department:'마감팀',date:day,items:[],overallNotes:'과거 보고 보존',approvalStatus:'SUBMITTED_LEADER',serverRevision:1};setup(p,[actor,reviewer],reviewer,[row]);const count=daily().match(/진행 중인 업무<\/p><strong[^>]*>(\d+)<\/strong>/)?.[1];assert.equal(count,'1');});
+ await test('실제 일지 SSR: 승인자 본인 별칭을 타인 작성자의 배정으로 사용하지 않음',()=>{const p=project(reviewer.name),row={id:'author-log',userId:actor.id,userName:actor.name,department:'마감팀',date:day,items:[],overallNotes:'과거 보고 보존',approvalStatus:'SUBMITTED_LEADER',serverRevision:1};setup(p,[actor,reviewer],reviewer,[row]);assert.match(daily(),/진행 중인 업무<\/p><strong[^>]*>0<\/strong>/);});
+ await test('실제 UI 저장 handler: 동명이인 명부 순서 대신 로그인 ID로 저장',async()=>{
+  const first={...actor,id:'qa-first'},current={...actor,id:'qa-current'};setup(project(current.id),[first,current,reviewer],current);
+  const reactive=store=>{const hook=selector=>typeof selector==='function'?selector(store.getState()):store.getState();hook.getState=store.getState;return hook;};
+  const mockReact={...React,useState:initial=>[typeof initial==='function'?initial():initial,()=>{}],useEffect:()=>{},useMemo:fn=>fn(),useCallback:fn=>fn,useRef:value=>({current:value})};
+  const values={'react':mockReact,'../services/translationService':{translatedAlert:async()=>{}},'./RetainedRecords':{LegacyWorkLogArchive:()=>null},'../store/usePersonalStore':{usePersonalStore:reactive(personal)},'../utils/personalWork':work,'./WorkLogReporting':new Proxy({},{get:()=>()=>null}),'../utils/schedulePermissions':permissions,'../store/useAuthStore':{useAuthStore:reactive(auth)},'../store/useProjectStore':{useProjectStore:reactive(projects)},'../store/useWorkLogStore':{useWorkLogStore:reactive(logs),TEAM_APPROVAL_LINES},'lucide-react':require('lucide-react')};
+  const exports={},compiled=ts.transpileModule(source('src/components/DailyWorkLogView.tsx'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React,esModuleInterop:true}}).outputText;
+  runInNewContext(compiled,{exports,Date:globalThis.Date,structuredClone,console,require:path=>{assert.ok(path in values,'Unexpected UI dependency '+path);return values[path];}});
+  const tree=exports.DailyWorkLogView(),nodes=node=>Array.isArray(node)?node.flatMap(nodes):node&&typeof node==='object'&&node.props?[node,...nodes(node.props.children)]:[];
+  const button=nodes(tree).find(node=>node.type==='button'&&Array.isArray(node.props.children)&&node.props.children.includes('임시 저장'));assert.ok(button);assert.equal(button.props.disabled,false);
+  let posted;globalThis.fetch=async(url,options)=>{assert.match(String(url),/\/worklogs\//);posted=JSON.parse(options.body).log;return Response.json({log:{...posted,serverRevision:1}});};button.props.onClick();
+  for(let index=0;index<12;index++)await new Promise(resolve=>setTimeout(resolve,0));assert.ok(posted);assert.equal(posted.userId,current.id);assert.ok(posted.id.endsWith('-'+current.id));
+ });
+}finally{globalThis.fetch=realFetch;globalThis.Date=RealDate;await server.close();if(process.argv[2]&&process.argv[2]!=='--before')writeFileSync(process.argv[2],JSON.stringify({kind:'ACTUAL_CLIENT_STORE_SSR_AND_UI_HANDLER_SYNTHETIC',protectedOriginal:before,externalRequests:0,results},null,2)+'\n');}
