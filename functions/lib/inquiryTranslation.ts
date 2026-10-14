@@ -29,6 +29,11 @@ export function validateInquiryTranslation(body:any,projectId:string,records:any
 }
 
 type Piece={id:string;text:string;translated?:string;literal:boolean};
+function alreadyKorean(text:string):boolean{
+ let prose=text.replace(/\s/g,'');
+ for(const token of inquiryTranslationTokens(text))prose=prose.replace(token,'');
+ return /[가-힣]/.test(text)&&!/[\p{Script=Latin}]/u.test(prose);
+}
 function pieces(value:string,all:Piece[]):Piece[]{
  const result:Piece[]=[];
  for(const line of value.split(/(\r\n|\r|\n)/)){
@@ -36,7 +41,7 @@ function pieces(value:string,all:Piece[]):Piece[]{
   if(!remaining.trim()){const piece={id:'s'+all.length,text:remaining,literal:true};all.push(piece);result.push(piece);continue;}
   while(remaining){let end=Math.min(4000,remaining.length);if(end<remaining.length){const head=remaining.slice(0,end),space=Math.max(head.lastIndexOf(' '),head.lastIndexOf('\t'));if(space>=2000)end=space;if(remaining.charCodeAt(end-1)>=0xD800&&remaining.charCodeAt(end-1)<=0xDBFF&&remaining.charCodeAt(end)>=0xDC00&&remaining.charCodeAt(end)<=0xDFFF)end--;}
    const part=remaining.slice(0,end),leading=part.match(/^\s*/)?.[0]||'',trailing=part.slice(leading.length).match(/\s*$/)?.[0]||'',core=part.slice(leading.length,part.length-trailing.length);
-   for(const [text,literal] of [[leading,true],[core,false],[trailing,true]] as const)if(text){const piece={id:'s'+all.length,text,literal};all.push(piece);result.push(piece);}
+   for(const [text,literal] of [[leading,true],[core,alreadyKorean(core)],[trailing,true]] as const)if(text){const piece={id:'s'+all.length,text,literal};all.push(piece);result.push(piece);}
    remaining=remaining.slice(end);
   }
  }
