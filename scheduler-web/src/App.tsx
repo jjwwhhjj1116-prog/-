@@ -1072,7 +1072,7 @@ export default function App() {
 
           {/* CASE 5-2: 업무일지 (팀별 일정표 연계 및 3단 결재라인) */}
           {(activeMenu==='업무일지'||workLogActorId===actorId)&&<div key={actorId} hidden={activeMenu!=='업무일지'}><DailyWorkLogView visible={activeMenu==='업무일지'} /></div>}
-          {(activeMenu==='할 일'||activeMenu==='내 휴가 일정')&&<PersonalWorkView leaveMode={activeMenu==='내 휴가 일정'} onWorklog={date=>{usePersonalStore.setState({openDate:date});setActiveMenu('업무일지');}}/>}
+          {(activeMenu==='할 일'||activeMenu==='내 휴가 일정')&&<PersonalWorkView leaveMode={activeMenu==='내 휴가 일정'} onWorklog={(date,taskId)=>{usePersonalStore.setState({openDate:date,openTaskId:taskId||null});setActiveMenu('업무일지');}}/>}
 
           {/* CASE 6: 자료실 (Google 드라이브) */}
           {activeMenu === '자료실(google드라이브)' && <DriveView />}

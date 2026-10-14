@@ -1,7 +1,7 @@
 import {translatedAlert} from '../services/translationService';
 import {LegacyWorkLogArchive} from './RetainedRecords';
 import {usePersonalStore} from '../store/usePersonalStore';
-import {assignedItems,assignedTasks,assignmentAliases,reconcileWorkLogItems,leavesFor,reportsActualProgress,legacyAllocationTask,approvedTaskProgress,nextDay,validDay} from '../utils/personalWork';
+import {sameWorkProject,workProjectOptions,assignedItems,assignedTasks,assignmentAliases,reconcileWorkLogItems,leavesFor,reportsActualProgress,legacyAllocationTask,approvedTaskProgress,nextDay,validDay} from '../utils/personalWork';
 
 import {WorkLogHistory,TaskReportFields,WorkLogProjectSummary,DailyPlanFields,ScheduleExtensionRequests,WorkLogTaskInfo,WorkLogSteps} from './WorkLogReporting';
 
@@ -37,7 +37,7 @@ const describeDraft=(items:WorkLogItem[],notes:string)=>items.map((item,index)=>
 export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}) => {
   const { currentUser, users } = useAuthStore();
   const { projects } = useProjectStore();
-  const {leaves,openDate,loaded,openExtension,openWorkLogId}=usePersonalStore();
+  const {leaves,openDate,openTaskId,loaded,openExtension,openWorkLogId}=usePersonalStore();
   const {
     workLogs,
     selectedWorkLogId,
@@ -173,7 +173,7 @@ export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}
     rememberDraft();const item=log.items[0];setSelectedDate(log.date);setSelectedWorkLogId(log.id);setSelectedTaskId(item?.id||'');setProjectFilter(item?.projectId||'ALL');setRoleFilter(item?.roleName||'');setViewTab('REPORT');
   },[openWorkLogId,loaded,userWorkLogs,rememberDraft,setSelectedWorkLogId]);
   useEffect(()=>{if(openExtension){rememberDraft();setViewTab('EXTENSIONS');setProjectFilter(openExtension);setSelectedTaskId('');setRoleFilter('');usePersonalStore.setState({openExtension:null});}},[openExtension,rememberDraft]);
-  useEffect(()=>{if(openDate){rememberDraft();setSelectedDate(openDate);setSelectedWorkLogId(null);setSelectedTaskId('');setProjectFilter('ALL');setRoleFilter('');initialProjectChosen.current=false;setViewTab('REPORT');usePersonalStore.setState({openDate:null});}},[openDate,setSelectedWorkLogId,rememberDraft]);
+  useEffect(()=>{if(openDate&&loaded){const target=openTaskId?assignedItems(currentUser?.id||'',openDate,projects,ownAliases).find(task=>task.id===openTaskId):undefined;rememberDraft();setSelectedDate(openDate);setSelectedWorkLogId(null);setSelectedTaskId(target?.id||openTaskId||'');setProjectFilter(target?.projectId||'ALL');setRoleFilter(target?.roleName||'');initialProjectChosen.current=!!openTaskId;setNotice(openTaskId&&!target?'선택한 업무의 배정이 변경되었습니다. 현재 배정 목록을 확인하세요.':'');setViewTab('REPORT');usePersonalStore.setState({openDate:null,openTaskId:null});}},[openDate,openTaskId,loaded,currentUser?.id,projects,ownAliases,setSelectedWorkLogId,rememberDraft]);
   useEffect(()=>{
     if(activeLog?.approvalStatus&&activeLog.approvalStatus!=='DRAFT')return;
     if(activeLog?.userId&&activeLog.userId!==currentUser?.id)return;
@@ -360,8 +360,8 @@ export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}
     if(!task||!canEdit||task.startDate>selectedDate||(task.reportingMode==='DAILY'&&task.endDate<selectedDate))return;
     setItems(previous=>{const old=previous.find(item=>item.id===id);const typed=old&&(old.manualFields===undefined||old.manualFields.includes('todayTask'));const changed={...(old||task),reportBasis:task.reportingMode,todayTask:typed?old.todayTask:'',manualFields:old?.manualFields===undefined&&old?undefined:[...new Set([...(old?.manualFields||[]),'todayTask'])]};return old?previous.map(item=>item.id===id?changed:item):[...previous,changed];});
   };
-  const projectItems=items.filter(item=>projectFilter==='ALL'||item.projectId===projectFilter);
-  const projectTasks=allTasks.filter(task=>projectFilter==='ALL'||task.projectId===projectFilter);
+  const projectItems=items.filter(item=>projectFilter==='ALL'||sameWorkProject(projects,item.projectId,projectFilter));
+  const projectTasks=allTasks.filter(task=>projectFilter==='ALL'||sameWorkProject(projects,task.projectId,projectFilter));
   const sameAllocation=(left:WorkLogItem,right:WorkLogItem)=>!!left.allocationId&&left.allocationId===right.allocationId&&left.projectId===right.projectId&&left.roleName===right.roleName;
   const linkedLegacyItems=projectItems.filter(item=>item.id===`gen-${item.projectId}-${item.roleName}`&&projectItems.filter(other=>sameAllocation(item,other)).length===1&&projectTasks.filter(task=>sameAllocation(item,task)).length===1);
   const reportOptions=canEdit?[...projectTasks.filter(task=>!linkedLegacyItems.some(item=>sameAllocation(item,task))),...projectItems.filter(item=>!allTasks.some(task=>task.id===item.id))]:projectItems;
@@ -382,7 +382,7 @@ export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}
   const panel='rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900';
   const field='w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 focus-visible:outline-2 focus-visible:outline-orange-500';
   const button='rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold disabled:opacity-50 dark:border-slate-600';
-  const openLog=(log:DailyWorkLog)=>{const item=log.items.find(i=>(projectFilter==='ALL'||i.projectId===projectFilter)&&(!roleFilter||i.roleName===roleFilter))||log.items[0];rememberDraft();setSelectedDate(log.date);setSelectedWorkLogId(log.id);setSelectedTaskId(item?.id||'');setProjectFilter(item?.projectId||'ALL');setRoleFilter(item?.roleName||'');setViewTab('REPORT');};
+  const openLog=(log:DailyWorkLog)=>{const item=log.items.find(i=>(projectFilter==='ALL'||sameWorkProject(projects,i.projectId,projectFilter))&&(!roleFilter||i.roleName===roleFilter))||log.items[0];rememberDraft();setSelectedDate(log.date);setSelectedWorkLogId(log.id);setSelectedTaskId(item?.id||'');setProjectFilter(item?.projectId||'ALL');setRoleFilter(item?.roleName||'');setViewTab('REPORT');};
   const startDayPlan=async()=>{
     if(!selectedItem)return;
     if(!selectedItem.dailyGoal?.trim()||!selectedItem.plannedDetails?.trim())throw Error('주요 목표와 세부 작업 내용을 입력하세요.');
@@ -400,7 +400,7 @@ export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}
   const chiefId=activeLog?.department==='구조팀'?'u_24':activeLog?.department==='토목&조경팀'?'u_8':'u_12';
   const explicitReport=selectedItem&&(selectedItem.manualFields===undefined||selectedItem.manualFields.includes('progress')||!!selectedItem.todayTask&&selectedItem.manualFields.includes('todayTask'));
   const showPlan=reportMode==='DAILY'&&!selectedItem?.planStartedAt&&!explicitReport&&canEdit;
-  const projectLogs=userWorkLogs.filter(log=>projectFilter==='ALL'||log.items.some(item=>item.projectId===projectFilter));
+  const projectLogs=userWorkLogs.filter(log=>projectFilter==='ALL'||log.items.some(item=>sameWorkProject(projects,item.projectId,projectFilter)));
   const todayDate=new Date().toLocaleDateString('sv-SE');
   const currentTask=allTasks.find(task=>task.id===selectedTaskId)||(selectedItem&&!selectedItem.scheduleRemoved?legacyAllocationTask(selectedItem,allTasks):undefined);
   const extensionTasks=assignedTasks(currentUser?.id||'',projects,ownAliases);
@@ -414,7 +414,7 @@ export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}
       <div className="grid gap-5 xl:grid-cols-[minmax(240px,.8fr)_minmax(0,1.2fr)] items-center pb-4">
         <div className="flex items-center gap-3"><ClipboardCheck size={42} className="rounded-xl bg-orange-600 p-2 text-white shrink-0"/><div><h2 className="text-xl font-bold">프로젝트 업무일지</h2><p className="text-xs text-slate-600 dark:text-slate-300 mt-1">매일 업무를 계획하고 보고하며 결과를 기록합니다.</p></div></div>
         <div className={'grid gap-3 '+(viewTab==='HISTORY'?'sm:grid-cols-2':'sm:grid-cols-3')} aria-label="보고 대상 연결">
-          <label className="min-w-0 text-xs text-slate-600 dark:text-slate-300">보고 프로젝트<select aria-label="보고 프로젝트" className={field+' mt-1'} value={projectFilter} onChange={e=>{rememberDraft();setProjectFilter(e.target.value);setRoleFilter('');setSelectedTaskId('');}}><option value="ALL">전체 프로젝트</option>{projects.map(project=><option data-no-translate key={project.id} value={project.id}>{project.code} · {project.name} · {project.department}</option>)}</select></label>
+          <label className="min-w-0 text-xs text-slate-600 dark:text-slate-300">보고 프로젝트<select aria-label="보고 프로젝트" className={field+' mt-1'} value={workProjectOptions(projects).find(project=>sameWorkProject(projects,project.id,projectFilter))?.id||'ALL'} onChange={e=>{rememberDraft();setProjectFilter(e.target.value);setRoleFilter('');setSelectedTaskId('');}}><option value="ALL">전체 프로젝트</option>{workProjectOptions(projects).map(project=><option data-no-translate key={project.id} value={project.id}>{project.code} · {project.name}</option>)}</select></label>
           <label className="min-w-0 text-xs text-slate-600 dark:text-slate-300">보고 역할<select aria-label="보고 역할" className={field+' mt-1'} value={roleFilter} onChange={e=>{rememberDraft();setRoleFilter(e.target.value);setSelectedTaskId('');}}><option value="">전체 역할</option>{roles.map(role=><option key={role}>{role}</option>)}</select></label>
           {viewTab!=='HISTORY'&&<label className="min-w-0 text-xs text-slate-600 dark:text-slate-300">보고 작업<select aria-label="보고 작업" className={field+' mt-1'} value={selectedTaskId} onChange={e=>chooseTask(e.target.value)}><option value="">작업을 선택하세요</option>{taskOptions.map(task=><option data-no-translate={!task.scheduleMemo?'':undefined} key={task.id} value={task.id} disabled={canEdit&&allTasks.some(t=>t.id===task.id&&(t.startDate>selectedDate||(t.reportingMode==='DAILY'&&t.endDate<selectedDate)))}>{task.roleName} · {task.scheduleMemo||task.projectName}</option>)}</select></label>}
         </div>

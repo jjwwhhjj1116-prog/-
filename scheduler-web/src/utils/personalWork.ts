@@ -126,3 +126,11 @@ export function reconcileWorkLogItems(previous:WorkLogItem[],userId:string,day:s
  });
 }
 export const reportsActualProgress=(item:WorkLogItem)=>item.manualFields===undefined||item.manualFields.includes('progress');
+
+// A site is shared across team records; original IDs remain the write targets.
+export function sameWorkProject(projects:Project[],left:string,right:string){
+ if(left===right)return true;
+ const a=projects.find(p=>p.id===left),b=projects.find(p=>p.id===right);
+ return !!a?.code?.trim()&&!!b&&a.code.trim().toUpperCase()===b.code.trim().toUpperCase();
+}
+export function workProjectOptions(projects:Project[]){return projects.filter((p,i)=>!projects.slice(0,i).some(other=>sameWorkProject(projects,p.id,other.id)));}
