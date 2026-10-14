@@ -85,6 +85,19 @@ await test('질의 Excel 사진 혼합: 원본anchor·행높이·bytes·설명 �
  const placements=book.getWorksheet(restored.sourceSheet).getImages(),original=photoRect(book.getWorksheet(restored.sourceSheet),placements[0]);
  for(const placement of placements.slice(1))assert.ok(photoRect(book.getWorksheet(restored.sourceSheet),placement).top>=original.bottom+8);
 });
+await test('질의 Excel 긴본문: 한영20줄·영문단어wrap·긴한글은 새사진보다 위에 전부 보존',async()=>{
+ const cases=[['question',Array.from({length:20},(_,i)=>`${i+1}. 질의 본문 / Drawing A-104-03 150mm 확인`).join('\n'),400],
+  ['answer','Please review drawing A-104-03 before approval. '.repeat(35),320],['review','구조도면검토요청'.repeat(60),280]];
+ for(const [field,text,minimumTextHeight] of cases){
+  const row=item('토목&조경팀');row[field]=text;row.images=[{...image(field,`${field}-긴본문.png`),caption:'본문 뒤 도면 & "원본"'}];
+  const tail={...item('토목&조경팀','2'),question:'다음 질의 본문 보존'};
+  const data=await buildInquiryWorkbookBuffer([row,tail],{projectName:'긴본문사진110'}),read=await readInquiryExcel(data,options),book=new ExcelJS.Workbook();await book.xlsx.load(data);
+  const restored=read.inquiries[0],sheet=book.getWorksheet(restored.sourceSheet);let rowTop=0;for(let r=1;r<restored.sourceRow;r++)rowTop+=(sheet.getRow(r).height??15)*4/3;
+  assert.ok(photoRect(sheet,sheet.getImages()[0]).top>=rowTop+minimumTextHeight+8,`${field} text is covered by its photo`);
+  assert.equal(restored[field],text);assert.equal(restored.images[0].dataUrl,row.images[0].dataUrl);assert.equal(restored.images[0].caption,row.images[0].caption);assert.equal(read.inquiries[1].question,tail.question);
+  assertPhotoBounds(book,[row,tail],read.inquiries);assert.equal(read.unassignedImages.length,0);
+ }
+});
 await test('질의 Excel: 병합2행·표 밖 사진 원 위치 보존과 자동귀속 금지',async()=>{
  const row=item('구조팀');row.sourceSheet='원본 구조';row.excelLayout={rowSpan:2,rowHeights:[66,90],columnWidths:[1,9,13,21,22,63,65,45,17],reviewHeader:'답변사항',headers:['No','분야','관련도면','부위','질의사항','산출사항','답변사항','비고'],mergedColumns:[2,3,4,5,7,8,9]};
  const orphan={...image('question','미연결.png'),sourceSheet:'원본 구조',sourceRow:47,sourceAnchor:{tl:{col:65,row:46},width:120,height:70}};delete orphan.field;

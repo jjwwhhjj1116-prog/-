@@ -80,6 +80,23 @@ const relationFile = (file: string) => `${file.slice(0, file.lastIndexOf('/') + 
 const colPixels = (sheet: Worksheet, col: number) => Math.max(1, (sheet.getColumn(col + 1).width ?? 9) * 7 + 5);
 const rowPixels = (sheet: Worksheet, row: number) => Math.max(1, (sheet.findRow(row + 1)?.height ?? 15) * 4 / 3);
 
+function inquiryTextHeight(value: string, columnWidth: number): number {
+    // Conservative layout space for the existing 10pt font: 20px leading,
+    // 14px Hangul/wide glyphs and 8px Latin glyphs, including word wrapping.
+    const width = Math.max(1, columnWidth - 16); let lines = 0;
+    for (const line of value.replace(/\r\n?/g, '\n').split('\n')) {
+        let used = 0, count = 1;
+        for (const token of line.match(/\s+|\S+/g) ?? []) {
+            const pixels = Array.from(token).reduce((sum, char) => sum + (char === '\t' ? 32 : char === ' ' ? 4 : char.charCodeAt(0) > 127 || 'MW@'.includes(char) ? 14 : 8), 0);
+            if (used && used + pixels > width) { count++; used = 0; }
+            if (pixels > width) { count += Math.ceil(pixels / width) - 1; used = pixels % width || width; }
+            else used += pixels;
+        }
+        lines += count;
+    }
+    return lines * 20;
+}
+
 function nativePoint(sheet: Worksheet, node: XmlNode): InquiryImagePoint {
     const nativeCol = number(node, 'col'), nativeRow = number(node, 'row');
     const nativeColOff = number(node, 'colOff'), nativeRowOff = number(node, 'rowOff');
@@ -308,6 +325,7 @@ export async function buildInquiryWorkbookBuffer(inquiries: Inquiry[], options: 
             for (const line of item.group.split('\n')) { sheet.mergeCells(row, 2, row, 9); const cell = sheet.getCell(row, 2); cell.value = line; cell.font = { name: '맑은 고딕', size: 10, bold: true }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } }; sheet.getRow(row).height = 20.25; row++; }
             lastGroups.set(name, item.group);
         }
+        const values = [item.no, item.trade, item.drawingNumbers.join('\n'), item.classification, item.question, item.answer, item.review, item.notes];
         let span = Math.max(1, Math.min(1000, item.excelLayout?.rowSpan ?? (item.images.length ? 2 : 1)));
         metadataRows.push(['ROW', name, row, item.roundNumber === undefined ? inquiryRoundNumber(item) : roundNumber(item.roundNumber)]);
         for (let offset = 0; offset < span; offset++) sheet.getRow(row + offset).height = item.excelLayout?.rowHeights[offset] ?? 90;
@@ -323,20 +341,22 @@ export async function buildInquiryWorkbookBuffer(inquiries: Inquiry[], options: 
             const bottom = anchor.br ? pointPixels(sheet, movePoint(anchor.br, row - 1)).y : pointPixels(sheet, movePoint(anchor.tl, row - 1)).y + (anchor.height ?? 160);
             pictureTop = Math.max(pictureTop, bottom - rowTop + 8);
         }
-        let requiredHeight = 0;
+        let pictureHeight = 0;
         for (const field of ['question', 'answer', 'review'] as const) {
             const count = newPictures.filter(image => image.field === field).length; if (!count) continue;
             const col = field === 'question' ? 5 : field === 'answer' ? 6 : 7, availableWidth = colPixels(sheet, col);
+            pictureTop = Math.max(pictureTop, inquiryTextHeight(item[field], availableWidth) + 8);
             const columns = count > 1 && availableWidth >= 160 ? 2 : 1, gap = Math.min(8, availableWidth / 4);
             const width = Math.min(210, (availableWidth - gap * (columns + 1)) / columns), height = width * 100 / 210;
             layouts.set(field, { col, width, height, columns, gap, index: 0 });
-            requiredHeight = Math.max(requiredHeight, pictureTop + Math.ceil(count / columns) * (height + 8));
+            pictureHeight = Math.max(pictureHeight, Math.ceil(count / columns) * (height + 8));
         }
+        const textHeight = newPictures.length ? Math.max(...values.map((value, col) => inquiryTextHeight(value, colPixels(sheet, col + 1)))) : 0;
+        const requiredHeight = newPictures.length ? Math.max(pictureTop + pictureHeight, textHeight + 8) : 0;
         while (blockHeight() < requiredHeight) {
             if (span >= 1000) throw new Error('질의 사진을 담을 행 공간이 너무 큽니다. 사진을 나누어 작성해 주세요.');
             sheet.getRow(row + span).height = 90; span++;
         }
-        const values = [item.no, item.trade, item.drawingNumbers.join('\n'), item.classification, item.question, item.answer, item.review, item.notes];
         values.forEach((value, col) => {
             if (span > 1 && (item.excelLayout?.mergedColumns ?? [2, 3, 4, 5, 6, 7, 8, 9]).includes(col + 2)) sheet.mergeCells(row, col + 2, row + span - 1, col + 2);
             const cell = sheet.getCell(row, col + 2); cell.value = value; cell.font = { name: '맑은 고딕', size: 10 };
