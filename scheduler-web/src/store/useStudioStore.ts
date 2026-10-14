@@ -32,8 +32,9 @@ export async function restoreStudioSession(){
 export async function refreshStudioMeetings(){
  const actor=useAuthStore.getState().currentUser?.id,session=refreshCurrent,request=++meetingRefresh;
  const [minutes,inbox]=await Promise.all([studioApi('meetings'),studioApi('notifications')]);
- if(!actor||actor!==useAuthStore.getState().currentUser?.id||session!==refreshCurrent||request!==meetingRefresh)return;
+ if(!actor||actor!==useAuthStore.getState().currentUser?.id||session!==refreshCurrent||request!==meetingRefresh)return false;
  useStudioStore.setState({meetings:minutes.meetings,notifications:inbox.notifications,unreadCount:inbox.unreadCount});
+ return true;
 }
 export function startStudioSync(userId:string) {
  stopCurrent();let stopped=false,busy=false,sessionConfirmed=false;let timer:ReturnType<typeof setInterval>;
@@ -87,9 +88,9 @@ export function startStudioSync(userId:string) {
    }
    const {versions:latest}=await studioApi('changes');
    if(latest.projects!==versions.projects||latest.intake!==versions.intake){const response=await studioApi('projects');publishRemote(response.projects,response.archived,response.pendingIntake);}
-   if(latest.meetings!==versions.meetings||latest.inbox!==versions.inbox)await refreshStudioMeetings();
+   if((latest.meetings!==versions.meetings||latest.inbox!==versions.inbox)&&!await refreshStudioMeetings())throw new Error('중앙 알림 수신 대기 · 다음 갱신에서 다시 확인합니다.');
    if(latest.directory!==versions.directory){const {users}=await studioApi('directory');if(current()){useAuthStore.setState({users});useProjectStore.setState({personnel:mergeDirectoryPersonnel(useProjectStore.getState().personnel,users)});}}
-   if(latest.personal!==versions.personal||latest.projects!==versions.projects)await refreshPersonal();
+   if((latest.personal!==versions.personal||latest.projects!==versions.projects)&&!await refreshPersonal())throw new Error('중앙 개인 일정 수신 대기 · 다음 갱신에서 다시 확인합니다.');
    versions=latest;
    if(current())useStudioStore.setState({ready:true,hasLoaded:true,status:queue.size?'변경 전송 대기':'중앙 공유 연결 · 다른 화면 자동 갱신 (2초 간격)',pending:queue.size});
   }catch(error){if(current())useStudioStore.setState({ready:false,status:error instanceof Error?error.message:'중앙 공유 연결 실패 · 로컬 변경 유지',conflict:error instanceof StudioError&&error.status===409||useStudioStore.getState().conflict});}

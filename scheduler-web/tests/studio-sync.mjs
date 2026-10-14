@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import {createServer} from 'vite';
+import {nativeSsrPackages} from './ssr-native-packages.mjs';
 import {readFileSync} from 'node:fs';
 import {checkMeetingFileContext} from './meeting-file-context.mjs';
 const data=new Map();globalThis.localStorage={getItem:k=>data.get(k)??null,setItem:(k,v)=>data.set(k,String(v)),removeItem:k=>data.delete(k)};globalThis.window={localStorage};
 data.set('concost_daily_worklogs_v2',JSON.stringify([{id:'other-local-draft',userId:'other',department:'마감팀'},{id:'my-local-draft',userId:'qa',department:'마감팀'}]));
 const syncSource=process.argv.find(arg=>arg.startsWith('--sync-source='))?.slice('--sync-source='.length),onlyConflictSession=process.argv.includes('--only-conflict-session'),onlyMeetingRefresh=process.argv.includes('--only-meeting-refresh');
-const server=await createServer({plugins:syncSource?[{name:'protected-conflict-session',enforce:'pre',load(id){if(id.replaceAll('\\','/').endsWith('/src/store/useStudioStore.ts'))return readFileSync(syncSource,'utf8');}}]:[],server:{middlewareMode:true,hmr:false},appType:'custom'});
+const server=await createServer({configFile:false,ssr:{noExternal:[/^(react|react-dom|zustand)(\/|$)/]},plugins:[nativeSsrPackages(new URL('../package.json',import.meta.url)),...(syncSource?[{name:'protected-conflict-session',enforce:'pre',load(id){if(id.replaceAll('\\','/').endsWith('/src/store/useStudioStore.ts'))return readFileSync(syncSource,'utf8');}}]:[])],server:{middlewareMode:true,hmr:false},appType:'custom'});
 const realInterval=globalThis.setInterval,realClear=globalThis.clearInterval,realFetch=globalThis.fetch;
 let repeat,stopped=false,fail=true,failUpdates=false,calls=[],releasePost,directoryRevision=1;
 let directoryUsers=[{id:'new-staff',name:'신규 배정 직원',company:'컨코스트',department:'마감팀',originalDept:'마감팀',position:'선임',idPrefix:'new_staff',active:true}];
