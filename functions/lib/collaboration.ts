@@ -4,6 +4,7 @@ import {VIET_ASSIGNMENT_GROUPS} from '../../scheduler-web/src/utils/vietPersonne
 import {validDay} from '../../scheduler-web/src/utils/personalWork.ts';
 import {isScheduleAdmin} from '../../scheduler-web/src/utils/schedulePermissions.ts';
 import {personalRoute} from './personal.ts';
+import {syncAutomaticWorklogs} from './automaticWorklogs.ts';
 import {weeklyReportRoute} from './weeklyReports.ts';
 import {weeklyApprovalRoute} from './weeklyApprovals.ts';
 import {scheduleExtensionRoute} from './scheduleExtensions.ts';
@@ -150,6 +151,20 @@ export async function handleCollaboration(request:Request,env:Environment,archiv
   }
   const user=await sessionUser(request,env);
   if(!user)return fail('서버 로그인이 필요합니다.',401);
+  if(route==='automatic-worklogs/sync'){
+   if(method!=='POST')return fail('지원하지 않는 요청입니다.',405);
+   if(request.body||url.search)return fail('자동 보고는 서버의 현재 날짜와 배정만 사용합니다. 입력값은 지정할 수 없습니다.');
+   const profile=JSON.parse(user.profile);
+   if(profile.id!==user.id)return fail('계정 연결을 확인하세요.',403);
+   const actor={...profile,id:user.id,email:(user as any).email,department:user.department,position:user.position,active:true};
+   const administrator=isScheduleAdmin(actor);
+   if(!administrator&&!['마감팀','구조팀','토목&조경팀'].includes(user.department))return fail('현재 소속에는 자동 업무보고가 설정되지 않았습니다.',403);
+   const DB={prepare:(sql:string)=>env.DB.prepare(sql),batch:(statements:D1PreparedStatement[])=>env.DB.batch([
+    env.DB.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1 AND profile=? AND email=? AND department=? AND position=?)').bind(user.id,user.profile,(user as any).email,user.department,user.position),...statements
+   ])};
+   const result=await syncAutomaticWorklogs({...env,DB},administrator?{}:{onlyUserId:user.id});
+   return result.conflicts?json({error:'동시 변경으로 일부 자동 보고를 보류했습니다. 다음 갱신에서 다시 확인합니다.',result},409):json(result);
+  }
   const inquiry=await projectInquiryRoute(request,env,user,route);if(inquiry)return inquiry;
   const personal=await personalRoute(request,env,user,route);if(personal)return personal;
   const weeklyApproval=await weeklyApprovalRoute(request,env,user,route);if(weeklyApproval)return weeklyApproval;

@@ -3,6 +3,7 @@ import {ProjectArchive} from './components/RetainedRecords';
 import {PersonalWorkView} from './components/PersonalWorkView';
 import {usePersonalStore} from './store/usePersonalStore';
 import {StudioCollaboration} from './components/StudioCollaboration';
+import {AutomaticWorklogSync} from './components/AutomaticWorklogSync';
 import {restoreStudioSession,startStudioSync,useStudioStore,waitForSchedulePublished} from './store/useStudioStore';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
@@ -481,6 +482,7 @@ export default function App() {
           )}
         </div>
       </header>
+      <AutomaticWorklogSync />
       <StudioCollaboration onOpenMeeting={()=>setActiveMenu('회의록 작성')} onOpenWorkLog={()=>setActiveMenu('업무일지')} onOpenWeeklyReport={openWeeklyReport} />
       {!sharedReady&&<p role="status" className="border-b border-amber-300 bg-amber-100 px-4 py-2 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">{sharedLoaded?(studio.conflict?'다른 사람이 같은 일정을 변경했습니다. 상단에서 충돌을 해결하세요.':'중앙 서버 연결이 끊겼습니다. 마지막으로 확인한 일정과 이 PC 변경을 표시합니다. 최신 여부를 확인하세요.'):'이 PC 저장본을 보고 있습니다. 중앙 서버 연결 전에는 최신 일정이 아닐 수 있습니다.'}</p>}
 
