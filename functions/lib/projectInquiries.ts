@@ -90,51 +90,59 @@ export async function projectInquiryRoute(request:Request,env:any,user:any,route
  const directoryRows=(await db.prepare('SELECT id,profile,active FROM studio_users').all()).results;
  const directory=directoryRows.map((record:any)=>{const person=JSON.parse(record.profile);return {...(person.id===record.id?person:{}),id:record.id,active:record.active===1};});
  const code=typeof project.code==='string'?project.code.trim().toUpperCase():'';
- const siteRows=(await db.prepare('SELECT id,body,revision FROM studio_projects WHERE id NOT IN (SELECT project_id FROM studio_project_archive)').all()).results.filter((record:any)=>record.id===projectId||code&&JSON.parse(record.body).code?.trim().toUpperCase()===code);
+ const siteReadRows=(await db.prepare('SELECT id,body,revision FROM studio_projects').all()).results.filter((record:any)=>record.id===projectId||code&&JSON.parse(record.body).code?.trim().toUpperCase()===code);
+ const siteIds=siteReadRows.map((record:any)=>record.id),siteSql=siteIds.map(()=>'?').join(',');
+ const archivedIds=new Set((await db.prepare('SELECT project_id FROM studio_project_archive').all()).results.map((record:any)=>record.project_id));
+ const siteRows=siteReadRows.filter((record:any)=>!archivedIds.has(record.id));
  const sitePmRows=siteRows.filter((record:any)=>{const site=JSON.parse(record.body),pm={...site.roles,...site.subTasks}.PM;return assignmentPersonId(site.pmId,directory)===user.id||pm&&assignmentSegments(pm).some(segment=>segment.personIds.some(reference=>assignmentPersonId(reference,directory)===user.id));});
  const sitePm=sitePmRows.length>0;
  const canWrite=admin||user.department===department||sitePm;
- const capabilities={projectId,actorId:user.id,canCreate:canWrite&&!archived,canEdit:canWrite&&!archived,canManage:manage&&!archived};
+ const capabilities={projectId,projectIds:siteIds,writableProjectIds:siteRows.map((record:any)=>record.id),actorId:user.id,canCreate:canWrite&&!archived,canEdit:canWrite&&!archived,canManage:manage&&!archived};
  const decodeRow=(record:any):Inquiry=>{const inquiry=JSON.parse(record.body);return {...inquiry,roundNumber:inquiryRoundNumber(inquiry),revision:record.revision};};
- const roundRows=(await db.prepare('SELECT * FROM studio_inquiry_rounds WHERE project_id=? AND department=? ORDER BY round_number').bind(projectId,department).all()).results;
- const roundState=(number:number):any=>roundRows.find((record:any)=>record.round_number===number);
+ const roundRows=(await db.prepare(`SELECT * FROM studio_inquiry_rounds WHERE project_id IN (${siteSql}) AND department=? ORDER BY project_id,round_number`).bind(...siteIds,department).all()).results;
+ const roundState=(number:number):any=>roundRows.find((record:any)=>record.round_number===number&&record.status==='SENT')||roundRows.find((record:any)=>record.round_number===number&&record.project_id===projectId)||roundRows.find((record:any)=>record.round_number===number);
  const pmGuard=sitePm&&!admin&&user.department!==department?sitePmRows.map(()=> 'EXISTS(SELECT 1 FROM studio_projects WHERE id=? AND revision=?) AND NOT EXISTS(SELECT 1 FROM studio_project_archive WHERE project_id=?)').join(' AND '):'';
- const accessGuard='EXISTS(SELECT 1 FROM studio_projects WHERE id=? AND revision=?) AND NOT EXISTS(SELECT 1 FROM studio_project_archive WHERE project_id=?) AND EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1 AND profile=? AND department=? AND position=?)'+(pmGuard?' AND '+pmGuard:'');
- const accessParams=[projectId,projectRow.revision,projectId,user.id,user.profile,user.department,user.position,...(pmGuard?sitePmRows.flatMap((record:any)=>[record.id,record.revision,record.id]):[])];
+ const siteGuard="(SELECT COALESCE(json_group_array(id),'[]') FROM (SELECT id FROM studio_projects WHERE id=? OR (?<>'' AND upper(trim(json_extract(body,'$.code')))=?) ORDER BY id))=?";
+ const accessGuard='EXISTS(SELECT 1 FROM studio_projects WHERE id=? AND revision=?) AND NOT EXISTS(SELECT 1 FROM studio_project_archive WHERE project_id=?) AND EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1 AND profile=? AND department=? AND position=?)'+(pmGuard?' AND '+pmGuard:'')+' AND '+siteGuard;
+ const accessParams=[projectId,projectRow.revision,projectId,user.id,user.profile,user.department,user.position,...(pmGuard?sitePmRows.flatMap((record:any)=>[record.id,record.revision,record.id]):[]),projectId,code,code,JSON.stringify([...siteIds].sort())];
  if(method==='GET'){
-  const rows=await db.prepare('SELECT * FROM studio_project_inquiries WHERE project_id=? AND department=? ORDER BY updated_at DESC,id').bind(projectId,department).all();
+  const rows=await db.prepare(`SELECT * FROM studio_project_inquiries WHERE project_id IN (${siteSql}) AND department=? ORDER BY updated_at DESC,id`).bind(...siteIds,department).all();
   const includeDeleted=new URL(request.url).searchParams.get('includeDeleted')==='1';
   const inquiries=rows.results.filter((record:any)=>manage||record.author_id===user.id||record.status==='REGISTERED').map(decodeRow).filter((inquiry:Inquiry)=>inquiry.deletedAt?includeDeleted&&(manage||inquiry.authorId===user.id):true);
-  const rounds=new Map<number,InquiryRound>(roundRows.map((record:any)=>[record.round_number,{...JSON.parse(record.body),revision:record.revision}]));
-  for(const inquiry of inquiries)if(!rounds.has(inquiry.roundNumber!))rounds.set(inquiry.roundNumber!,{projectId,department,roundNumber:inquiry.roundNumber!,status:'DRAFT',revision:0,createdAt:inquiry.createdAt,updatedAt:inquiry.updatedAt});
+  const rounds=new Map<string,InquiryRound>(roundRows.map((record:any)=>[`${record.project_id}:${record.round_number}`,{...JSON.parse(record.body),revision:record.revision}]));
+  for(const inquiry of inquiries){const key=`${inquiry.projectId}:${inquiry.roundNumber}`;if(!rounds.has(key))rounds.set(key,{projectId:inquiry.projectId,department,roundNumber:inquiry.roundNumber!,status:'DRAFT',revision:0,createdAt:inquiry.createdAt,updatedAt:inquiry.updatedAt});}
   return json({inquiries,rounds:[...rounds.values()].sort((a,b)=>a.roundNumber-b.roundNumber),capabilities});
  }
  if(!canWrite)return fail('본인 팀 또는 담당 PM 현장의 질의사항만 작성할 수 있습니다.',403);
  if(archived)return fail('보관된 프로젝트의 질의사항은 변경할 수 없습니다.',409);
  if(translate){
   if(body.department!==department)return fail('번역할 프로젝트·팀 연결을 확인하세요.');
-  const records=(await db.prepare('SELECT * FROM studio_project_inquiries WHERE project_id=? AND department=?').bind(projectId,department).all()).results;
+  const records=(await db.prepare(`SELECT * FROM studio_project_inquiries WHERE project_id IN (${siteSql}) AND department=?`).bind(...siteIds,department).all()).results;
   if(Array.isArray(body.items)&&body.items.some((item:any)=>{const record=records.find((row:any)=>row.id===item?.id);return record&&!manage&&record.status!=='REGISTERED'&&record.author_id!==user.id;}))return fail('다른 작성자의 비공개 초안은 번역할 수 없습니다.',403);
-  return translateInquiryTexts(body,env,projectId,records,roundRows,async()=>{
+  // The validator receives the shared read scope; stored row bodies and source project IDs stay intact.
+  return translateInquiryTexts(body,env,projectId,records.map((record:any)=>({...record,project_id:projectId})),roundRows,async()=>{
    const {sessionUser}=await import('./collaboration.ts'),currentUser=await sessionUser(request,env);
    if(!currentUser||currentUser.id!==user.id||currentUser.profile!==user.profile||currentUser.department!==user.department||currentUser.position!==user.position)return false;
    const currentProject=await db.prepare('SELECT revision FROM studio_projects WHERE id=?').bind(projectId).first();
    if(currentProject?.revision!==projectRow.revision||await db.prepare('SELECT project_id FROM studio_project_archive WHERE project_id=?').bind(projectId).first())return false;
-   const currentRound=await db.prepare('SELECT revision,status FROM studio_inquiry_rounds WHERE project_id=? AND department=? AND round_number=?').bind(projectId,department,body.roundNumber).first();
-   if((currentRound?.revision||0)!==(roundState(body.roundNumber)?.revision||0)||currentRound?.status==='SENT')return false;
-   for(const item of body.items){const previous=records.find((record:any)=>record.id===item.id),latest=await db.prepare('SELECT project_id,revision FROM studio_project_inquiries WHERE id=?').bind(item.id).first();if(previous?latest?.project_id!==projectId||latest.revision!==previous.revision:Boolean(latest))return false;}
+   const currentRounds=(await db.prepare(`SELECT project_id,round_number,revision,status FROM studio_inquiry_rounds WHERE project_id IN (${siteSql}) AND department=? ORDER BY project_id,round_number`).bind(...siteIds,department).all()).results;
+   const roundVersions=(rows:any[])=>JSON.stringify(rows.map(record=>[record.project_id,record.round_number,record.revision,record.status]));
+   if(roundVersions(currentRounds)!==roundVersions(roundRows)||currentRounds.some((record:any)=>record.round_number===body.roundNumber&&record.status==='SENT'))return false;
+   for(const source of siteReadRows){const latest=await db.prepare('SELECT revision FROM studio_projects WHERE id=?').bind(source.id).first();if(latest?.revision!==source.revision)return false;}
+   for(const item of body.items){const previous=records.find((record:any)=>record.id===item.id),latest=await db.prepare('SELECT project_id,revision FROM studio_project_inquiries WHERE id=?').bind(item.id).first();if(previous?latest?.project_id!==previous.project_id||latest.revision!==previous.revision:Boolean(latest))return false;}
    return true;
   });
  }
  if(roundMatch){
   if(!manage)return fail('팀 관리자만 발송 상태를 변경할 수 있습니다.',403);
   const number=Number(roundMatch[1]);if(!Number.isInteger(number)||number<1||number>999)return fail('질의사항 차수를 확인하세요.');
-  const current=roundState(number),oldRound=current?JSON.parse(current.body):null;
+  const currentRows=roundRows.filter((record:any)=>record.round_number===number),current=currentRows.find((record:any)=>record.project_id===projectId);
+  const send=roundMatch[2]==='send',sentRows=currentRows.filter((record:any)=>record.status==='SENT');
+  if(send?sentRows.length>0:sentRows.length===0)return fail(send?'이미 발송완료로 표시된 차수입니다.':'발송완료인 차수만 표시를 취소할 수 있습니다.',409);
   if(body.revision!==(current?.revision||0))return fail('다른 화면에서 발송 상태가 변경되었습니다. 최신 목록을 확인하세요.',409);
-  const send=roundMatch[2]==='send';
-  if(send?current?.status==='SENT':current?.status!=='SENT')return fail(send?'이미 발송완료로 표시된 차수입니다.':'발송완료인 차수만 표시를 취소할 수 있습니다.',409);
-  // Legacy group inference stays in the shared helper; no historical body/revision rewrite.
-  const records=(await db.prepare('SELECT * FROM studio_project_inquiries WHERE project_id=? AND department=? ORDER BY id').bind(projectId,department).all()).results;
+  if(body.roundVersions!==undefined){const versions=body.roundVersions;if(!Array.isArray(versions)||versions.some((value:any)=>!value||!smallId(value.projectId)||!Number.isInteger(value.revision)||value.revision<1)||new Set(versions.map((value:any)=>value.projectId)).size!==versions.length||versions.length!==currentRows.length||currentRows.some((record:any)=>!versions.some((value:any)=>value.projectId===record.project_id&&value.revision===record.revision)))return fail('다른 화면에서 차수 상태가 변경되었습니다. 최신 목록을 확인하세요.',409);}
+  else if(!send&&sentRows.length>1)return fail('여러 원본의 발송 상태를 최신 목록에서 함께 확인하세요.',409);
+  const records=(await db.prepare(`SELECT * FROM studio_project_inquiries WHERE project_id IN (${siteSql}) AND department=? ORDER BY id`).bind(...siteIds,department).all()).results;
   const inquiries=records.map(decodeRow).filter((inquiry:Inquiry)=>inquiry.roundNumber===number&&!inquiry.deletedAt);
   if(send){
    if(!inquiries.length)return fail('저장된 질의사항이 있는 차수만 발송완료로 표시할 수 있습니다.');
@@ -143,14 +151,23 @@ export async function projectInquiryRoute(request:Request,env:any,user:any,route
    const expected=new Map(versions.map((value:any)=>[value.id,value.revision]));
    if(expected.size!==inquiries.length||inquiries.some((inquiry:Inquiry)=>expected.get(inquiry.id)!==inquiry.revision))return fail('새 질의 또는 수정 내용이 있습니다. 최신 저장 목록을 확인한 뒤 발송완료를 표시하세요.',409);
   }
-  const now=new Date().toISOString(),round:Omit<InquiryRound,'revision'>={projectId,department,roundNumber:number,status:send?'SENT':'DRAFT',createdAt:oldRound?.createdAt||inquiries[0]?.createdAt||now,updatedAt:now,...(send?{sentAt:now,sentBy:user.id,sentByName:user.name}:{})};
-  // A concurrent insert, edit or deletion must not silently change the dispatch list.
-  const snapshot=JSON.stringify(records.map((record:any)=>[record.id,record.revision]));
-  const versionGuard="(SELECT COALESCE(json_group_array(json_array(id,revision)),'[]') FROM (SELECT id,revision FROM studio_project_inquiries WHERE project_id=? AND department=? ORDER BY id))=?";
-  const guard=`${accessGuard} AND ${versionGuard}`,params=[...accessParams,projectId,department,snapshot],serialized=JSON.stringify(round);
-  const saved=current?await db.prepare(`UPDATE studio_inquiry_rounds SET body=?,status=?,revision=revision+1,updated_at=? WHERE project_id=? AND department=? AND round_number=? AND revision=? AND ${guard}`).bind(serialized,round.status,now,projectId,department,number,current.revision,...params).run():await db.prepare(`INSERT OR IGNORE INTO studio_inquiry_rounds(project_id,department,round_number,status,body,revision,updated_at) SELECT ?,?,?,?,?,1,? WHERE ${guard}`).bind(projectId,department,number,round.status,serialized,now,...params).run();
-  if(!saved.meta.changes)return fail('동시에 질의사항 또는 발송 상태가 변경되었습니다. 최신 내용을 확인하세요.',409);
-  return json({round:{...round,revision:(current?.revision||0)+1}});
+  const targets=send?[{project_id:projectId,record:current}]:sentRows.map((record:any)=>({project_id:record.project_id,record}));
+  if(targets.some((target:any)=>archivedIds.has(target.project_id)))return fail('보관된 원본 프로젝트의 발송 상태는 변경할 수 없습니다.',409);
+  const now=new Date().toISOString(),snapshot=JSON.stringify(records.map((record:any)=>[record.id,record.revision]));
+  const versionGuard=`(SELECT COALESCE(json_group_array(json_array(id,revision)),'[]') FROM (SELECT id,revision FROM studio_project_inquiries WHERE project_id IN (${siteSql}) AND department=? ORDER BY id))=?`;
+  const roundsSnapshot=JSON.stringify(roundRows.map((record:any)=>[record.project_id,record.round_number,record.revision,record.status]));
+  const roundsGuard=`(SELECT COALESCE(json_group_array(json_array(project_id,round_number,revision,status)),'[]') FROM (SELECT project_id,round_number,revision,status FROM studio_inquiry_rounds WHERE project_id IN (${siteSql}) AND department=? ORDER BY project_id,round_number))=?`;
+  const scopeGuard=`${accessGuard} AND ${versionGuard} AND ${roundsGuard}`,params=[...accessParams,...siteIds,department,snapshot,...siteIds,department,roundsSnapshot];
+  const nextRounds:InquiryRound[]=[],writes:any[]=[];
+  for(const target of targets){const oldRound=target.record?JSON.parse(target.record.body):null,round:Omit<InquiryRound,'revision'>={projectId:target.project_id,department,roundNumber:number,status:send?'SENT':'DRAFT',createdAt:oldRound?.createdAt||inquiries[0]?.createdAt||now,updatedAt:now,...(send?{sentAt:now,sentBy:user.id,sentByName:user.name}:{})};
+   const serialized=JSON.stringify(round),targetGuard=`${accessGuard} AND ${versionGuard} AND NOT EXISTS(SELECT 1 FROM studio_project_archive WHERE project_id=?)`;
+   const targetParams=[...accessParams,...siteIds,department,snapshot,target.project_id];
+   writes.push(target.record?db.prepare(`UPDATE studio_inquiry_rounds SET body=?,status=?,revision=revision+1,updated_at=? WHERE project_id=? AND department=? AND round_number=? AND revision=? AND ${targetGuard}`).bind(serialized,round.status,now,target.project_id,department,number,target.record.revision,...targetParams):db.prepare(`INSERT OR IGNORE INTO studio_inquiry_rounds(project_id,department,round_number,status,body,revision,updated_at) SELECT ?,?,?,?,?,1,? WHERE ${scopeGuard}`).bind(target.project_id,department,number,round.status,serialized,now,...params));
+   writes.push(db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE changes()<>1'));
+   nextRounds.push({...round,revision:(target.record?.revision||0)+1});
+  }
+  try{await db.batch([db.prepare(`INSERT INTO studio_write_assertions SELECT 0 WHERE NOT (${scopeGuard})`).bind(...params),...writes]);}catch{return fail('동시에 질의사항 또는 발송 상태가 변경되었습니다. 최신 내용을 확인하세요.',409);}
+  return json({round:nextRounds.find(round=>round.projectId===projectId)||nextRounds[0],rounds:nextRounds});
  }
  if(method==='DELETE'&&!row)return fail('저장된 질의사항을 찾을 수 없습니다.',404);
  if(body.projectId!==undefined&&body.projectId!==projectId)return fail('프로젝트 연결을 변경할 수 없습니다.');
@@ -171,9 +188,9 @@ export async function projectInquiryRoute(request:Request,env:any,user:any,route
  if(affectedRounds.some(number=>roundState(number)?.status==='SENT'))return fail('발송완료 차수는 표시를 취소한 뒤 수정·삭제·복구하세요.',409);
  const serialized=JSON.stringify(inquiry),byteLength=new TextEncoder().encode(serialized).byteLength;
  if(byteLength>bodyLimit)return fail('질의사항 저장 용량을 초과했습니다. 이미지를 줄여 주세요.',413);
- const roundGuard=affectedRounds.map(()=>"NOT EXISTS(SELECT 1 FROM studio_inquiry_rounds WHERE project_id=? AND department=? AND round_number=? AND status='SENT')").join(' AND ');
- const guard=`${accessGuard} AND ${roundGuard} AND (SELECT COALESCE(SUM(length(CAST(body AS BLOB))),0) FROM studio_project_inquiries WHERE project_id=? AND department=? AND id<>?)+?<=?`;
- const params=[...accessParams,...affectedRounds.flatMap(number=>[projectId,department,number]),projectId,department,id,byteLength,projectLimit];
+ const roundGuard=affectedRounds.map(()=>`NOT EXISTS(SELECT 1 FROM studio_inquiry_rounds WHERE project_id IN (${siteSql}) AND department=? AND round_number=? AND status='SENT')`).join(' AND ');
+ const guard=`${accessGuard} AND ${roundGuard} AND (SELECT COALESCE(SUM(length(CAST(body AS BLOB))),0) FROM studio_project_inquiries WHERE project_id IN (${siteSql}) AND department=? AND id<>?)+?<=?`;
+ const params=[...accessParams,...affectedRounds.flatMap(number=>[...siteIds,department,number]),...siteIds,department,id,byteLength,projectLimit];
  const saved=row?await db.prepare(`UPDATE studio_project_inquiries SET body=?,status=?,revision=revision+1,updated_at=? WHERE id=? AND revision=? AND ${guard}`).bind(serialized,inquiry.status,now,id,row.revision,...params).run():await db.prepare(`INSERT OR IGNORE INTO studio_project_inquiries(id,project_id,department,author_id,status,body,revision,updated_at) SELECT ?,?,?,?,?,?,1,? WHERE ${guard}`).bind(id,projectId,department,user.id,inquiry.status,serialized,now,...params).run();
  if(!saved.meta.changes)return fail('동시 변경 또는 저장 용량 초과입니다. 입력을 보존하고 최신 배정·내용을 확인하세요.',409);
  return json({inquiry:{...inquiry,roundNumber:inquiryRoundNumber(inquiry),revision:(row?.revision||0)+1}});

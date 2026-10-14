@@ -15,7 +15,7 @@ import {decodeTsv,encodeTsv,inquiryClipboardMime,parseCopiedInquiryRows} from '.
 const columns=[['no','No'],['classification','구분'],['drawingNumbers','관련 도면'],['question','질의사항'],['answer','산출사항 / 답변'],['review','검토사항'],['notes','비고']] as const;
 type Field=typeof columns[number][0];
 type Position={row:number;column:number};
-type Response={inquiries:Inquiry[];rounds?:InquiryRound[];capabilities:{canCreate:boolean;canManage:boolean;canEdit?:boolean}};
+type Response={inquiries:Inquiry[];rounds?:InquiryRound[];capabilities:{canCreate:boolean;canManage:boolean;canEdit?:boolean;projectIds?:string[];writableProjectIds?:string[]}};
 const koreanFields=[['classification','구분'],['question','질의사항'],['answer','산출사항 / 답변'],['review','검토사항'],['notes','비고']] as const;
 type KoreanItem={id:string;revision:number;classification:string;question:string;answer:string;review:string;notes:string;imageCaptions:{id:string;caption:string}[]};
 type KoreanPreview={key:string;roundNumber:number;trade:string;contextVersion?:number;rows:Inquiry[];baseRows:Inquiry[];items:KoreanItem[];scope:'ROUND'|'TRADE'};
@@ -113,18 +113,19 @@ export function ProjectInquiries({department,initialProjectId,initialProjectCode
  const cap=loadedKey===key?capabilities:{canCreate:false,canManage:false};
  keyRef.current=key;value.current=activeDraft;base.current=loadedKey===key?remote:[];busyRef.current=busy;
  const current=useCallback((captured:string)=>keyRef.current===captured&&useAuthStore.getState().currentUser?.id===actorId,[actorId]);
- const editable=(row:Inquiry)=>cap.canEdit||cap.canManage||cap.canCreate&&row.authorId===actorId;
- const canDelete=(row:Inquiry)=>cap.canManage||cap.canCreate&&row.authorId===actorId;
+ const inProject=(id:string)=>sameWorkProject(projects,id,projectId)||!!cap.projectIds?.includes(id);
+ const editable=(row:Inquiry)=>(!cap.writableProjectIds||cap.writableProjectIds.includes(row.projectId))&&(cap.canEdit||cap.canManage||cap.canCreate&&row.authorId===actorId);
+ const canDelete=(row:Inquiry)=>(!cap.writableProjectIds||cap.writableProjectIds.includes(row.projectId))&&(cap.canManage||cap.canCreate&&row.authorId===actorId);
  const sent=(number:number)=>rounds.some(round=>round.roundNumber===number&&round.status==='SENT');
  const writable=(row:Inquiry)=>editing&&editable(row)&&!row.deletedAt&&!sent(inquiryRoundNumber(row));
  const shown=activeDraft.rows.filter(row=>!row.deletedAt&&row.department===department&&row.trade===trade&&inquiryRoundNumber(row)===roundNumber);
  const dirty=activeDraft.rows.filter(row=>!row.deletedAt&&editable(row)&&(changed(row,remote.find(old=>old.id===row.id))||row.status==='DRAFT'&&row.revision>0));
  const roundNumbers=[...new Set([1,roundNumber,...rounds.map(round=>round.roundNumber),...activeDraft.rows.map(inquiryRoundNumber)])].sort((a,b)=>a-b);
- const round=rounds.find(row=>row.roundNumber===roundNumber),roundRows=activeDraft.rows.filter(row=>!row.deletedAt&&inquiryRoundNumber(row)===roundNumber);
+ const round=rounds.find(row=>row.roundNumber===roundNumber&&row.status==='SENT')||rounds.find(row=>row.roundNumber===roundNumber),roundRows=activeDraft.rows.filter(row=>!row.deletedAt&&inquiryRoundNumber(row)===roundNumber);
  const trades=[...new Set([...TEAM_ROLES[department].filter(x=>x!=='PM'),...activeDraft.rows.filter(x=>x.department===department).map(x=>x.trade)])];
  const translationView=useRef({key,roundNumber,trade,translationScope,visible,initialContextVersion,contextReady,cap,rounds});
  translationView.current={key,roundNumber,trade,translationScope,visible,initialContextVersion,contextReady,cap,rounds};
- const translationTargets=activeDraft.rows.filter(row=>row.projectId===projectId&&row.department===department&&!row.deletedAt&&inquiryRoundNumber(row)===roundNumber&&editable(row)&&(translationScope==='ROUND'||row.trade===trade));
+ const translationTargets=activeDraft.rows.filter(row=>inProject(row.projectId)&&row.department===department&&!row.deletedAt&&inquiryRoundNumber(row)===roundNumber&&editable(row)&&(translationScope==='ROUND'||row.trade===trade));
  const apply=(next:InquiryDraft,editKey='',internal=false)=>{
   if(loadedKey!==key||busyRef.current&&!internal)return;saveEpoch.current++;
   const h=history.current,now=Date.now();if(!editKey||h.lastKey!==editKey||now-h.lastAt>900){h.past.push(value.current);if(h.past.length>50)h.past.shift();}
@@ -142,13 +143,20 @@ export function ProjectInquiries({department,initialProjectId,initialProjectCode
  useEffect(()=>{
   const captured=key;let cancelled=false;saveEpoch.current++;busyRef.current=false;setBusy(false);setReady(false);setLoadedKey('');setCap({canCreate:false,canManage:false});setDraft({rows:[],unassignedImages:[],updatedAt:0});setRemote([]);setRounds([]);setRoundNumber(1);setEditing(false);setShowDeleted(false);setPreview(null);setLightbox(null);setError('');setNotice('');history.current={past:[],future:[],lastKey:'',lastAt:0};
   if(!actorId||!projectId||!studio.ready)return;
-  void Promise.all([studioApi<Response>(`inquiries?projectId=${encodeURIComponent(projectId)}&department=${encodeURIComponent(department)}&includeDeleted=1`),readInquiryDraft(captured).catch(()=>undefined)]).then(([response,local])=>{
+  void Promise.all([studioApi<Response>(`inquiries?projectId=${encodeURIComponent(projectId)}&department=${encodeURIComponent(department)}&includeDeleted=1`),readInquiryDraft(captured).catch(()=>undefined)]).then(async([response,local])=>{
    if(!current(captured)||cancelled)return;
-   const localRows=local?.rows.filter(row=>row.projectId===projectId&&row.department===department&&(row.authorId===actorId||response.capabilities.canManage||response.capabilities.canEdit&&row.status==='REGISTERED'))||[];
+   const ids=response.capabilities.projectIds||[projectId];
+   const others=await Promise.all(ids.filter(id=>id!==projectId).map(id=>readInquiryDraft(`${actorId}:${department}:${id}`).catch(()=>undefined)));
+   if(!current(captured)||cancelled)return;
+   const drafts=[local,...others].filter((draft):draft is InquiryDraft=>!!draft).sort((a,b)=>b.updatedAt-a.updatedAt);
+   const uniqueRows=(rows:Inquiry[])=>[...new Map(rows.map(row=>[row.id,row])).values()];
+   const scope=(row:Inquiry)=>(row.projectId===projectId||ids.includes(row.projectId))&&row.department===department&&(row.authorId===actorId||response.capabilities.canManage||response.capabilities.canEdit&&row.status==='REGISTERED');
+   const localRows=uniqueRows([...drafts].reverse().flatMap(draft=>draft.rows.filter(scope))),localBaseRows=uniqueRows([...drafts].reverse().flatMap(draft=>(draft.baseRows||[]).filter(scope)));
    const deletedEdits:Inquiry[]=[];
-   const rows=response.inquiries.map(row=>{const localRow=localRows.find(x=>x.id===row.id),localBase=local?.baseRows?.find(x=>x.id===row.id);if(row.deletedAt&&localRow&&changed(localRow,localBase||row)){deletedEdits.push(localRow);return row;}return localRow&&changed(localRow,localBase||row)?localRow:row;});
-   for(const row of localRows)if(!rows.some(x=>x.id===row.id)){if(!row.revision)rows.push(row);else if(changed(row,local?.baseRows?.find(old=>old.id===row.id)))deletedEdits.push(row);}
-   setRemote(response.inquiries);setRounds(response.rounds||[]);setCap(response.capabilities);setDraft({rows,unassignedImages:local?.unassignedImages||[],retainedRows:[...(local?.retainedRows?.filter(row=>row.projectId===projectId&&row.department===department&&(row.authorId===actorId||response.capabilities.canManage||response.capabilities.canEdit&&row.status==='REGISTERED'))||[]),...deletedEdits],updatedAt:Date.now()});setLoadedKey(captured);setReady(true);
+   const rows=response.inquiries.map(row=>{const localRow=localRows.find(x=>x.id===row.id),localBase=localBaseRows.find(x=>x.id===row.id);if(row.deletedAt&&localRow&&changed(localRow,localBase||row)){deletedEdits.push(localRow);return row;}return localRow&&changed(localRow,localBase||row)?localRow:row;});
+   for(const row of localRows)if(!rows.some(x=>x.id===row.id)){if(!row.revision)rows.push(row);else if(changed(row,localBaseRows.find(old=>old.id===row.id)))deletedEdits.push(row);}
+   const unassignedImages=[...new Map(drafts.flatMap(draft=>draft.unassignedImages).map(image=>[JSON.stringify([image.id,image.sourceSheet,image.sourceRow,image.dataUrl]),image])).values()];
+   setRemote(response.inquiries);setRounds(response.rounds||[]);setCap(response.capabilities);setDraft({rows,unassignedImages,retainedRows:uniqueRows([...drafts.flatMap(draft=>(draft.retainedRows||[]).filter(scope)),...deletedEdits]),updatedAt:Date.now()});setLoadedKey(captured);setReady(true);
   }).catch(e=>{if(current(captured)&&!cancelled)setError(e.message);});
   return()=>{cancelled=true;};
  },[key,studio.ready,actorId,projectId,department,current]);
@@ -167,7 +175,7 @@ export function ProjectInquiries({department,initialProjectId,initialProjectCode
  useEffect(()=>{if(!teamProjects.some(p=>p.id===projectId)){const candidate=requestedCode?teamProjects.find(p=>p.code===requestedCode):teamProjects[0];setProjectId(candidate?.id||'');if(candidate&&!requestedCode)setRequestedCode(candidate.code);}},[projectId,teamProjects,requestedCode]);
 
  const selectImport=(result:InquiryImportResult):InquiryImportResult=>{
-  const inquiries=result.inquiries.filter(row=>row.department===department&&row.projectId===projectId),sheets=new Set(inquiries.map(row=>row.sourceSheet));
+  const inquiries=result.inquiries.filter(row=>row.department===department&&inProject(row.projectId)),sheets=new Set(inquiries.map(row=>row.sourceSheet));
   const skipped=result.inquiries.length-inquiries.length;
   return {...result,inquiries,unassignedImages:result.unassignedImages.filter(image=>sheets.has(image.sourceSheet)||image.sourceSheet.includes(department.replace('팀',''))),warnings:[...result.warnings,...(skipped?[`다른 팀 질의 ${skipped}개는 해당 팀에서 별도로 불러오세요.`]:[])]};
  };
@@ -237,7 +245,7 @@ export function ProjectInquiries({department,initialProjectId,initialProjectCode
  const translationChangeCount=translationPreview?.rows.filter(row=>koreanPairs(row,translationPreview.items.find(item=>item.id===row.id)!).length).length||0;
  async function persist(){
   const captured=key;if(!contextReady||busy||!current(captured))return;saveEpoch.current++;
-  const targets=dirty.filter(row=>row.department===department&&row.projectId===projectId);
+  const targets=dirty.filter(row=>row.department===department&&inProject(row.projectId));
   if(!targets.length){setNotice('저장할 변경이 없습니다.');return;}
   if(targets.some(row=>sent(inquiryRoundNumber(row)))){setError('발송된 차수는 수정할 수 없습니다. 발송 표시를 취소한 뒤 수정하세요. 입력은 보관됩니다.');return;}
   if(targets.some(row=>!row.question.trim()&&!row.images.some(image=>image.field==='question'))){setError('저장할 항목의 질의사항 또는 질의 사진을 입력하세요.');return;}
@@ -266,7 +274,7 @@ export function ProjectInquiries({department,initialProjectId,initialProjectCode
   const captured=key;if(!contextReady||busy||!cap.canManage||!current(captured))return;
   if(action==='send'&&(dirty.some(row=>inquiryRoundNumber(row)===roundNumber)||roundRows.some(row=>!row.revision))){setError('이 차수의 질의를 먼저 저장하세요.');return;}
   saveEpoch.current++;busyRef.current=true;setBusy(true);setError('');
-  try{const response=await studioApi<{round:InquiryRound}>(`inquiries/rounds/${roundNumber}/${action}`,'POST',{actorId,projectId,department,revision:round?.revision||0,inquiryVersions:base.current.filter(row=>!row.deletedAt&&inquiryRoundNumber(row)===roundNumber).map(row=>({id:row.id,revision:row.revision}))});if(current(captured)){setRounds(old=>[...old.filter(row=>row.roundNumber!==roundNumber),response.round]);if(action==='send')setEditing(false);setNotice(`${roundNumber}차 ${action==='send'?'발송완료로 표시했습니다.':'발송 표시를 취소했습니다.'}`);}}
+  try{const response=await studioApi<{round:InquiryRound;rounds?:InquiryRound[]}>(`inquiries/rounds/${roundNumber}/${action}`,'POST',{actorId,projectId:round?.projectId||projectId,department,revision:round?.revision||0,roundVersions:rounds.filter(row=>row.roundNumber===roundNumber&&row.revision>0).map(row=>({projectId:row.projectId,revision:row.revision})),inquiryVersions:base.current.filter(row=>!row.deletedAt&&inquiryRoundNumber(row)===roundNumber).map(row=>({id:row.id,revision:row.revision}))});if(current(captured)){const changed=response.rounds||[response.round];setRounds(old=>[...old.filter(row=>!changed.some(next=>next.projectId===row.projectId&&next.roundNumber===row.roundNumber)),...changed]);if(action==='send')setEditing(false);setNotice(`${roundNumber}차 ${action==='send'?'발송완료로 표시했습니다.':'발송 표시를 취소했습니다.'}`);}}
   catch(e){if(current(captured))setError(e instanceof Error?e.message:'발송 상태 변경 실패');}finally{if(current(captured)){busyRef.current=false;setBusy(false);}}
  }
  async function addPhotos(files:File[],rowId:string,field:Field){

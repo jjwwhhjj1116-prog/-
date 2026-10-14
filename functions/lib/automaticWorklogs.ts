@@ -11,11 +11,14 @@ export async function syncAutomaticWorklogs(env:any,{now=new Date(),onlyUserId,s
  const projectRows=(await db.prepare('SELECT id,body,revision FROM studio_projects WHERE id NOT IN (SELECT project_id FROM studio_project_archive)').all()).results;
  const schedules=projectRows.map((row:any)=>JSON.parse(row.body));
  const leaves=(await db.prepare('SELECT user_id,start_date,end_date,kind FROM studio_leaves WHERE cancelled=0 AND start_date<=? AND end_date>=?').bind(day,day).all()).results;
+ const logRows=(await (onlyUserId?db.prepare('SELECT * FROM studio_worklogs WHERE day=? AND user_id=? AND removed=0').bind(day,onlyUserId):db.prepare('SELECT * FROM studio_worklogs WHERE day=? AND removed=0').bind(day)).all()).results;
+ const byUser=new Map(logRows.map((row:any)=>[row.user_id,row]));
+ const pending:{statements:any[];updated:boolean;submitted:boolean}[]=[];
  for(const user of profiles.filter((u:any)=>u.active&&(!onlyUserId||u.id===onlyUserId)&&['마감팀','구조팀','토목&조경팀'].includes(u.department))){
   if(leaves.some((l:any)=>l.user_id===user.id&&!l.kind.includes('반차'))){result.skipped++;continue;}
   const aliases=assignmentAliases(user,profiles),assigned=assignedItems(user.id,day,schedules,aliases);
   if(!assigned.length){result.skipped++;continue;}
-  const row=await db.prepare('SELECT * FROM studio_worklogs WHERE user_id=? AND day=? AND removed=0').bind(user.id,day).first();
+  const row:any=byUser.get(user.id);
   const previous=row?JSON.parse(row.body):null;
   if(previous&&previous.approvalStatus!=='DRAFT'){result.skipped++;continue;}
   const items=automaticWorkLogItems(reconcileWorkLogItems(previous?.items||assigned,user.id,day,schedules,aliases),day);
@@ -34,7 +37,15 @@ export async function syncAutomaticWorklogs(env:any,{now=new Date(),onlyUserId,s
   if(closing)guards.push(db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1)').bind(leader));
   const writes=row?[db.prepare('UPDATE studio_worklogs SET body=?,revision=revision+1 WHERE id=? AND revision=?').bind(JSON.stringify(body),id,row.revision)]:[db.prepare('INSERT INTO studio_worklogs (id,user_id,day,department,body) VALUES (?,?,?,?,?)').bind(id,user.id,day,user.department,JSON.stringify(body))];
   if(closing)writes.push(db.prepare('INSERT OR IGNORE INTO studio_notifications (id,user_id,meeting_id,message,created_at) VALUES (?,?,?,?,?)').bind(`worklog:${id}:submit:${leader}`,leader,`worklog:${id}`,`${user.name}님의 ${day} 오후 5시 자동 업무보고 · 일정 기준 작성, 수기 수정 포함`,stamp));
-  try{await db.batch([...guards,...writes]);if(row)result.updated++;else result.created++;if(closing)result.submitted++;}catch{result.conflicts++;}
+  pending.push({statements:[...guards,...writes],updated:!!row,submitted:closing});
+ }
+ // Conflicting groups roll back together; the next scheduled tick retries without overwriting manual changes.
+ for(let offset=0;offset<pending.length;offset+=20){
+  const group=pending.slice(offset,offset+20);
+  try{
+   await db.batch(group.flatMap(item=>item.statements));
+   result.updated+=group.filter(item=>item.updated).length;result.created+=group.filter(item=>!item.updated).length;result.submitted+=group.filter(item=>item.submitted).length;
+  }catch{result.conflicts+=group.length;}
  }
  return result;
 }

@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
-import {writeFileSync} from 'node:fs';
+import {readFileSync,writeFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
 import {database} from './d1.mjs';
-import {syncAutomaticWorklogs} from '../../functions/lib/automaticWorklogs.ts';
+const sourceArg=process.argv.find(arg=>arg.startsWith('--auto-source='));
+const override=sourceArg&&readFileSync(sourceArg.slice('--auto-source='.length),'utf8').replace('../../scheduler-web/src/utils/personalWork.ts',new URL('../src/utils/personalWork.ts',import.meta.url).href);
+const ts=override&&createRequire(import.meta.url)('typescript');
+const source=override&&ts.transpileModule(override,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const {syncAutomaticWorklogs}=await import(source?`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`:new URL('../../functions/lib/automaticWorklogs.ts',import.meta.url).href);
 
 const results=[];
 const noon=new Date('2026-10-14T03:00:00Z'),closing=new Date('2026-10-14T08:00:00Z');
@@ -17,6 +22,23 @@ function fixture({people=['worker'],alias=false}={}){
  const log=(id='worker',day='2026-10-14')=>{const record=row(id,day);return record&&{...JSON.parse(record.body),serverRevision:record.revision};};
  const run=(options={})=>syncAutomaticWorklogs({DB},{now:noon,onlyUserId:'worker',...options});
  return {db,DB,project,putProject,row,log,run};
+}
+function manyFixture(){
+ const q=fixture(),departments=['마감팀','구조팀','토목&조경팀'],ids=[];
+ for(const [id,department,position]of [['u_25','구조팀','팀장'],['u_24','구조팀','실장'],['u_8','토목&조경팀','본부장'],...Array.from({length:66},(_,n)=>['many-'+n,departments[n%3],'프로'])]){
+  const profile={id,name:'합성 '+id,department,position,active:true};
+  q.db.prepare('INSERT INTO studio_users (id,login,email,name,department,position,profile,salt,password_hash,active) VALUES (?,?,?,?,?,?,?,?,?,?)').run(id,id,id+'@example.invalid',profile.name,department,position,JSON.stringify(profile),'synthetic','unused',1);
+  if(id.startsWith('many-'))ids.push(id);
+ }
+ departments.forEach((department,n)=>{const project={...structuredClone(q.project),id:n?'auto-project-'+n:q.project.id,department};project.subTasks.내부.personIds=ids.filter((_,index)=>index%3===n);if(n)q.putProject(project);else q.db.prepare('UPDATE studio_projects SET body=? WHERE id=?').run(JSON.stringify(project),project.id);});
+ return {...q,ids};
+}
+function capCalls(q,limit=50){
+ let calls=0,statements=0,batches=0;const prepare=q.DB.prepare,batch=q.DB.batch;
+ const count=()=>{assert.ok(++calls<=limit,'DB binding calls exceeded '+limit);};
+ q.DB.prepare=sql=>{const statement=prepare(sql),wrapped={_statement:statement,bind(...values){statement.bind(...values);return wrapped;},async first(){count();statements++;return statement.first();},async all(){count();statements++;return statement.all();},async run(){count();statements++;return statement.run();}};return wrapped;};
+ q.DB.batch=async list=>{count();batches++;statements+=list.length;return batch(list.map(statement=>statement._statement));};
+ return ()=>({calls,statements,batches});
 }
 async function test(name,fn){try{const observed=await fn();results.push({name,status:'PASS',observed});console.log('PASS',name);}catch(error){results.push({name,status:'FAIL',reason:error.message,observed:error.observed});console.error('FAIL',name,error.message);}}
 
@@ -62,6 +84,13 @@ await test('동시 PM 배정 변경 보호: 저장 직전 본인 배정이 해�
 });
 await test('동시 보관·휴가·소속·팀장 변경 보호: 자동 보고 직전 업무·승인 범위가 바뀌면 쓰기를 함께 차단',async()=>{
  const observed=[];for(const mutation of ['archive','leave','department','leader']){const q=fixture(),batch=q.DB.batch;q.DB.batch=async statements=>{if(mutation==='archive')q.db.prepare('INSERT INTO studio_project_archive VALUES (?,?,?)').run(q.project.id,'synthetic','u_12');if(mutation==='leave')q.db.prepare('INSERT INTO studio_leaves VALUES (?,?,?,?,?,?,?)').run('late-leave','worker','2026-10-14','2026-10-14','연차',1,0);if(mutation==='department')q.db.prepare('UPDATE studio_users SET department=? WHERE id=?').run('구조팀','worker');if(mutation==='leader')q.db.prepare('UPDATE studio_users SET active=0 WHERE id=?').run('u_13');return batch(statements);};const result=await q.run({now:closing});assert.equal(result.conflicts,1,mutation);assert.equal(result.created,0,mutation);assert.equal(result.submitted,0,mutation);assert.equal(q.row(),undefined,mutation);assert.equal(q.db.prepare('SELECT count(*) n FROM studio_notifications').get().n,0,mutation);observed.push({mutation,result});}return observed;
+});
+
+await test('66명·3팀 자동 보고는 DB 50회 한도 이내에서 전원 상신·팀별 알림·반복 무변경',async()=>{
+ const q=manyFixture(),stats=capCalls(q),result=await q.run({now:closing,onlyUserId:undefined});assert.equal(result.created,66);assert.equal(result.submitted,66);assert.equal(result.conflicts,0);assert.equal(q.db.prepare('SELECT count(*) n FROM studio_worklogs').get().n,66);assert.deepEqual(q.db.prepare('SELECT user_id,count(*) n FROM studio_notifications GROUP BY user_id ORDER BY user_id').all().map(row=>({...row})),[{user_id:'u_13',n:22},{user_id:'u_25',n:22},{user_id:'u_8',n:22}]);const first=stats();assert.ok(first.calls<=8,'4 shared reads and at most 4 grouped writes');const revisions=q.db.prepare('SELECT id,revision FROM studio_worklogs ORDER BY id').all(),again=await q.run({now:new Date('2026-10-14T08:05:00Z'),onlyUserId:undefined});assert.equal(again.submitted,0);assert.deepEqual(q.db.prepare('SELECT id,revision FROM studio_worklogs ORDER BY id').all(),revisions);assert.equal(q.db.prepare('SELECT count(*) n FROM studio_notifications').get().n,66);return {result,first,again,total:stats()};
+});
+await test('묶음 CAS 충돌은 일지·알림 함께 롤백하고 다음 실행에 수기 원문·% 유지하며 재상신',async()=>{
+ const q=manyFixture(),stats=capCalls(q);await q.run({onlyUserId:undefined});const row=q.row(q.ids[0]),changed=JSON.parse(row.body);changed.overallNotes='동시 수기 원문';Object.assign(changed.items[0],{todayTask:'직접 입력한 산출 작업',progress:33,status:'지연',manualFields:['todayTask','progress','status']});const batch=q.DB.batch;let mutation=false;q.DB.batch=async statements=>{if(!mutation){mutation=true;q.db.prepare('UPDATE studio_worklogs SET body=?,revision=revision+1 WHERE id=?').run(JSON.stringify(changed),row.id);}return batch(statements);};const conflicted=await q.run({now:closing,onlyUserId:undefined});q.DB.batch=batch;assert.equal(conflicted.conflicts,20);assert.equal(conflicted.submitted,46);assert.equal(q.log(q.ids[0]).overallNotes,changed.overallNotes);assert.equal(q.log(q.ids[0]).approvalStatus,'DRAFT');assert.equal(q.log(q.ids[1]).approvalStatus,'DRAFT','same transaction rollback preserves peer draft');assert.equal(q.db.prepare('SELECT count(*) n FROM studio_notifications').get().n,46);const retried=await q.run({now:new Date('2026-10-14T08:05:00Z'),onlyUserId:undefined});assert.equal(retried.submitted,20);assert.equal(retried.conflicts,0);assert.equal(q.log(q.ids[0]).overallNotes,changed.overallNotes);assert.equal(q.log(q.ids[0]).items[0].todayTask,changed.items[0].todayTask);assert.equal(q.log(q.ids[0]).items[0].progress,33);assert.equal(q.log(q.ids[0]).items[0].status,'지연');assert.equal(q.db.prepare('SELECT count(*) n FROM studio_notifications').get().n,66);assert.equal(q.db.prepare("SELECT count(*) n FROM studio_worklogs WHERE json_extract(body,'$.approvalStatus')='SUBMITTED_LEADER'").get().n,66);return {conflicted,retried,stats:stats()};
 });
 
 const outputArg=process.argv.find(arg=>arg.startsWith('--output='));
