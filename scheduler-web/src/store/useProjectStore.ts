@@ -128,6 +128,9 @@ export interface ScheduleExtension {
   id:string; taskId:string; userId:string; userName:string; roleName:string;
   type?:'DEADLINE'|'OVERTIME'; workDate?:string; startTime?:string; endTime?:string; hours?:number; reasonCategory?:string; approverId?:string;
   previousEnd:string; requestedEnd:string; reason:string; createdAt:string;
+  approvalStage?:'PM'|'TEAM'; pmApproverId?:string;
+  pmReview?:{userId:string;name:string;approvedAt:string;memo:string};
+  appliedTaskId?:string; appliedAllocationId?:string;
   status:'PENDING'|'APPROVED'|'REJECTED'; decidedBy?:string; decidedName?:string; decidedAt?:string; decisionMemo?:string;
 }
 

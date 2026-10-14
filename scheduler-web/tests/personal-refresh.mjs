@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {createServer} from 'vite';
+import {nativeSsrPackages} from './ssr-native-packages.mjs';
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -10,7 +11,7 @@ const output=process.argv.includes('--output')?process.argv[process.argv.indexOf
 const source=new URL('../../'+(before?'private-provisioning/original-before-personal-refresh-20261006/':'')+'scheduler-web/src/store/usePersonalStore.ts',import.meta.url);
 const storage=new Map();globalThis.localStorage={getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,String(value)),removeItem:key=>storage.delete(key)};globalThis.window={localStorage:globalThis.localStorage};
 const realFetch=globalThis.fetch,results=[];
-const server=await createServer({root:fileURLToPath(new URL('../',import.meta.url)),plugins:before?[{name:'protected-before-personal-refresh',enforce:'pre',load(id){if(id.replaceAll('\\','/').endsWith('/src/store/usePersonalStore.ts'))return readFileSync(source,'utf8');}}]:[],server:{middlewareMode:true,hmr:false},appType:'custom'});
+const server=await createServer({configFile:false,ssr:{noExternal:[/^(react|react-dom|zustand)(\/|$)/]},root:fileURLToPath(new URL('../',import.meta.url)),plugins:[nativeSsrPackages(),...(before?[{name:'protected-before-personal-refresh',enforce:'pre',load(id){if(id.replaceAll('\\','/').endsWith('/src/store/usePersonalStore.ts'))return readFileSync(source,'utf8');}}]:[])],server:{middlewareMode:true,hmr:false},appType:'custom'});
 const user=id=>({id,name:'합성 계정 '+id,department:'마감팀',position:id==='u_12'?'실장':'프로'});
 const log=(id='log-A',revision=1,status='DRAFT',owner='A',text='수행 원문')=>({id,userId:owner,date:'2026-10-06',department:'마감팀',items:[{id:'item-'+id,todayTask:text,progress:37,tomorrowPlan:'익일 계획 원문'}],overallNotes:text,serverRevision:revision,approvalStatus:status,leaderReview:{approved:status==='APPROVED_FINAL'},chiefApproval:{approved:status==='APPROVED_FINAL'}});
 const personal=(logs=[],label='latest',done=1)=>({leaves:[{id:'leave-'+label,user_id:'A',start_date:'2026-10-06',end_date:'2026-10-06',kind:'연차',revision:1}],checks:[{day:'2026-10-06',task_id:'task-A',done}],worklogs:logs});

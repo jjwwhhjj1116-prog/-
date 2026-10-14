@@ -13,10 +13,11 @@ for(const [id,position] of [['u_12','실장'],['u_13','수석'],['worker','프�
  const profile={id,name:id,position,department:'마감팀',email:id+'@example.invalid'};
  db.prepare('INSERT INTO studio_users VALUES (?,?,?,?,?,?,?,?,?,1)').run(id,id,profile.email,id,profile.department,position,JSON.stringify(profile),'qa',await passwordHash('test-password','qa'));
 }
-async function req(actor,route,method='GET',body){const r=await handleCollaboration(new Request('https://qa.invalid/api/collaboration/'+route,{method,headers:{Cookie:cookies[actor]||'','Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}),{DB},async()=> '');return {status:r.status,data:await r.json(),response:r};}
+async function req(actor,route,method='GET',body){const r=await handleCollaboration(new Request('https://qa.invalid/api/collaboration/'+route,{method,headers:{Cookie:cookies[actor]||'','Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}),{DB},async()=> ''),result={status:r.status,data:await r.json(),response:r};if(method==='POST'&&route.endsWith('/approve')&&result.status===200&&result.data.request?.status==='PENDING'&&result.data.request.approvalStage==='TEAM')return req(actor,route,method,{...body,revision:result.data.revision});return result;}
 for(const id of ['u_12','u_13','worker','other']){const r=await req(id,'login','POST',{login:id,password:'test-password'});cookies[id]=r.response.headers.get('set-cookie').split(';')[0];}
 async function test(name,fn){if(process.argv.includes('--only-approved-source')&&!name.startsWith('현재 Task 승인 실적'))return;if(process.argv.includes('--only-approved-caption')&&!name.startsWith('배정 변경 후'))return;await fn();console.log('PASS',name);}
-const p={id:'report-test',code:'REPORT-QA',name:'합성 업무보고',department:'마감팀',startDate:'2026-10-01',endDate:'2026-10-02',status:'진행중',progress:80,roles:{},subTasks:{내부:{roleName:'내부',personIds:['worker','other'],personId:'worker',startDate:'2026-10-01',endDate:'2026-10-02',status:'진행중',memo:'관리자 계획 원문',progress:20,reportingModes:{worker:'TASK',other:'DAILY'}},외부:{roleName:'외부',personIds:['worker'],startDate:'2026-10-06',endDate:'2026-10-07',status:'진행중',memo:'다른 배정',progress:80}}};
+// The assigned PM is also the team chief in these retained-report fixtures; approve executes both stages.
+const p={id:'report-test',code:'REPORT-QA',name:'합성 업무보고',department:'마감팀',pmId:'u_12',startDate:'2026-10-01',endDate:'2026-10-02',status:'진행중',progress:80,roles:{},subTasks:{내부:{roleName:'내부',personIds:['worker','other'],personId:'worker',startDate:'2026-10-01',endDate:'2026-10-02',status:'진행중',memo:'관리자 계획 원문',progress:20,reportingModes:{worker:'TASK',other:'DAILY'}},외부:{roleName:'외부',personIds:['worker'],startDate:'2026-10-06',endDate:'2026-10-07',status:'진행중',memo:'다른 배정',progress:80}}};
 const get=async()=> (await req('worker','projects')).data.projects.find(r=>r.project.id===p.id);
 if(!process.argv.includes('--only-approved-caption')){
 await test('관리자 직원별 보고 지정, 직원 직접 일정/보고 방식 변경 거부',async()=>{
@@ -49,7 +50,7 @@ await test('연장 요청은 계획/실적/승인 일지를 그대로 유지하�
  assert.deepEqual(r.data.project.subTasks,before.subTasks);assert.equal(r.data.project.endDate,p.endDate);
  assert.equal((await req('worker',`projects/${p.id}/extensions`,'POST',{taskId:extension.taskId,previousEnd:extension.previousEnd,requestedEnd:'2026-10-12',reason:'중복'})).status,409);
  assert.ok((await req('u_12','notifications')).data.notifications.some(n=>n.meeting_id===`extension:${p.id}`));
- assert.ok((await req('u_13','notifications')).data.notifications.some(n=>n.meeting_id===`extension:${p.id}`));
+ assert.equal((await req('u_13','notifications')).data.notifications.some(n=>n.meeting_id===`extension:${p.id}`),false,'PM 검토 전에는 팀장 최종 승인 요청을 보내지 않는다');
  assert.equal((await req('other',`projects/${p.id}/extensions/${extension.id}/approve`,'POST',{revision:r.data.revision})).status,403);
 });
 await test('연장 승인 후 공종/캘린더/할 일 갱신, 원 납품일과 승인 이력 보존',async()=>{
@@ -57,16 +58,17 @@ await test('연장 승인 후 공종/캘린더/할 일 갱신, 원 납품일과 
  assert.equal((await req('u_12',`projects/${p.id}/extensions/${extension.id}/approve`,'POST',{revision:before.revision-1})).status,409);
  const r=await req('u_12',`projects/${p.id}/extensions/${extension.id}/approve`,'POST',{revision:before.revision,memo:'도면 변경 확인'});assert.equal(r.status,200);
  assert.equal(r.data.project.subTasks.내부.endDate,'2026-10-09');assert.equal(r.data.project.roles.내부?.endDate,'2026-10-09');assert.equal(r.data.project.endDate,p.endDate);
- assert.equal(projectScheduleRange(r.data.project).end,'2026-10-09');assert.equal(assignedItems('worker','2026-10-08',[r.data.project])[0].id,extension.taskId);
+ extension={...r.data.request,taskId:r.data.request.appliedTaskId||r.data.request.taskId};assert.equal(projectScheduleRange(r.data.project).end,'2026-10-09');assert.equal(assignedItems('worker','2026-10-08',[r.data.project])[0].id,extension.taskId);assert.equal(assignedItems('other','2026-10-08',[r.data.project]).length,0);
  assert.equal(db.prepare('SELECT body FROM studio_worklogs WHERE id=?').get('same-day').body,body);
  assert.ok((await req('worker','notifications')).data.notifications.some(n=>n.message.includes('연장 승인')));
+ assert.ok((await req('u_13','notifications')).data.notifications.some(n=>n.meeting_id===`extension:${p.id}`));
  assert.equal((await req('u_12',`projects/${p.id}/extensions/${extension.id}/approve`,'POST',{revision:r.data.revision})).status,409);
 });
 await test('다른 일정 편집은 연장 이력을 삭제·위조하지 않음, stale 승인/배정 해제 차단',async()=>{
  let current=await get(),next=structuredClone(current.project);next.subTasks.외부.memo='정상 일정 편집';delete next.scheduleExtensions;
  let r=await req('u_12','projects','POST',{base:current.project,project:next});assert.equal(r.status,200);assert.equal(r.data.project.scheduleExtensions[0].status,'APPROVED');
  current=await get();r=await req('worker',`projects/${p.id}/extensions`,'POST',{taskId:extension.taskId,previousEnd:'2026-10-09',requestedEnd:'2026-10-12',reason:'추가 검토'});assert.equal(r.status,200);const pending=r.data.request;
- current=await get();next=structuredClone(current.project);next.subTasks.내부.personIds=['other'];assert.equal((await req('u_12','projects','POST',{base:current.project,project:next})).status,200);
+ current=await get();next=structuredClone(current.project);next.subTasks.내부.allocations.find(a=>a.id===extension.appliedAllocationId).personIds=['other'];assert.equal((await req('u_12','projects','POST',{base:current.project,project:next})).status,200);
  current=await get();assert.equal((await req('u_12',`projects/${p.id}/extensions/${pending.id}/approve`,'POST',{revision:current.revision})).status,409);
  assert.equal((await req('u_12',`projects/${p.id}/extensions/${pending.id}/reject`,'POST',{revision:current.revision,memo:'담당 변경'})).status,200);
  const final=(await get()).project;assert.equal(final.subTasks.내부.endDate,'2026-10-09');assert.equal(final.scheduleExtensions.at(-1).status,'REJECTED');
@@ -102,8 +104,8 @@ const uiProject={...structuredClone(p),id:'groupware-ui',pmId:'u_12',subTasks:{�
 await test('완료 업무 서식 저장·재조회 및 실행 태그 제거, 다른 본문 표시 차단',async()=>{
  assert.equal((await req('u_12','projects','POST',{project:uiProject})).status,200);
  const task={...assignedTasks('worker',[uiProject])[0],todayTask:'완료 업무',reportHtml:'<img src=x onerror=alert(1)><b>완료 업무</b>',progress:25,manualFields:['todayTask','reportHtml','progress']};
- let r=await req('worker','worklogs/formatted','PUT',{log:{id:'formatted',date:'2026-10-02',reportMode:'TASK',items:[task],overallNotes:''}});assert.equal(r.status,200);assert.equal(r.data.log.items[0].reportHtml,'<b>완료 업무</b>');
- assert.equal((await req('worker','personal')).data.worklogs.find(log=>log.id==='formatted').items[0].reportHtml,'<b>완료 업무</b>');
+ let r=await req('worker','worklogs/formatted','PUT',{log:{id:'formatted',date:'2026-10-02',reportMode:'TASK',items:[task],overallNotes:''}});assert.equal(r.status,200);assert.equal(r.data.log.items.find(item=>item.id===task.id).reportHtml,'<b>완료 업무</b>');
+ assert.equal((await req('worker','personal')).data.worklogs.find(log=>log.id==='formatted').items.find(item=>item.id===task.id).reportHtml,'<b>완료 업무</b>');
  const log=r.data.log;
  assert.equal((await req('worker','worklogs/formatted','PUT',{revision:log.serverRevision,log:{...log,items:[{...task,reportHtml:'<b>다른 업무</b>'}]}})).status,400);
  assert.equal((await req('worker','worklogs/formatted','PUT',{revision:log.serverRevision,log:{...log,items:[{...task,reportHtml:123}]}})).status,400);
@@ -324,8 +326,8 @@ await test('배정 변경 후 미연결 승인 실적 표시, 현재 실적·입
  context.useState=initial=>[initial,()=>{}];
  const nodes=[];const walk=node=>{if(Array.isArray(node))node.forEach(walk);else if(node&&typeof node==='object'&&node.props){nodes.push(node);walk(node.props.children);}};
  const tree=(item,canEdit)=>{nodes.length=0;walk(context.exports.TaskReportFields({item,task:currentTask,canEdit,update:(...args)=>updates.push(args)}));return nodes;};
- tree(originalItem,true);const range=nodes.find(node=>node.props['aria-label']==='보고 작업 진행률'),direct=nodes.find(node=>node.props['aria-label']==='작업 진행률 직접 입력');assert.equal(range.props.value,70);assert.equal(range.props.disabled,false);assert.equal(direct.props.value,70);assert.equal(nodes.find(node=>node.type==='progress').props.value,70);range.props.onChange({target:{value:'82'}});assert.deepEqual(updates,[[originalItem.id,'progress',82]]);
- tree(completed,false);assert.equal(nodes.find(node=>node.type==='progress').props.value,100);assert.equal(nodes.find(node=>node.props['aria-label']==='보고 작업 진행률').props.disabled,true);assert.equal(nodes.find(node=>node.props['aria-label']==='작업 진행률 직접 입력').props.disabled,true);
+ tree(originalItem,true);const range=nodes.find(node=>node.props['aria-label']==='보고 작업 진행률'),direct=nodes.find(node=>node.props['aria-label']==='작업 진행률 직접 입력');assert.equal(range.props.value,70);assert.equal(range.props.disabled,false);assert.equal(direct,undefined);assert.equal(nodes.find(node=>node.type==='progress').props.value,70);range.props.onChange({target:{value:'82'}});assert.deepEqual(updates,[[originalItem.id,'progress',82]]);
+ tree(completed,false);assert.equal(nodes.find(node=>node.type==='progress').props.value,100);assert.equal(nodes.find(node=>node.props['aria-label']==='보고 작업 진행률').props.disabled,true);assert.equal(nodes.find(node=>node.props['aria-label']==='작업 진행률 직접 입력'),undefined);
  assert.equal(JSON.stringify({originalItem,removed,currentTask,current,now}),valuesBefore);assert.equal(proposedProgress(current,[originalItem],draft.date,'worker'),70);assert.deepEqual(stored(approved.id),approvedBefore);assert.deepEqual(stored(draft.id),draftBefore);
 });
 await test('현재 Task 승인 실적은 원공종·후속 raw값으로 표시하고 보고값·통계·원문은 보존',async()=>{

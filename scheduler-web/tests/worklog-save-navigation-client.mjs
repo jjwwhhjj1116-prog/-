@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {createServer} from 'vite';
+import {nativeSsrPackages} from './ssr-native-packages.mjs';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {pathToFileURL,fileURLToPath} from 'node:url';
@@ -13,6 +14,7 @@ export async function runWorklogSaveNavigation({beforeStore=false,beforeDaily=fa
  // Expose existing DOM handlers only in memory; product and shared harness files stay intact.
  harness=harness.slice(0,harness.indexOf('if(process.argv[1]'));
  for(const name of ['vite','typescript'])harness=harness.replaceAll("from '"+name+"'","from '"+pathToFileURL(require.resolve(name)).href+"'");
+ harness=harness.replace("from './ssr-native-packages.mjs'","from '"+new URL('tests/ssr-native-packages.mjs',web).href+"'");
  harness=harness.replace('createRequire(import.meta.url)',`createRequire(${JSON.stringify(new URL('package.json',web).href)})`)
   .replace("new URL('../src/components/DailyWorkLogView.tsx',import.meta.url)",`new URL(${JSON.stringify(new URL('src/components/DailyWorkLogView.tsx',web).href)})`)
   .replace("new URL('../../private-provisioning/original-before-extension-context-20261006/scheduler-web/src/components/DailyWorkLogView.tsx',import.meta.url)",`new URL(${JSON.stringify(dailyPath.href)})`)
@@ -24,7 +26,7 @@ export async function runWorklogSaveNavigation({beforeStore=false,beforeDaily=fa
  assert.ok(dailySource.includes('data-worklog-screen'));const instrumented=dailySource.replace('data-worklog-screen','data-worklog-screen data-qa-form-revision={formRevision} data-qa-items={items}');
  const {runDailyHarness}=await import('data:text/javascript;base64,'+Buffer.from(harness).toString('base64'));
  const storage=new Map();globalThis.localStorage={getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,String(value)),removeItem:key=>storage.delete(key)};globalThis.window={localStorage:globalThis.localStorage};
- const realFetch=globalThis.fetch,server=await createServer({root:fileURLToPath(web),plugins:[{name:'captured-worklog-store',enforce:'pre',load(id){if(id.replaceAll('\\','/').endsWith('/src/store/useWorkLogStore.ts'))return storeSource;}}],server:{middlewareMode:true,hmr:false},appType:'custom'});
+ const realFetch=globalThis.fetch,server=await createServer({configFile:false,ssr:{noExternal:[/^(react|react-dom|zustand)(\/|$)/]},root:fileURLToPath(web),plugins:[nativeSsrPackages(),{name:'captured-worklog-store',enforce:'pre',load(id){if(id.replaceAll('\\','/').endsWith('/src/store/useWorkLogStore.ts'))return storeSource;}}],server:{middlewareMode:true,hmr:false},appType:'custom'});
  let auth,store;try{({useAuthStore:auth}=await server.ssrLoadModule('/src/store/useAuthStore.ts'));({useWorkLogStore:store}=await server.ssrLoadModule('/src/store/useWorkLogStore.ts'));}finally{await server.close();}
  const drain=async screen=>{for(let i=0;i<10;i++)await new Promise(resolve=>setTimeout(resolve,0));await screen.flush();};
  let result;

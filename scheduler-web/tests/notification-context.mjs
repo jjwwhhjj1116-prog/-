@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {runInNewContext} from 'node:vm';
 import ts from 'typescript';
+import {nativeSsrPackages} from './ssr-native-packages.mjs';
 const require=createRequire(import.meta.url),React=require('react'),jsx=require('react/jsx-runtime');
 const sourcePath=new URL('../src/components/DailyWorkLogView.tsx',import.meta.url);
 const beforePath=new URL('../../private-provisioning/original-before-extension-context-20261006/scheduler-web/src/components/DailyWorkLogView.tsx',import.meta.url);
@@ -16,7 +17,7 @@ const FixedDate=class extends Date{constructor(...args){super(...(args.length?ar
 // This models one committed render followed by its batched effects; it is not an App/browser test.
 export async function runDailyHarness(sourceText=readFileSync(sourcePath,'utf8'),checks){
  const storage=new Map();globalThis.localStorage={getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,String(value)),removeItem:key=>storage.delete(key)};globalThis.window={localStorage:globalThis.localStorage};
- const server=await createServer({root:fileURLToPath(new URL('../',import.meta.url)),server:{middlewareMode:true,hmr:false},appType:'custom'});
+ const server=await createServer({configFile:false,ssr:{noExternal:[/^(react|react-dom|zustand)(\/|$)/]},root:fileURLToPath(new URL('../',import.meta.url)),plugins:[nativeSsrPackages()],server:{middlewareMode:true,hmr:false},appType:'custom'});
  const compiled=ts.transpileModule(sourceText,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,results=[];
  try{
   const work=await server.ssrLoadModule('/src/utils/personalWork.ts'),permissions=await server.ssrLoadModule('/src/utils/schedulePermissions.ts'),{TEAM_APPROVAL_LINES}=await server.ssrLoadModule('/src/store/useWorkLogStore.ts');
@@ -26,8 +27,8 @@ export async function runDailyHarness(sourceText=readFileSync(sourcePath,'utf8')
   const ownTask='gen-context-P2-PM',authorTask='gen-context-P1-내부';
   const authorItem={...work.assignedTasks(author.id,[p1],work.assignmentAliases(author,[author,manager]))[0],todayTask:'알림의 원 작성자 수행 본문',progress:55,manualFields:['todayTask','progress']};
   const originalLog={id:'context-worklog',userId:author.id,userName:author.name,department:'마감팀',date:'2026-10-07',items:[authorItem],overallNotes:'원 작성자의 종합 본문',approvalStatus:'SUBMITTED_LEADER',serverRevision:3,leaderReview:{approved:false},chiefApproval:{approved:false}};
-  function screen({loaded=true,extension=null,worklog=null,includeLog=false,actor=manager,logs,visible=true,onRead=async()=>true}={}){
-   const auth={currentUser:actor,users:[manager,author]},projectState={projects:[p2,p1]},logState={workLogs:logs|| (includeLog?[structuredClone(originalLog)]:[]),selectedWorkLogId:null},personal={leaves:[],loaded,openDate:null,openExtension:extension,openWorkLogId:worklog},props={visible};
+  function screen({loaded=true,extension=null,worklog=null,includeLog=false,actor=manager,logs,projects=[p2,p1],visible=true,onRead=async()=>true}={}){
+   const auth={currentUser:actor,users:[manager,author]},projectState={projects},logState={workLogs:logs|| (includeLog?[structuredClone(originalLog)]:[]),selectedWorkLogId:null},personal={leaves:[],loaded,openDate:null,openExtension:extension,openWorkLogId:worklog},props={visible};
    const hooks=[],trace=[],effects=[],reads=[];let cursor=0,dirty=false,tree,currentEffects=[];
    const memo=(factory,deps)=>{const index=cursor++,previous=hooks[index];if(!previous||!equalDeps(previous.deps,deps))hooks[index]={kind:'memo',value:factory(),deps};return hooks[index].value;};
    const useState=initial=>{const index=cursor++;if(!hooks[index]){const slot={kind:'state',value:typeof initial==='function'?initial():initial};slot.setter=value=>{const next=typeof value==='function'?value(slot.value):value;if(!Object.is(next,slot.value)){slot.value=next;dirty=true;}};hooks[index]=slot;}return [hooks[index].value,hooks[index].setter];};
@@ -48,7 +49,7 @@ export async function runDailyHarness(sourceText=readFileSync(sourcePath,'utf8')
    const note=()=>nodes(tree).find(node=>node.type==='textarea'&&node.props['aria-label']==='종합 보고 및 특이사항')?.props;
    const settle=()=>{for(let cycle=0;cycle<30;cycle++){dirty=false;cursor=0;currentEffects=[];tree=exports.DailyWorkLogView(props);trace.push(snapshot());for(const effect of currentEffects){effects.push(effect.index);hooks[effect.index].cleanup?.();hooks[effect.index].cleanup=effect.fn();}if(!dirty)return snapshot();}throw Error('Notification effects did not settle');};
    const tab=label=>{const tab=nodes(tree).find(node=>node.type==='button'&&node.props.role==='tab'&&Array.isArray(node.props.children)&&node.props.children.includes(label));assert.ok(tab);tab.props.onClick();settle();};
-   return {settle,snapshot,trace,effects,reads,update:patch=>personalHook.setState(patch),updateLogs:patch=>logHook.setState(patch),setActor:actor=>authHook.setState({currentUser:actor}),show:visible=>{props.visible=visible;settle();},flush:async()=>{await Promise.resolve();await Promise.resolve();return settle();},readLogs:()=>structuredClone(logState.workLogs),note,notice:()=>nodes(tree).filter(node=>node.props.role==='status').map(node=>node.props.children).join(' '),openLog:log=>{const history=nodes(tree).find(node=>node.type===reporting.WorkLogHistory);assert.ok(history);history.props.onOpen(log);settle();},editNote:value=>{const box=note();assert.ok(box);box.onChange({target:{value}});settle();},reportTab:()=>tab('업무보고'),historyTab:()=>tab('업무일지 이력')};
+   return {settle,snapshot,trace,effects,reads,update:patch=>personalHook.setState(patch),updateLogs:patch=>logHook.setState(patch),setActor:actor=>authHook.setState({currentUser:actor}),show:visible=>{props.visible=visible;settle();},flush:async()=>{await Promise.resolve();await Promise.resolve();return settle();},readLogs:()=>structuredClone(logState.workLogs),note,notice:()=>nodes(tree).filter(node=>node.props.role==='status').map(node=>node.props.children).join(' '),openLog:log=>{const history=nodes(tree).find(node=>node.type===reporting.WorkLogHistory);assert.ok(history);history.props.onOpen(log);settle();},editNote:value=>{const box=note();assert.ok(box);box.onChange({target:{value}});settle();},reportTab:()=>tab('업무보고'),historyTab:()=>tab('업무일지 이력'),control:label=>nodes(tree).find(node=>node.props['aria-label']===label),reportFields:()=>nodes(tree).find(node=>node.type===reporting.TaskReportFields),planFields:()=>nodes(tree).find(node=>node.type===reporting.DailyPlanFields),tree:()=>tree};
   }
   async function check(name,fn){let observed;try{observed=await fn();results.push({name,status:'PASS',observed});console.log('PASS',name);}catch(error){results.push({name,status:'FAIL',reason:error.message,observed:error.observed});console.error('FAIL',name,error.message);}}
   const target=(s)=>{const observed=s.settle();try{assert.equal(observed.project,p1.id);assert.equal(observed.extension?.project,p1.id);assert.equal(observed.extension?.task,'');assert.equal(observed.role,'');}catch(error){error.observed={settled:observed,trace:s.trace};throw error;}return observed;};

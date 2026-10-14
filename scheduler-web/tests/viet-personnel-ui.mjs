@@ -6,6 +6,7 @@ import {webcrypto} from 'node:crypto';
 import {renderToStaticMarkup} from 'react-dom/server';
 import ts from 'typescript';
 import * as work from '../src/utils/personalWork.ts';
+import * as extensions from '../src/utils/scheduleExtensionPeriods.ts';
 import * as progress from '../src/utils/scheduleProgress.ts';
 import * as projectScheduleDates from '../src/utils/projectScheduleDates.ts';
 import * as allocations from '../src/utils/scheduleAllocations.ts';
@@ -37,7 +38,7 @@ const nodes=node=>Array.isArray(node)?node.flatMap(nodes):node&&typeof node==='o
 const text=node=>Array.isArray(node)?node.map(text).join(''):node&&typeof node==='object'&&node.props?text(node.props.children):typeof node==='string'||typeof node==='number'?String(node):'';
 const norm=node=>text(node).replace(/\s/g,'');
 function mount(name,options={}){
- const state={projects:[structuredClone(options.project||baseProject)],personnel:directory.map(user=>({id:user.id,name:user.name,team:user.department,region:user.company==='VIETQS'?'VIETNAM':'KOREA',avatar:''})),filterDepartment:'ALL'},auth={users:structuredClone(options.users||directory),currentUser:options.user||manager,googleDriveConfig:{connected:false}},shared={ready:true,conflict:false,status:'합성 공유 연결',pending:0,...options.shared},writes=[],accountWrites=[];
+ const state={projects:[structuredClone(options.project||baseProject)],personnel:directory.map(user=>({id:user.id,name:user.name,team:user.department,region:user.company==='VIETQS'?'VIETNAM':'KOREA',avatar:''})),filterDepartment:'ALL'},auth={users:structuredClone(options.users||directory),currentUser:options.user||manager,googleDriveConfig:{connected:false}},shared={ready:true,conflict:false,status:'합성 공유 연결',pending:0,...options.shared},personal={leaves:structuredClone(options.leaves||[])},writes=[],accountWrites=[];
  const projectHook=selector=>typeof selector==='function'?selector(state):state;projectHook.getState=()=>state;state.setSelectedProjectId=()=>{};
  state.updateProjectSubTasks=(id,tasks)=>{assert.ok(permissions.canManageSchedule(auth.currentUser,state.projects.find(project=>project.id===id).department));writes.push(structuredClone(tasks));state.projects=state.projects.map(project=>project.id===id?syncProjectTasks(project,tasks):project);dirty=true;};
  state.updateSubTask=(id,role,patch)=>state.updateProjectSubTasks(id,{...state.projects.find(project=>project.id===id).subTasks,[role]:{...state.projects.find(project=>project.id===id).subTasks[role],...patch}});
@@ -47,20 +48,35 @@ function mount(name,options={}){
  const useEffect=(fn,deps)=>{const index=cursor++,old=hooks[index];if(!old||!deps||deps.some((value,index)=>value!==old[index])){hooks[index]=deps;pending.push(fn);}};
  const react={...React,useState,useRef,useEffect,useMemo:fn=>fn()};
  const authHook=selector=>typeof selector==='function'?selector(auth):auth;auth.clearError=()=>{};auth.testGoogleDriveConnection=async()=>false;auth.adminAddUser=async record=>{accountWrites.push(structuredClone(record));return true;};auth.adminUpdateUser=async(id,patch)=>{accountWrites.push({id,patch});return true;};auth.adminResetPassword=async()=>true;auth.adminDeleteUser=async()=>true;auth.changePassword=async()=>({success:true,message:'합성'});
- const modules={'react':react,'react/jsx-runtime':jsx,'lucide-react':require('lucide-react'),'date-fns':require('date-fns'),'date-fns/locale':require('date-fns/locale'),'../store/useProjectStore':{useProjectStore:projectHook,TEAM_ROLES},'../store/useAuthStore':{useAuthStore:authHook,isUserAdmin},'../store/useStudioStore':{useStudioStore:()=>shared},'../store/usePersonalStore':{usePersonalStore:selector=>selector({leaves:[]})},'../store/useLanguageStore':{useLanguageStore:selector=>selector({lang:'ko'})},'../utils/personalWork':work,'../utils/scheduleProgress':progress,'../utils/schedulePermissions':permissions,'../utils/pendingAssignment':pendingAssignment,'../utils/scheduleAllocations':allocations,'../utils/rebaseProject':rebase,'../utils/vietPersonnel':viet,'../utils/staffOrder':staff,'../data/vietTeams':{VIET_TEAMS_DATA},'../constants/holidays':holidays,'../services/excelService':{exportProjectsToExcel:()=>{},importProjectsFromExcel:()=>{}},'../services/translationService':{printTranslated:()=>{},translatedAlert:()=>{}},'./ProjectDetailPrint':{ProjectDetailPrint:()=>null},'./PostDeliverySchedule':{PostDeliverySchedule:()=>null},'./VietTeamModal':{VietTeamModal:()=>null},'./ProjectCalendar':{default:()=>null}};
+ const modules={'react':react,'react/jsx-runtime':jsx,'lucide-react':require('lucide-react'),'date-fns':require('date-fns'),'date-fns/locale':require('date-fns/locale'),'../store/useProjectStore':{useProjectStore:projectHook,TEAM_ROLES},'../store/useAuthStore':{useAuthStore:authHook,isUserAdmin},'../store/useStudioStore':{useStudioStore:()=>shared},'../store/usePersonalStore':{usePersonalStore:selector=>selector({leaves:[]})},'../store/useLanguageStore':{useLanguageStore:selector=>selector({lang:'ko'})},'../utils/personalWork':work,'../utils/scheduleExtensionPeriods':extensions,'../utils/scheduleProgress':progress,'../utils/schedulePermissions':permissions,'../utils/pendingAssignment':pendingAssignment,'../utils/scheduleAllocations':allocations,'../utils/rebaseProject':rebase,'../utils/vietPersonnel':viet,'../utils/staffOrder':staff,'../data/vietTeams':{VIET_TEAMS_DATA},'../constants/holidays':holidays,'../services/excelService':{exportProjectsToExcel:()=>{},importProjectsFromExcel:()=>{}},'../services/translationService':{printTranslated:()=>{},translatedAlert:()=>{}},'./ProjectDetailPrint':{ProjectDetailPrint:()=>null},'./PostDeliverySchedule':{PostDeliverySchedule:()=>null},'./VietTeamModal':{VietTeamModal:()=>null},'./ProjectCalendar':{default:()=>null}};
+ modules['../store/usePersonalStore']={usePersonalStore:selector=>selector(personal)};
  modules['../utils/projectScheduleDates']=projectScheduleDates;
  const exports={};runInNewContext(ts.transpileModule(sourceFor(name),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,{exports,Date:TestDate,Error,structuredClone,crypto:webcrypto,console,setTimeout:()=>1,window:{location:{search:'',hash:''}},require:path=>{assert.ok(path in modules,'Unexpected UI dependency '+path);return modules[path];}});
  const Component=exports.default||exports[name],props=options.props||({ProjectModal:{projectId:state.projects[0].id,onClose:()=>{}},VietTeamModal:{team:viet.resolveVietTeams(auth.users,'마감팀')[0],isOpen:true,onClose:()=>{}},PersonalScheduleView:{department:'마감팀'},SettingsView:{},ProjectCalendar:{date:new TestDate(2026,9,1)}}[name]);
  const render=()=>{for(let cycle=0;cycle<20;cycle++){cursor=0;pending=[];dirty=false;tree=Component(props);for(const effect of pending)effect();if(!dirty)return tree;}throw Error('UI fixture effects did not settle');};
  const find=label=>nodes(tree).find(node=>node.props['aria-label']===label),button=label=>nodes(tree).find(node=>node.type==='button'&&norm(node)===label.replace(/\s/g,''));
  const invoke=(node,value)=>{assert.ok(node,'UI event node must exist');const fn=node.props.onChange||node.props.onClick;assert.equal(typeof fn,'function');const result=fn({target:{value,checked:value},preventDefault:()=>{}});render();return result;};
- render();return {state,auth,shared,writes,accountWrites,render,find,button,invoke,tree:()=>tree,html:()=>renderToStaticMarkup(tree),read:()=>structuredClone(state.projects[0]),all:()=>nodes(tree)};
+ render();return {state,auth,shared,personal,writes,accountWrites,render,find,button,invoke,tree:()=>tree,html:()=>renderToStaticMarkup(tree),read:()=>structuredClone(state.projects[0]),all:()=>nodes(tree)};
 }
 async function check(name,fn){try{await fn();results.push({name,status:'PASS'});console.log('PASS',name);}catch(error){results.push({name,status:'FAIL',reason:error.stack});console.error('FAIL',name,error.message);}}
 function focusProject(e){e.invoke(e.all().find(node=>node.type==='div'&&node.key==='내부'&&node.props.onClick));if(e.find('베트남 배정 개인 선택'))e.invoke(e.find('베트남 배정 개인 선택'));}
 function unitButton(e,id){const unit=e.all().find(node=>node.type==='div'&&node.key===id&&node.props.className?.includes('rounded-2xl border-2'));return nodes(unit).find(node=>node.type==='button');}
 function popup(e){const selects=e.all().filter(node=>node.type==='select');e.invoke(e.find('배치할 프로젝트')||selects[0],e.state.projects[0].id);e.invoke(e.find('배치할 공종')||e.all().filter(node=>node.type==='select')[1],'내부');}
 try{
+ await check('실제 3부서 개인 캘린더: 승인 연장일만 빨간 게이지, 월경계·중첩·개인 배정구간 보존',()=>{
+  for(const department of ['마감팀','구조팀','토목&조경팀']){
+   const person={...kr,department},p={...structuredClone(baseProject),department},taskId=`gen-${p.id}-내부`,appliedTaskId=taskId+'-personal-extension';
+   p.subTasks.내부.personIds=[person.id];p.subTasks.내부.endDate='2026-11-03';
+   const request=(id,previousEnd,requestedEnd,status='APPROVED',extra={})=>({id,taskId,userId:person.id,userName:person.name,roleName:'내부',type:'DEADLINE',previousEnd,requestedEnd,reason:'합성',createdAt:'2026-10-14',status,...extra});
+   p.scheduleExtensions=[request('first','2026-10-08','2026-10-12'),request('second','2026-10-12','2026-10-16'),request('pending','2026-10-16','2026-10-20','PENDING'),request('rejected','2026-10-16','2026-10-21','REJECTED'),request('overtime','2026-10-16','2026-10-22','APPROVED',{type:'OVERTIME'}),request('other','2026-10-16','2026-10-23','APPROVED',{taskId:'other-task'}),request('split','2026-10-16','2026-10-19','APPROVED',{appliedTaskId}),request('month-boundary','2026-10-29','2026-11-03')];
+   const original=JSON.stringify(p),e=mount('PersonalScheduleView',{users:[person],props:{department},project:p});e.invoke(e.button('개인/팀별 캘린더'));
+   const row=e.all().find(node=>node.props['data-schedule-unit']===person.id),red=nodes(row).filter(node=>node.props['data-extension-start']);
+   assert.deepEqual(red.map(node=>[node.props['data-extension-start'],node.props['data-extension-end']]),[['2026-10-09','2026-10-16'],['2026-10-30','2026-10-31']]);assert.ok(red.every(node=>node.props.className.includes('bg-red-700')));
+   assert.equal(parseFloat(red[0].props.style.left),3/26*100);assert.equal(parseFloat(red[0].props.style.width),8/26*100);
+   assert.deepEqual(extensions.scheduleExtensionPeriods(p,{id:appliedTaskId,startDate:'2026-10-17',endDate:'2026-10-19'}),[{start:'2026-10-17',end:'2026-10-19'}]);
+   assert.equal(JSON.stringify(p),original);assert.equal(e.writes.length,0);
+  }
+ });
  await check('실제 ProjectModal 개인/전체 배정: same-name ID분리·기존 anchor/일지·PM·타인·공정률 보존',()=>{
   const e=mount('ProjectModal'),original=e.read();focusProject(e);assert.equal(e.writes.length,0);assert.ok(e.find('베트남 배정 개인 선택').props['aria-pressed']);assert.ok(e.html().includes(a.name)&&e.html().includes(a.idPrefix)&&e.html().includes(b.idPrefix));assert.equal(unitButton(e,cross.id),undefined);assert.equal(unitButton(e,inactive.id),undefined);
   e.invoke(unitButton(e,a.id));const personal=e.read(),old=work.assignedTasks(kr.id,[original])[0],retained=work.assignedTasks(kr.id,[personal])[0];assert.deepEqual(personal.subTasks.내부.personIds,[kr.id,a.id]);assert.equal(retained.id,old.id);assert.equal(retained.scheduleMemo,old.scheduleMemo);assert.deepEqual(personal.subTasks.PM,original.subTasks.PM);assert.equal(personal.progress,original.progress);
@@ -83,6 +99,52 @@ try{
   const p=structuredClone(baseProject);p.subTasks.내부=allocations.updateAssignmentMembers({...task,personId:'',personIds:[],allocations:[]},{addIds:[a.id,b.id],startDate:'2026-10-12',endDate:'2026-10-15'});p.subTasks.외부=allocations.updateAssignmentMembers({...task,roleName:'외부',personId:'',personIds:[],allocations:[]},{addIds:[c.id],startDate:'2026-10-20',endDate:'2026-10-21'});
   const e=mount('PersonalScheduleView',{project:p});e.invoke(e.button('개인/팀별 캘린더'));assert.ok(e.find('베트남 일정 개인별').props['aria-pressed']);for(const person of [a,b,c]){const row=e.all().find(node=>node.type==='div'&&node.key===person.id);assert.ok(row,person.id+' personal row');assert.ok(text(row).includes(person.name)&&text(row).includes(person.idPrefix));assert.equal(nodes(row).filter(node=>node.props['data-allocation-id']).length,1);}
   e.invoke(e.find('베트남 일정 팀별'));const team=e.all().find(node=>node.type==='div'&&node.key==='vt_in1');assert.ok(text(team).includes('VIET 내부1팀'));assert.deepEqual(viet.resolveVietTeams(e.auth.users,'마감팀').find(group=>group.id==='vt_in1').members.map(member=>member.id),[a.id,b.id]);assert.equal(nodes(team).filter(node=>node.props['data-allocation-id']).length,1,'Two employees sharing one allocation must yield one team bar');assert.ok(e.all().some(node=>node.type==='div'&&node.key===c.id),'Ungrouped employee must remain visible in team mode');assert.equal(e.writes.length,0);
+ });
+ await check('실제 개인 캘린더: 3부서 휴가 전 일자·동명이인 ID·반차·월경계·취소 공유 갱신',()=>{
+  const leave=(id,user_id,start_date,end_date,kind='연차')=>({id,user_id,start_date,end_date,kind,revision:1});
+  for(const department of ['마감팀','구조팀','토목&조경팀']){
+   const person={...kr,department},other={...person,id:'different-id',name:person.name};
+   const leaves=[leave('cross-month',person.id,'2026-09-30','2026-10-03'),leave('am',person.id,'2026-10-14','2026-10-14','오전 반차'),leave('pm',person.id,'2026-10-14','2026-10-14','오후 반차'),leave('next-month',person.id,'2026-10-31','2026-11-02'),leave('foreign',other.id,'2026-10-06','2026-10-07'),leave('name-is-not-id',person.name,'2026-10-09','2026-10-09')];
+   const e=mount('PersonalScheduleView',{users:[person,other],leaves,props:{department},project:{...structuredClone(baseProject),department}});
+   e.invoke(e.button('개인/팀별 캘린더'));
+   const row=()=>e.all().find(node=>node.props['data-schedule-unit']===person.id),cells=()=>nodes(row()).filter(node=>node.props['data-leave-day']);
+   assert.deepEqual(cells().map(node=>node.props['data-leave-day']),['2026-10-01','2026-10-02','2026-10-03','2026-10-14','2026-10-31']);
+   assert.ok(cells().every(node=>node.props.className.includes('bg-amber-50')&&text(node)==='휴'));
+   assert.ok(cells().find(node=>node.props['data-leave-day']==='2026-10-14').props.title.includes('오전 반차 / 오후 반차'));
+   const bars=nodes(row()).filter(node=>node.props['data-leave-id']);assert.equal(bars.length,4);assert.ok(bars.find(node=>node.props['data-leave-id']==='cross-month').props.style.left==='0%');
+   assert.equal(nodes(row()).filter(node=>node.props['data-allocation-id']).length,0,'Legacy project may have a task but this check does not create allocations');
+   e.invoke(e.all().find(node=>node.type==='button'&&node.props.title==='다음 달'));
+   assert.deepEqual(cells().map(node=>node.props['data-leave-day']),['2026-11-01','2026-11-02']);
+   assert.equal(nodes(row()).filter(node=>node.props['data-leave-id']).length,1);
+   e.personal.leaves=[];e.render();assert.equal(cells().length,0);assert.equal(nodes(row()).filter(node=>node.props['data-leave-id']).length,0);assert.equal(e.writes.length,0);
+  }
+ });
+ await check('실제 VN 개인/팀 캘린더: 현재 회원 ID 휴가 합집합·이름·팀외 제외·배정 보존',()=>{
+  const leaves=[{id:'vn-a-leave',user_id:a.id,start_date:'2026-10-06',end_date:'2026-10-07',kind:'휴가',revision:1},{id:'vn-b-leave',user_id:b.id,start_date:'2026-10-08',end_date:'2026-10-08',kind:'연차',revision:1},{id:'vn-other-leave',user_id:c.id,start_date:'2026-10-10',end_date:'2026-10-11',kind:'연차',revision:1}];
+  const p=structuredClone(baseProject);p.subTasks.내부=allocations.updateAssignmentMembers({...task,personId:'',personIds:[],allocations:[]},{addIds:[a.id,b.id],startDate:'2026-10-06',endDate:'2026-10-15'});
+  const e=mount('PersonalScheduleView',{project:p,leaves});e.invoke(e.button('개인/팀별 캘린더'));
+  const row=id=>e.all().find(node=>node.props['data-schedule-unit']===id),days=id=>nodes(row(id)).filter(node=>node.props['data-leave-day']).map(node=>node.props['data-leave-day']);
+  assert.deepEqual(days(a.id),['2026-10-06','2026-10-07']);assert.deepEqual(days(b.id),['2026-10-08']);
+  const personalTask=nodes(row(a.id)).find(node=>node.props['data-allocation-id']);assert.ok(personalTask);
+  e.invoke(e.find('베트남 일정 팀별'));
+  assert.deepEqual(days('vt_in1'),['2026-10-06','2026-10-07','2026-10-08']);
+  const bars=nodes(row('vt_in1')).filter(node=>node.props['data-leave-id']);assert.equal(bars.length,2);assert.ok(bars.every(node=>node.props.title.includes(a.name)));assert.ok(!text(row('vt_in1')).includes('10-10'));
+  assert.equal(nodes(row('vt_in1')).filter(node=>node.props['data-allocation-id']).length,1);assert.deepEqual(e.read(),p);assert.equal(e.writes.length,0);
+ });
+ await check('실제 3부서 캘린더: 소속 외 PM legacyalias·VN 직접 배정자 휴가 포함, 미배정·다음월 제외',()=>{
+  for(const department of ['마감팀','구조팀','토목&조경팀']){
+   const own={...kr,department},outside={...manager,id:'outside-kr',no:9021,name:'소속 외 합성 PM',department:'개발 TF'};
+   const vn={...a,id:'outside-vn',no:9022,department:department==='구조팀'?'마감팀':'구조팀',vietTeamId:department==='구조팀'?'vt_in1':'vt_vert_general'};
+   const absent={...outside,id:'outside-unassigned',no:9023,name:'미배정 타팀 직원'};
+   const p={...structuredClone(baseProject),department};Object.assign(p.subTasks.PM,{personId:outside.name,personIds:[outside.name],startDate:'2026-10-06',endDate:'2026-10-08'});delete p.subTasks.PM.allocations;Object.assign(p.subTasks.내부,{personId:vn.id,personIds:[vn.id]});
+   const leaves=[outside,vn,absent].map(person=>({id:'leave-'+person.id,user_id:person.id,start_date:'2026-10-07',end_date:'2026-10-08',kind:'연차',revision:1}));
+   const e=mount('PersonalScheduleView',{project:p,users:[own,outside,vn,absent],leaves,props:{department}});e.invoke(e.button('개인/팀별 캘린더'));
+   const row=id=>e.all().find(node=>node.props['data-schedule-unit']===id);
+   for(const person of [outside,vn]){assert.ok(row(person.id));assert.deepEqual(nodes(row(person.id)).filter(node=>node.props['data-leave-day']).map(node=>node.props['data-leave-day']),['2026-10-07','2026-10-08']);assert.ok(nodes(row(person.id)).some(node=>node.props.onClick),'Assigned project bar must remain');}
+   assert.equal(row(absent.id),undefined);assert.ok(text(row(vn.id)).includes('타팀 배정'));
+   e.invoke(e.find('베트남 일정 팀별'));assert.ok(row(vn.id),'A cross-team VN assignee must remain an individual row in team mode');
+   e.invoke(e.all().find(node=>node.type==='button'&&node.props.title==='다음 달'));assert.equal(row(outside.id),undefined);assert.equal(row(vn.id),undefined);assert.deepEqual(e.read(),p);assert.equal(e.writes.length,0);
+  }
  });
  await check('실제 Settings 회사별 초기/리셋 비밀번호 조건·부서그룹제한 및 개인설정8자 유지',()=>{
   const e=mount('SettingsView');e.invoke(e.all().find(node=>node.type==='button'&&/회원관리/.test(norm(node))));e.invoke(e.all().find(node=>node.type==='button'&&/신규회원/.test(norm(node))));const pw=()=>e.all().find(node=>node.type==='input'&&node.props.type==='password');assert.equal(pw().props.minLength,8);const company=e.all().find(node=>node.type==='select'&&nodes(node).some(option=>option.type==='option'&&option.props.value==='VIETQS'));e.invoke(company,'VIETQS');assert.equal(pw().props.minLength,4);assert.match(pw().props.pattern,/0-9/);const pattern=new RegExp('^(?:'+pw().props.pattern+')$');assert.ok(pattern.test('1234'));assert.ok(pattern.test('abcdefgh'));assert.ok(!pattern.test('abcd'));assert.ok(!pattern.test('12345'));const groups=e.find('신규 베트남 소속 그룹');assert.ok(nodes(groups).filter(node=>node.type==='option'&&node.props.value).every(option=>viet.VIET_ASSIGNMENT_GROUPS.find(group=>group.id===option.props.value).department==='마감팀'));

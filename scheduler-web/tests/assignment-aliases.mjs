@@ -27,7 +27,7 @@ for(const user of directory){
  const token='synthetic-alias-session-'+user.id;
  db.prepare('INSERT INTO studio_sessions VALUES (?,?,?)').run(await tokenHash(token),user.id,Date.now()+3600000);cookies.set(user.id,'studio_session='+token);
 }
-const request=async(actor,path,method='GET',body)=>{const response=await handleCollaboration(new Request('http://localhost/api/collaboration/'+path,{method,headers:{Cookie:cookies.get(actor.id),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined}),env,async()=>{throw Error('Archive is outside this isolated test');});return {status:response.status,data:await response.json()};};
+const request=async(actor,path,method='GET',body)=>{const response=await handleCollaboration(new Request('http://localhost/api/collaboration/'+path,{method,headers:{Cookie:cookies.get(actor.id),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined}),env,async()=>{throw Error('Archive is outside this isolated test');});const result={status:response.status,data:await response.json()};if(method==='POST'&&path.endsWith('/approve')&&result.status===200&&result.data.request?.status==='PENDING'&&result.data.request.approvalStage==='TEAM')return request(actor,path,method,{...body,revision:result.data.revision});return result;};
 const readProject=async id=>(await request(worker,'projects')).data.projects.find(row=>row.project.id===id);
 const task=identifier=>({roleName:'조적',personId:identifier,personIds:[identifier],startDate:'2026-10-06',endDate:'2026-10-08',status:'진행중',memo:'합성 배정 원문',progress:35,reportingModes:{[identifier]:'TASK'}});
 const project=(id,identifier)=>({id,code:'QA-ALIAS',name:'합성 식별자 연동',department:'마감팀',pmId:'',startDate:'2026-10-06',endDate:'2026-10-08',status:'진행중',progress:35,roles:{},subTasks:{조적:task(identifier)}});
@@ -97,7 +97,7 @@ try{
   delete p.subTasks.조적.reportingModes[worker.id];delete p.subTasks.조적.reportingModes[worker.name];p.subTasks.조적.reportingModes[String(worker.no)]='TASK';assert.equal(assignedTasks(worker.id,[p],aliases)[0].reportingMode,'DAILY');
  });
  for(const [format,identifier]of [['ID',worker.id],['이름',worker.name],['번호',String(worker.no)]])await check(`실제 API ${format}: 후보·체크·일지 재조회·승인·연장 연결 및 원배정 보존`,async()=>{
-  const p=project('api-'+format,identifier),originalPersonIds=structuredClone(p.subTasks.조적.personIds),aliases=aliasesFor(worker,directory);
+  const p={...project('api-'+format,identifier),pmId:chief.id},originalPersonIds=structuredClone(p.subTasks.조적.personIds),aliases=aliasesFor(worker,directory);
   assert.equal((await request(chief,'projects','POST',{project:p})).status,200);
   const row=assignedTasks(worker.id,[p],aliases)[0];assert.ok(row);assert.equal(row.reportBasis,'TASK');
   assert.equal((await request(worker,'task-checks','POST',{day:'2026-10-06',taskId:row.id,done:true})).status,200);
@@ -120,7 +120,7 @@ try{
   const current=(await readProject(p.id)).project;assert.equal(current.progress,55);assert.equal(current.subTasks.조적.progress,35);assert.equal(current.endDate,p.endDate);assert.equal(current.postDeliveryTasks[0].progress,100);assert.deepEqual(current.postDeliveryTasks[0].personIds,[worker.name]);
  });
  await check('실제 API 담당 변경 뒤 기존 번호 일지 승인·연장 승인은 새 담당 실적을 덮지 않음',async()=>{
-  const p=project('api-reassigned',String(worker.no));assert.equal((await request(chief,'projects','POST',{project:p})).status,200);const item=assignedTasks(worker.id,[p],aliasesFor(worker,directory))[0];assert.ok(item);
+  const p={...project('api-reassigned',String(worker.no)),pmId:chief.id};assert.equal((await request(chief,'projects','POST',{project:p})).status,200);const item=assignedTasks(worker.id,[p],aliasesFor(worker,directory))[0];assert.ok(item);
   const log=journal('log-reassigned',item),saved=await request(worker,'worklogs/'+log.id,'PUT',{log});assert.equal(saved.status,200);const submitted=await request(worker,'worklogs/'+log.id+'/submit','POST',{revision:saved.data.log.serverRevision});assert.equal(submitted.status,200);
   const ext=await request(worker,'projects/'+p.id+'/extensions','POST',{taskId:item.id,previousEnd:item.endDate,requestedEnd:'2026-10-12',reason:'합성 변경 전 요청'});assert.equal(ext.status,200);
   const old=(await readProject(p.id)).project,next=structuredClone(old);Object.assign(next.subTasks.조적,{personId:other.id,personIds:[other.id],progress:40});assert.equal((await request(chief,'projects','POST',{base:old,project:next})).status,200);

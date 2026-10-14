@@ -1,5 +1,5 @@
 import {projectProgress} from '../../scheduler-web/src/utils/scheduleProgress.ts';
-import {assignedTasks,validDay,assignmentAliases,assignmentPersonId} from '../../scheduler-web/src/utils/personalWork.ts';
+import {assignedTasks,validDay,assignmentAliases,assignmentPersonId,memberIds,nextDay} from '../../scheduler-web/src/utils/personalWork.ts';
 import {withAllocationBounds} from '../../scheduler-web/src/utils/scheduleAllocations.ts';
 
 // Extension audit lives with its project. CAS and the notification writes commit together.
@@ -16,9 +16,13 @@ export async function scheduleExtensionRoute(request:Request,env:any,user:any,ro
  const directory=directoryRows.map((row:any)=>{let profile:any={};try{profile=JSON.parse(row.profile);}catch{/* Unknown profiles only retain their canonical ID. */}const owner=profile?.id===row.id?profile:{};return {id:row.id,name:typeof owner.name==='string'?owner.name:undefined,no:owner.no,active:row.active===1};});
  const aliasesFor=(id:string)=>assignmentAliases({id},directory);
  const pmId=assignmentPersonId(project.pmId,directory);
- let changed:any,recipients:string[]=[];
+ const manager=(person:any)=>canManage(person,project.department)||(project.department==='토목&조경팀'&&person.id==='u_8');
+ const managers=directoryRows.filter((person:any)=>person.active===1&&manager(person));
+ const chiefs=managers.filter((person:any)=>person.position==='실장'||person.id===(project.department==='마감팀'?'u_12':project.department==='구조팀'?'u_24':'u_8'));
+ const guards:any[]=[db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1 AND department=? AND position=?)').bind(user.id,user.department,user.position)];
+ let changed:any,recipients:string[]=[],applied:any={};
  if(!match[2]){
-  const task=assignedTasks(user.id,[project],aliasesFor(user.id)).find(t=>t.id===input.taskId);
+  const userTasks=assignedTasks(user.id,[project],aliasesFor(user.id)),task=userTasks.find(t=>t.id===input.taskId);
   if(!task)return fail('본인에게 배정된 업무만 연장을 요청할 수 있습니다.',403);
   if(input.previousEnd!==task.endDate)return fail('마감일이 변경되었습니다. 최신 일정을 확인하세요.',409);
   const type=input.type||'DEADLINE';
@@ -28,23 +32,31 @@ export async function scheduleExtensionRoute(request:Request,env:any,user:any,ro
   const duration=minutes(input.endTime)-minutes(input.startTime);
   if(type==='OVERTIME'&&(!validDay(input.workDate)||input.workDate<task.startDate||!Number.isFinite(duration)||duration<=0))return fail('배정 시작일 이후의 근무일과 당일 시작·종료 시간을 확인하세요.');
   if(requests.some((r:any)=>r.taskId===task.id&&r.userId===user.id&&r.status==='PENDING'))return fail('이 업무의 승인 대기 요청이 이미 있습니다.',409);
-  if(input.approverId!==undefined){
+  if(type==='DEADLINE'&&requests.some((r:any)=>r.taskId===task.id&&r.userId===user.id&&r.status==='APPROVED'&&r.type!=='OVERTIME'&&r.appliedTaskId&&r.appliedTaskId!==task.id&&userTasks.some(t=>t.id===r.appliedTaskId)))return fail('이미 승인된 개인 연장 구간이 있습니다. 최신 연장 구간의 업무를 선택해 이어서 신청하세요.',409);
+  if(type==='DEADLINE'){
+   if(!pmId)return fail('현재 프로젝트 PM이 없거나 확인되지 않습니다. PM 배정을 먼저 확인하세요.',409);
+   if(!managers.length)return fail('해당 팀의 활성 팀장 또는 실장 계정이 필요합니다.',409);
+   if(input.approverId!==undefined&&input.approverId!==pmId)return fail('완료일 연장은 현재 프로젝트 PM이 먼저 검토해야 합니다.',403);
+   recipients=[pmId,...chiefs.map((person:any)=>person.id)];
+   guards.push(db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1)').bind(pmId));
+  }else if(input.approverId!==undefined){
    const approver:any=typeof input.approverId==='string'?await db.prepare('SELECT id,department,position FROM studio_users WHERE id=? AND active=1').bind(input.approverId).first():null;
    if(!approver||!(approver.id===pmId||canManage(approver,project.department)||(project.department==='토목&조경팀'&&approver.id==='u_8')))return fail('현재 프로젝트 PM 또는 해당 팀 결재 담당자를 선택하세요.',403);
    recipients=[approver.id];
   }
-  changed={id:crypto.randomUUID(),taskId:task.id,...(task.allocationId?{allocationId:task.allocationId}:{}),userId:user.id,userName:user.name,roleName:task.roleName,previousEnd:task.endDate,requestedEnd:type==='DEADLINE'?input.requestedEnd:task.endDate,type,...(type==='OVERTIME'?{workDate:input.workDate,startTime:input.startTime,endTime:input.endTime,hours:duration/60}:{}),...(input.approverId?{approverId:input.approverId}:{}),reasonCategory:input.reasonCategory||'',reason:input.reason.trim(),createdAt:now,status:'PENDING'};
+  changed={id:crypto.randomUUID(),taskId:task.id,...(task.allocationId?{allocationId:task.allocationId}:{}),userId:user.id,userName:user.name,roleName:task.roleName,previousEnd:task.endDate,requestedEnd:type==='DEADLINE'?input.requestedEnd:task.endDate,type,...(type==='OVERTIME'?{workDate:input.workDate,startTime:input.startTime,endTime:input.endTime,hours:duration/60}:{}),...(type==='DEADLINE'?{approvalStage:'PM',pmApproverId:pmId,approverId:pmId}:input.approverId?{approverId:input.approverId}:{}),reasonCategory:input.reasonCategory||'',reason:input.reason.trim(),createdAt:now,status:'PENDING'};
   project.scheduleExtensions=[...requests,changed];
-  const managers=await db.prepare('SELECT id,department,position,profile FROM studio_users WHERE active=1 AND department=?').bind(project.department).all<any>();
-  if(!recipients.length)recipients=managers.results.filter((u:any)=>canManage(u,project.department)||(project.department==='토목&조경팀'&&u.id==='u_8')).map((u:any)=>u.id);
+  if(!recipients.length)recipients=managers.map((person:any)=>person.id);
  }else{
   const pending=requests.find((r:any)=>r.id===decodeURIComponent(match[2]));
   if(!pending)return fail('연장 요청을 찾을 수 없습니다.',404);
-  const manager=canManage(user,project.department)||(project.department==='토목&조경팀'&&user.id==='u_8');
+  const isManager=manager(user);
   const designated=directoryRows.find((person:any)=>person.id===pending.approverId&&person.active===1);
   const designatedValid=designated&&(designated.id===pmId||canManage(designated,project.department)||(project.department==='토목&조경팀'&&designated.id==='u_8'));
-  const mayReview=pending.approverId?user.id===pending.approverId&&designatedValid:manager;
-  const mayRejectOrphan=match[3]==='reject'&&pending.approverId&&!designatedValid&&manager;
+  const staged=!!pending.approvalStage;
+  const pmValid=!!pmId&&pending.pmApproverId===pmId;
+  const mayReview=staged?(pending.approvalStage==='PM'?user.id===pending.pmApproverId&&pmValid:isManager):pending.approverId?user.id===pending.approverId&&designatedValid:isManager;
+  const mayRejectOrphan=match[3]==='reject'&&isManager&&(staged?!pmValid:pending.approverId&&!designatedValid);
   if(!mayReview&&!mayRejectOrphan)return fail('지정된 PM 또는 해당 팀 결재 담당자의 승인 권한이 필요합니다.',403);
   if(input.revision!==row.revision)return fail('프로젝트가 변경되었습니다. 최신 요청을 확인하세요.',409);
   if(pending.status!=='PENDING')return fail('이미 처리된 요청입니다.',409);
@@ -53,31 +65,60 @@ export async function scheduleExtensionRoute(request:Request,env:any,user:any,ro
    const task=assignedTasks(pending.userId,[project],aliasesFor(pending.userId)).find(t=>t.id===pending.taskId);
    if(!task||task.endDate!==pending.previousEnd||pending.allocationId!==undefined&&pending.allocationId!==task.allocationId)return fail('배정 또는 마감일이 변경되어 승인할 수 없습니다. 요청을 반려하고 다시 신청하세요.',409);
    if(pending.type==='OVERTIME'&&pending.workDate<task.startDate)return fail('배정 시작일이 변경되어 승인할 수 없습니다. 요청을 반려하고 다시 신청하세요.',409);
-   if(pending.type!=='OVERTIME'){
+   if(staged&&!pmValid)return fail('PM 배정이 변경되어 승인할 수 없습니다. 요청을 반려하고 다시 신청하세요.',409);
+   if(staged&&pending.approvalStage==='TEAM'&&!pending.pmReview?.approvedAt)return fail('PM 검토를 먼저 완료하세요.',409);
+   if(staged&&pending.approvalStage==='PM'&&!managers.length)return fail('해당 팀의 활성 팀장 또는 실장 계정이 필요합니다.',409);
+   if(pending.type!=='OVERTIME'&&(!staged||pending.approvalStage==='TEAM')){
     const follow=(project.postDeliveryTasks||[]).find((t:any)=>`gen-${project.id}-followup-${t.id}`===task.id);
-    if(follow)follow.endDate=pending.requestedEnd;
+    if(follow){
+     if(memberIds(follow).some(reference=>!aliasesFor(pending.userId).includes(reference))){
+      if(project.postDeliveryTasks.length>=100)return fail('검토·수정 일정은 최대 100개입니다. 기존 후속 일정을 확인한 뒤 연장을 다시 신청하세요.',409);
+      const addition={...follow,id:`extension-${pending.id}`,personIds:[pending.userId],startDate:nextDay(pending.previousEnd),endDate:pending.requestedEnd};
+      project.postDeliveryTasks.push(addition);applied={appliedTaskId:`gen-${project.id}-followup-${addition.id}`};
+     }else{follow.endDate=pending.requestedEnd;applied={appliedTaskId:task.id};}
+    }
      else{
-      const subTask=project.subTasks?.[task.roleName];
+      let subTask=project.subTasks?.[task.roleName];
+      const source=task.allocationId?subTask?.allocations?.find((allocation:any)=>allocation.id===task.allocationId):subTask||project.roles?.[task.roleName];
+      if(!source)return fail('배정 구간이 변경되어 승인할 수 없습니다. 요청을 반려하고 다시 신청하세요.',409);
+      const shared=memberIds(source).some(reference=>!aliasesFor(pending.userId).includes(reference));
+      if(shared){
+       if(!subTask){subTask={...source,roleName:task.roleName,personId:memberIds(source)[0]||'',personIds:memberIds(source),startDate:task.startDate,endDate:task.endDate,memo:source.memo||''};project.subTasks={...project.subTasks,[task.roleName]:subTask};}
+       if(subTask.allocations===undefined){
+        subTask.legacyAllocationId??=`extension-original-${crypto.randomUUID()}`;
+        subTask.allocations=[{id:subTask.legacyAllocationId,personIds:memberIds(subTask),startDate:task.startDate,endDate:task.endDate,memo:subTask.memo,...(subTask.dateMode?{dateMode:subTask.dateMode}:{})}];
+       }
+       const addition={id:`extension-${pending.id}`,personIds:[pending.userId],startDate:nextDay(pending.previousEnd),endDate:pending.requestedEnd,memo:source.memo??subTask.memo,dateMode:'CUSTOM'};
+       subTask.allocations.push(addition);subTask.personIds=[...new Set([...(task.roleName==='PM'&&subTask.personId?[subTask.personId]:[]),...subTask.allocations.flatMap((allocation:any)=>allocation.personIds)])];
+       Object.assign(subTask,withAllocationBounds(subTask));
+       applied={appliedTaskId:`gen-${project.id}-${task.roleName}-${addition.id}`,appliedAllocationId:addition.id};
+      }else{
       if(task.allocationId){
        const allocation=subTask?.allocations?.find((a:any)=>a.id===task.allocationId);
        if(!allocation)return fail('배정 구간이 변경되어 승인할 수 없습니다. 요청을 반려하고 다시 신청하세요.',409);
-       allocation.endDate=pending.requestedEnd;
+       allocation.endDate=pending.requestedEnd;allocation.dateMode='CUSTOM';
        Object.assign(subTask,withAllocationBounds(subTask));
-      }else if(subTask)subTask.endDate=pending.requestedEnd;
+      }else if(subTask){subTask.endDate=pending.requestedEnd;subTask.dateMode='CUSTOM';}
+      applied={appliedTaskId:task.id,...(task.allocationId?{appliedAllocationId:task.allocationId}:{})};
+      }
       project.roles={...project.roles,[task.roleName]:{...project.roles?.[task.roleName],...(subTask?{personId:(subTask.personIds||[subTask.personId])[0]||'',startDate:subTask.startDate,endDate:subTask.endDate}:{endDate:pending.requestedEnd})}};
       if(task.roleName!=='PM'&&!task.allocationId)project.progress=projectProgress(project).actual??project.progress;
      }
    }
   }
-  changed={...pending,status:match[3]==='approve'?'APPROVED':'REJECTED',decidedBy:user.id,decidedName:user.name,decidedAt:now,decisionMemo:input.memo||''};
-  project.scheduleExtensions=requests.map((r:any)=>r.id===changed.id?changed:r);recipients=[pending.userId];
+  const pmApproval=match[3]==='approve'&&staged&&pending.approvalStage==='PM';
+  changed=pmApproval?{...pending,approvalStage:'TEAM',pmReview:{userId:user.id,name:user.name,approvedAt:now,memo:input.memo||''}}:{...pending,...applied,status:match[3]==='approve'?'APPROVED':'REJECTED',decidedBy:user.id,decidedName:user.name,decidedAt:now,decisionMemo:input.memo||''};
+  project.scheduleExtensions=requests.map((r:any)=>r.id===changed.id?changed:r);
+  recipients=pmApproval?managers.map((person:any)=>person.id):[pending.userId,...(staged?chiefs.map((person:any)=>person.id):[])];
+  if(staged&&match[3]==='approve')guards.push(db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1)').bind(pmId));
  }
  const detail=changed.type==='OVERTIME'?`${changed.workDate} ${changed.startTime} ~ ${changed.endTime}, ${changed.hours}시간`:`${changed.previousEnd} → ${changed.requestedEnd}`;
- const message=changed.status==='PENDING'?`${user.name} · ${project.code} ${changed.roleName} ${changed.type==='OVERTIME'?'추가 시간':'일정 연장'} 요청 (${detail})`:`${project.code} ${changed.roleName} ${changed.type==='OVERTIME'?'추가 시간':'일정 연장'} ${changed.status==='APPROVED'?'승인':'반려'} · ${user.name}`;
+ const message=changed.status==='PENDING'?(changed.approvalStage==='TEAM'?`${project.code} ${changed.roleName} 일정 연장 PM 검토 완료 · 팀장 또는 실장 최종 승인 필요 (${detail})`:`${user.name} · ${project.code} ${changed.roleName} ${changed.type==='OVERTIME'?'추가 시간':'일정 연장'} 요청 (${detail})`):`${project.code} · ${project.name} · ${changed.roleName} ${changed.type==='OVERTIME'?'추가 시간':'일정 연장'} ${changed.status==='APPROVED'?'승인':'반려'} (${detail}) · ${user.name}`;
  try{await db.batch([
   db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_projects WHERE id=? AND revision=?)').bind(id,row.revision),
+  ...guards,
   db.prepare('UPDATE studio_projects SET body=?,revision=revision+1,updated_at=?,updated_by=? WHERE id=? AND revision=?').bind(JSON.stringify(project),now,user.id,id,row.revision),
-  ...[...new Set(recipients)].map(recipient=>db.prepare('INSERT INTO studio_notifications (id,user_id,meeting_id,message,created_at) VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),recipient,`extension:${id}`,message,now))
+  ...[...new Set(recipients)].map(recipient=>db.prepare('INSERT INTO studio_notifications (id,user_id,meeting_id,message,created_at) VALUES (?,?,?,?,?)').bind(changed.status==='APPROVED'&&recipient===changed.userId?`extension-approved:${changed.id}`:crypto.randomUUID(),recipient,`extension:${id}`,message,now))
  ]);}catch{return fail('동시 변경으로 요청을 저장하지 못했습니다. 입력은 유지하고 최신 상태를 확인하세요.',409);}
  return Response.json({project,revision:row.revision+1,request:changed});
 }
