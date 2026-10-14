@@ -57,6 +57,23 @@ export async function runDailyHarness(sourceText=readFileSync(sourcePath,'utf8')
   await check('기본 대조: 알림 없이 최초 진입하면 본인 첫 배정과 Task 자동 선택 유지',()=>{const s=screen(),observed=s.settle();assert.equal(observed.project,p2.id);assert.equal(observed.task,ownTask);return observed;});
   await check('연장 알림: 동시/기존 mount 모두 다른 프로젝트 Task/역할 해제',()=>{const fresh=target(screen({extension:p1.id})),s=screen();s.settle();s.editNote('기존 미저장 본문');s.update({openExtension:p1.id});const mounted=target(s);s.reportTab();assert.equal(s.note().value,'기존 미저장 본문');return {fresh,mounted};});
   await check('업무일지 알림과 최초 mount: 원 작성자 Task·날짜·상신 본문/권한 유지',()=>{const s=screen({worklog:originalLog.id,includeLog:true}),observed=s.settle();try{assert.equal(observed.project,p1.id);assert.equal(observed.task,authorTask);assert.equal(observed.date,originalLog.date);assert.equal(observed.log,originalLog.id);assert.equal(s.note().value,originalLog.overallNotes);assert.equal(s.note().disabled,true);assert.deepEqual(s.readLogs(),[originalLog]);}catch(error){error.observed={settled:observed,trace:s.trace};throw error;}return observed;});
+  const dayProject=(id,day,role,progress)=>({id,code:'QA-'+id,name:'합성 날짜 연결 '+id,department:'마감팀',startDate:day,endDate:day,roles:{},subTasks:{[role]:{roleName:role,personIds:[manager.id],startDate:day,endDate:day,status:'진행중',progress,memo:'배정 '+id,reportingMode:'TASK'}}});
+  const dayProjects=[dayProject('daily-A','2026-10-06','내부',35),dayProject('daily-B','2026-10-07','외부',60)];
+  const tomorrowContext=s=>{
+   const observed={...s.snapshot(),item:s.reportFields()?.props.item||s.planFields()?.props.item};
+   try{assert.equal(observed.date,'2026-10-07');assert.equal(observed.project,'daily-B');assert.equal(observed.role,'외부');assert.equal(observed.task,'gen-daily-B-외부');assert.equal(observed.item?.progress,60);assert.equal(observed.item?.startDate,'2026-10-07');assert.equal(observed.item?.endDate,'2026-10-07');}catch(error){error.observed={observed,trace:s.trace};throw error;}
+   return observed;
+  };
+  await check('할일 날짜 연결 첫 mount: 내일 B/외부/60%가 오늘 A 자동선택에 덮이지 않음',()=>{const s=screen({projects:dayProjects});s.update({openDate:'2026-10-07'});s.settle();return tomorrowContext(s);});
+  await check('할일 날짜 연결 재진입: 내일 B 선택 및 오늘 A 수기본문·진척률·상태·초안 복원',()=>{
+   const s=screen({projects:dayProjects});s.settle();assert.equal(s.snapshot().task,'gen-daily-A-내부');
+   const update=(key,value)=>{const fields=s.reportFields();assert.ok(fields);fields.props.update(fields.props.item.id,key,value);s.settle();};
+   update('todayTask','직접 작성한 오늘 산출 검토');update('progress',48);update('status','지연');s.editNote('A 저장 전 종합 원문');
+   s.update({openDate:'2026-10-07'});s.settle();const tomorrow=tomorrowContext(s);
+   s.update({openDate:'2026-10-06'});s.settle();const returned={...s.snapshot(),item:s.reportFields()?.props.item,notes:s.note()?.value};
+   assert.equal(returned.project,'daily-A');assert.equal(returned.role,'내부');assert.equal(returned.task,'gen-daily-A-내부');assert.equal(returned.item?.todayTask,'직접 작성한 오늘 산출 검토');assert.equal(returned.item?.progress,48);assert.equal(returned.item?.status,'지연');assert.equal(returned.notes,'A 저장 전 종합 원문');assert.equal(s.reads.length,0);
+   return {tomorrow,returned};
+  });
   }
   return {kind:'ACTUAL_DAILY_MODULE_SYNTHETIC_HOOK_EFFECT_HARNESS',externalRequests:0,productWrites:0,results,limits:['실제 App/브라우저 effect scheduling과 구분한다. root의 별도 실제 UI 증거와 대조해야 한다.','React hook/스토어 입력은 합성이며 실제 컴포넌트 소스와 effect callback을 실행한다.']};
  }finally{await server.close();}

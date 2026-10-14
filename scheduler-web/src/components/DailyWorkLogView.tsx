@@ -173,7 +173,7 @@ export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}
     rememberDraft();const item=log.items[0];setSelectedDate(log.date);setSelectedWorkLogId(log.id);setSelectedTaskId(item?.id||'');setProjectFilter(item?.projectId||'ALL');setRoleFilter(item?.roleName||'');setViewTab('REPORT');
   },[openWorkLogId,loaded,userWorkLogs,rememberDraft,setSelectedWorkLogId]);
   useEffect(()=>{if(openExtension){rememberDraft();setViewTab('EXTENSIONS');setProjectFilter(openExtension);setSelectedTaskId('');setRoleFilter('');usePersonalStore.setState({openExtension:null});}},[openExtension,rememberDraft]);
-  useEffect(()=>{if(openDate){rememberDraft();setSelectedDate(openDate);setSelectedWorkLogId(null);setSelectedTaskId('');setViewTab('REPORT');usePersonalStore.setState({openDate:null});}},[openDate,setSelectedWorkLogId,rememberDraft]);
+  useEffect(()=>{if(openDate){rememberDraft();setSelectedDate(openDate);setSelectedWorkLogId(null);setSelectedTaskId('');setProjectFilter('ALL');setRoleFilter('');initialProjectChosen.current=false;setViewTab('REPORT');usePersonalStore.setState({openDate:null});}},[openDate,setSelectedWorkLogId,rememberDraft]);
   useEffect(()=>{
     if(activeLog?.approvalStatus&&activeLog.approvalStatus!=='DRAFT')return;
     if(activeLog?.userId&&activeLog.userId!==currentUser?.id)return;
@@ -369,16 +369,16 @@ export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}
   const taskOptions=reportOptions.filter(item=>!roleFilter||item.roleName===roleFilter);
   const initialProjectChosen=useRef(false);
   useEffect(()=>{
-    if(openExtension||openWorkLogId)return;
+    if(openExtension||openWorkLogId||openDate)return;
     if(loaded&&!initialProjectChosen.current&&dayTasks.length){initialProjectChosen.current=true;if(projectFilter==='ALL')setProjectFilter(dayTasks[0].projectId);}
-  },[loaded,projectFilter,dayTasks,openExtension,openWorkLogId]);
+  },[loaded,projectFilter,dayTasks,openExtension,openWorkLogId,openDate]);
   useEffect(()=>{
-    if(openExtension||openWorkLogId||!loaded||viewTab==='HISTORY'||selectedTaskId||!taskOptions.length)return;
+    if(openExtension||openWorkLogId||openDate||!loaded||viewTab==='HISTORY'||selectedTaskId||!taskOptions.length)return;
     const first=taskOptions.find(task=>dayTasks.some(assigned=>assigned.id===task.id))||taskOptions.find(task=>(!canEdit||!!activeLog?.items.some(item=>item.id===task.id))&&(!task.startDate||task.startDate<=selectedDate&&(task.reportBasis==='TASK'||!task.endDate||task.endDate>=selectedDate)));
     if(first)chooseTask(first.id);
     // Selection uses the canonical assignment; there is no separate employee-facing report-mode chooser.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[loaded,viewTab,projectFilter,roleFilter,selectedDate,activeLog?.id,selectedTaskId,taskOptions.length,dayTasks,openExtension,openWorkLogId]);
+  },[loaded,viewTab,projectFilter,roleFilter,selectedDate,activeLog?.id,selectedTaskId,taskOptions.length,dayTasks,openExtension,openWorkLogId,openDate]);
   const panel='rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900';
   const field='w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 focus-visible:outline-2 focus-visible:outline-orange-500';
   const button='rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold disabled:opacity-50 dark:border-slate-600';
