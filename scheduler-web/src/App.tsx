@@ -94,6 +94,12 @@ export default function App() {
 
   // 기본 활성 메뉴: 프로젝트 일정표
   const [activeMenu, setActiveMenu] = useState<NavCategory>('프로젝트 일정표');
+  const [minutesMenuOpen,setMinutesMenuOpen]=useState(true);
+  const [todoMenuOpen,setTodoMenuOpen]=useState(true);
+  useEffect(()=>{
+    if(activeMenu==='회의록'||activeMenu==='회의록 작성'||activeMenu==='회의록 목록')setMinutesMenuOpen(true);
+    if(activeMenu==='할 일'||activeMenu==='내 휴가 일정')setTodoMenuOpen(true);
+  },[activeMenu]);
   const [inquiryDepartment,setInquiryDepartment]=useState<Department>('마감팀');
   const [inquiryVisited,setInquiryVisited]=useState<Department[]>([]);
   const [inquiryContext,setInquiryContext]=useState<Partial<Record<Department,{projectId?:string;projectCode?:string;trade?:string;version:number}>>>({});
@@ -605,8 +611,11 @@ export default function App() {
               {/* 회의록 대메뉴 및 2단 하위 카테고리 (- 회의록 작성, - 회의록 목록) */}
               <div className="space-y-0.5">
                 <button
-                  onClick={() => setActiveMenu('회의록 작성')}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                  type="button"
+                  aria-expanded={minutesMenuOpen}
+                  aria-controls="minutes-submenu"
+                  onClick={() => setMinutesMenuOpen(open=>!open)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
                     activeMenu === '회의록' || activeMenu === '회의록 작성' || activeMenu === '회의록 목록'
                       ? 'bg-slate-100 dark:bg-slate-700/70 text-slate-900 dark:text-white'
                       : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50'
@@ -616,13 +625,13 @@ export default function App() {
                     <FileSignature size={16} className="text-blue-600 dark:text-blue-400" />
                     <span>{t.minutes}</span>
                   </div>
-                  <span className="text-[10px] bg-amber-50 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 px-1.5 py-0.2 rounded font-semibold">
+                  <div className="flex items-center gap-2"><span className="text-[10px] bg-amber-50 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 px-1.5 py-0.2 rounded font-semibold">
                     2단분류
-                  </span>
+                  </span><ChevronRight size={14} aria-hidden="true" className={`opacity-60 transition-transform motion-reduce:transition-none ${minutesMenuOpen?'rotate-90':''}`}/></div>
                 </button>
 
                 {/* 하위 2개 서브메뉴 들여쓰기 */}
-                <div className="pl-6 pr-1 space-y-1 pt-0.5 pb-1">
+                <div id="minutes-submenu" hidden={!minutesMenuOpen} className="pl-6 pr-1 space-y-1 pt-0.5 pb-1">
                   <button
                     onClick={() => setActiveMenu('회의록 작성')}
                     className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
@@ -671,9 +680,11 @@ export default function App() {
               </button>
 
               <div className="mt-3 space-y-1">
-                <button onClick={()=>setActiveMenu('할 일')} className={`w-full flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold ${activeMenu==='할 일'?'bg-blue-700 text-white':'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}><ClipboardCheck size={17}/>할 일 (TO DO)</button>
+                <button type="button" aria-expanded={todoMenuOpen} aria-controls="todo-submenu" onClick={()=>setTodoMenuOpen(open=>!open)} className={`w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${activeMenu==='할 일'||activeMenu==='내 휴가 일정'?'bg-blue-700 text-white':'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}><span className="flex items-center gap-2"><ClipboardCheck size={17}/>할 일 (TO DO)</span><ChevronRight size={14} aria-hidden="true" className={`opacity-60 transition-transform motion-reduce:transition-none ${todoMenuOpen?'rotate-90':''}`}/></button>
+                <div id="todo-submenu" hidden={!todoMenuOpen} className="space-y-1">
                 <button type="button" aria-current={activeMenu==='할 일'?'page':undefined} onClick={()=>setActiveMenu('할 일')} className={`w-full text-left pl-10 py-2 text-xs rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${activeMenu==='할 일'?'bg-blue-700 text-white font-bold':'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>오늘·내일 할 일</button>
                 <button type="button" aria-current={activeMenu==='내 휴가 일정'?'page':undefined} onClick={()=>setActiveMenu('내 휴가 일정')} className={`w-full text-left pl-10 py-2 text-xs rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${activeMenu==='내 휴가 일정'?'bg-blue-700 text-white font-bold':'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>내 휴가 일정</button>
+                </div>
               </div>
               {/* ✨ 회의록 하단에 업무일지 (개인별 업무일지 & 결재라인) 신규 추가 */}
               <button
