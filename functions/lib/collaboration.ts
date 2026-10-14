@@ -4,6 +4,7 @@ import {VIET_ASSIGNMENT_GROUPS} from '../../scheduler-web/src/utils/vietPersonne
 import {validDay} from '../../scheduler-web/src/utils/personalWork.ts';
 import {isScheduleAdmin} from '../../scheduler-web/src/utils/schedulePermissions.ts';
 import {personalRoute} from './personal.ts';
+import {weeklyReportRoute} from './weeklyReports.ts';
 import {scheduleExtensionRoute} from './scheduleExtensions.ts';
 import {ensureIntakeSchedules,pendingIntakeSchedules} from './intakeSchedule.ts';
 import {projectInquiryRoute} from './projectInquiries.ts';
@@ -150,6 +151,7 @@ export async function handleCollaboration(request:Request,env:Environment,archiv
   if(!user)return fail('서버 로그인이 필요합니다.',401);
   const inquiry=await projectInquiryRoute(request,env,user,route);if(inquiry)return inquiry;
   const personal=await personalRoute(request,env,user,route);if(personal)return personal;
+  const weekly=await weeklyReportRoute(request,env,user,route);if(weekly)return weekly;
   const extension=await scheduleExtensionRoute(request,env,user,route,canEditTeam);if(extension)return extension;
   if(route==='session'&&method==='GET')return json({user:JSON.parse(user.profile)});
   if(route==='logout'&&method==='POST') {

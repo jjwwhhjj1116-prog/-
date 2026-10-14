@@ -34,6 +34,7 @@ import ProjectModal from './components/ProjectModal';
 import { ProjectIntegratedModal } from './components/ProjectIntegratedModal';
 import { MinutesView } from './components/MinutesView';
 import { DailyWorkLogView } from './components/DailyWorkLogView';
+import {WeeklyWorkReports} from './components/WeeklyWorkReports';
 import { DriveView } from './components/DriveView';
 import { QCLinkView } from './components/QCLinkView';
 import { PersonalScheduleView } from './components/PersonalScheduleView';
@@ -62,6 +63,7 @@ export type NavCategory =
   | '회의록 작성'
   | '회의록 목록'
   | '업무일지'
+  | '주간 업무·야근 보고'
   | '할 일'
   | '내 휴가 일정'
   | '자료실(google드라이브)'
@@ -94,6 +96,8 @@ export default function App() {
 
   // 기본 활성 메뉴: 프로젝트 일정표
   const [activeMenu, setActiveMenu] = useState<NavCategory>('프로젝트 일정표');
+  const [weeklyReportWeek,setWeeklyReportWeek]=useState<string|undefined>();
+  const openWeeklyReport=(week:string)=>{setWeeklyReportWeek(week);setActiveMenu('주간 업무·야근 보고');};
   const [minutesMenuOpen,setMinutesMenuOpen]=useState(true);
   const [todoMenuOpen,setTodoMenuOpen]=useState(true);
   useEffect(()=>{
@@ -318,7 +322,7 @@ export default function App() {
   }
   if (!sharedLoaded && localViewActorId !== actorId) {
     return <div className={`min-h-screen ${darkMode?'dark bg-slate-950 text-slate-100':'bg-slate-50 text-slate-900'}`}>
-      {studio.actorId===actorId&&studio.conflict&&<StudioCollaboration onOpenMeeting={()=>setActiveMenu('회의록 작성')} onOpenWorkLog={()=>setActiveMenu('업무일지')} />}
+      {studio.actorId===actorId&&studio.conflict&&<StudioCollaboration onOpenMeeting={()=>setActiveMenu('회의록 작성')} onOpenWorkLog={()=>setActiveMenu('업무일지')} onOpenWeeklyReport={openWeeklyReport} />}
       <main className="min-h-screen max-w-lg mx-auto flex flex-col items-center justify-center gap-4 p-6 text-center">
         <h1 className="text-xl font-bold">중앙 일정 확인 중</h1>
         <p role="status" className="text-sm">{studio.actorId===actorId?studio.status:'중앙 서버 연결을 시작하고 있습니다.'}</p>
@@ -477,7 +481,7 @@ export default function App() {
           )}
         </div>
       </header>
-      <StudioCollaboration onOpenMeeting={()=>setActiveMenu('회의록 작성')} onOpenWorkLog={()=>setActiveMenu('업무일지')} />
+      <StudioCollaboration onOpenMeeting={()=>setActiveMenu('회의록 작성')} onOpenWorkLog={()=>setActiveMenu('업무일지')} onOpenWeeklyReport={openWeeklyReport} />
       {!sharedReady&&<p role="status" className="border-b border-amber-300 bg-amber-100 px-4 py-2 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">{sharedLoaded?(studio.conflict?'다른 사람이 같은 일정을 변경했습니다. 상단에서 충돌을 해결하세요.':'중앙 서버 연결이 끊겼습니다. 마지막으로 확인한 일정과 이 PC 변경을 표시합니다. 최신 여부를 확인하세요.'):'이 PC 저장본을 보고 있습니다. 중앙 서버 연결 전에는 최신 일정이 아닐 수 있습니다.'}</p>}
 
       {/* 바디 레이아웃 */}
@@ -704,6 +708,7 @@ export default function App() {
                 </span>
               </button>
 
+              <button type="button" aria-current={activeMenu==='주간 업무·야근 보고'?'page':undefined} onClick={()=>{setWeeklyReportWeek(undefined);setActiveMenu('주간 업무·야근 보고');}} className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${activeMenu==='주간 업무·야근 보고'?'bg-[#00338d] text-white shadow-sm':'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50'}`}><ClipboardCheck size={16}/><span>주간 업무·야근 보고</span></button>
               <button
                 onClick={() => setActiveMenu('자료실(google드라이브)')}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
@@ -1072,6 +1077,7 @@ export default function App() {
 
           {/* CASE 5-2: 업무일지 (팀별 일정표 연계 및 3단 결재라인) */}
           {(activeMenu==='업무일지'||workLogActorId===actorId)&&<div key={actorId} hidden={activeMenu!=='업무일지'}><DailyWorkLogView visible={activeMenu==='업무일지'} /></div>}
+          {activeMenu==='주간 업무·야근 보고'&&<WeeklyWorkReports initialWeek={weeklyReportWeek}/>}
           {(activeMenu==='할 일'||activeMenu==='내 휴가 일정')&&<PersonalWorkView leaveMode={activeMenu==='내 휴가 일정'} onWorklog={(date,taskId)=>{usePersonalStore.setState({openDate:date,openTaskId:taskId||null});setActiveMenu('업무일지');}}/>}
 
           {/* CASE 6: 자료실 (Google 드라이브) */}
