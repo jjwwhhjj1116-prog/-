@@ -3,6 +3,7 @@
  "main":"workers/automatic-worklogs.ts",
  "compatibility_date":"2026-09-18",
  "workers_dev":false,
+ "observability":{"enabled":true},
  "triggers":{"crons":["*/5 0-8 * * MON-FRI"]},
  "d1_databases":[{"binding":"DB","database_name":"concost-tech-scheduler-db","database_id":"28a9c32b-647d-47de-a916-d966327b35ca"}]
 }

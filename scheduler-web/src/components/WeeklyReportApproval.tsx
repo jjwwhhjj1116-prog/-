@@ -1,0 +1,71 @@
+import {useEffect,useRef,useState} from 'react';
+import {Check,RefreshCw,Send,X} from 'lucide-react';
+import {studioApi} from '../services/studioApi';
+import {useAuthStore} from '../store/useAuthStore';
+
+type Recipient={id:string;name:string;decision?:'APPROVED'|'REJECTED'|'PENDING';decidedAt?:string;memo?:string};
+type SnapshotDay={date:string;future?:boolean;logStatus:string;reportSource:string;notes:string;items:{projectCode:string;projectName:string;roleName:string;progress:number;status:string;todayTask:string;autoScheduleDate?:string;manualFields?:string[]}[];overtime:{projectCode:string;projectName:string;roleName:string;startTime:string;endTime:string;hours:number;status:string}[]};
+type Submission={id:string;weekStart:string;weekEnd:string;department:string;authorId:string;authorName:string;status:'PENDING'|'APPROVED'|'REJECTED';sentAt:string;recipients:Recipient[];teams:{department:string;employees:{id:string;name:string;position:string;days:SnapshotDay[];reportCount:number;approvedReportCount:number;overtimeDays:number;overtimeHours:number}[]}[];revision:number};
+type ApprovalResponse={submissions:Submission[];canSubmit:boolean;recipientOptions:{id:string;name:string;department:string;position:string}[];departments:string[]};
+const control='rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800';
+const smallButton='inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-800';
+const dateTime=(value:string)=>new Date(value).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
+const hours=(value:number)=>Number(value||0).toLocaleString('ko-KR',{maximumFractionDigits:2});
+const statusLabel=(status:string)=>({PENDING:'결재 대기',APPROVED:'승인 완료',REJECTED:'반려',APPROVED_FINAL:'최종 승인',APPROVED_PM:'PM 승인',SUBMITTED_LEADER:'팀장 검토 대기',SUBMITTED_PM:'PM 검토 대기',DRAFT:'작성 중'}[status]||status||'미작성');
+
+export function WeeklyReportApproval({week,onChanged}:{week:string;onChanged?:()=>void}){
+ const actor=useAuthStore(state=>state.currentUser);
+ const [loaded,setLoaded]=useState<{actor:typeof actor;week:string;data:ApprovalResponse}|null>(null),[busy,setBusy]=useState(false),[writing,setWriting]=useState(false),[message,setMessage]=useState(''),[loadError,setLoadError]=useState('');
+ const [department,setDepartment]=useState(''),[recipientIds,setRecipientIds]=useState<string[]>([]),[memos,setMemos]=useState<Record<string,string>>({}),[reload,setReload]=useState(0);
+ const requestId=useRef(0),departmentRef=useRef(department),contextRef=useRef({actor,week});departmentRef.current=department;contextRef.current={actor,week};
+ useEffect(()=>{setLoaded(null);departmentRef.current='';setDepartment('');setRecipientIds([]);setMemos({});setMessage('');setLoadError('');setWriting(false);},[actor,week]);
+ useEffect(()=>{
+  if(!actor)return;
+  let active=true;
+  const load=async()=>{
+   const id=++requestId.current;setBusy(true);
+   try{
+    const result=await studioApi<ApprovalResponse>(`weekly-reports/submissions?week=${week}`);
+    if(!active||id!==requestId.current||actor!==useAuthStore.getState().currentUser)return;
+    setLoaded({actor,week,data:result});setLoadError('');if(!departmentRef.current)setDepartment(result.departments[0]||'');
+   }catch(error){if(active&&id===requestId.current&&actor===useAuthStore.getState().currentUser)setLoadError(error instanceof Error?error.message:'주간 보고 결재 이력을 불러오지 못했습니다.');}
+   finally{if(active&&id===requestId.current&&actor===useAuthStore.getState().currentUser)setBusy(false);}
+  };
+  void load();const timer=setInterval(()=>void load(),30000);return()=>{active=false;clearInterval(timer);};
+ },[actor,week,reload]);
+ async function write(path:string,body:unknown,success:string){
+  if(!actor||writing)return;
+  const isCurrent=()=>actor===useAuthStore.getState().currentUser&&actor===contextRef.current.actor&&week===contextRef.current.week;setWriting(true);setMessage('');
+  try{
+   await studioApi(path,'POST',body);
+   if(!isCurrent())return;
+   setMessage(success);setReload(value=>value+1);onChanged?.();
+  }catch(error){if(isCurrent())setMessage(error instanceof Error?error.message:'결재 저장 실패. 선택과 의견을 유지하고 다시 시도하세요.');}
+  finally{if(isCurrent())setWriting(false);}
+ }
+ if(!actor)return null;
+ const data=loaded?.actor===actor&&loaded.week===week?loaded.data:null;
+ const groups=[...new Set(data?.recipientOptions.map(person=>person.department)||[])];
+ return <section className="rounded-xl border border-slate-200 bg-white p-5 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" aria-label="주간 보고 결재">
+  <header className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-lg font-bold">주간 보고 결재 상신</h3><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">보고할 팀과 경영지원·경영진 수신자를 선택해 상신합니다. 선택한 수신자 전원이 승인하면 결재가 완료됩니다.</p></div><button className={smallButton} disabled={busy} onClick={()=>setReload(value=>value+1)}><RefreshCw size={15}/>결재 이력 새로고침</button></header>
+  {message&&<p role="status" className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-100">{message}</p>}
+  {loadError&&<p role="status" className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-100">{loadError}</p>}
+  {!data&&<p role="status" className="mt-4 text-sm text-slate-600 dark:text-slate-300">{busy?'주간 보고 결재를 불러오는 중…':'결재 이력을 확인해 주세요.'}</p>}
+  {data&&<>
+   {data.canSubmit&&<form className="mt-5 space-y-4 border-t border-slate-200 pt-4 dark:border-slate-700" onSubmit={event=>{event.preventDefault();void write('weekly-reports/submit',{week,department,recipientIds},'주간 보고를 상신했습니다. 선택한 수신자에게 결재 알림이 전달됩니다.');}}>
+    <div className="flex flex-wrap items-center gap-3"><label className="text-sm font-semibold">보고할 팀 <select aria-label="주간 결재 보고 팀" className={control+' ml-2'} value={department} disabled={writing} onChange={event=>setDepartment(event.target.value)}>{!department&&<option value="">팀을 선택하세요</option>}{data.departments.map(name=><option key={name} value={name}>{name==='ALL'?'전체 팀':name}</option>)}</select></label><span className="text-sm text-slate-600 dark:text-slate-300">{week} 시작 주간 · 선택 수신자 {recipientIds.length}명</span></div>
+    <fieldset disabled={writing} className="space-y-3"><legend className="mb-2 text-sm font-semibold">결재 수신자 선택</legend>{groups.map(group=><div key={group}><h4 className="mb-2 text-xs font-bold text-slate-600 dark:text-slate-300">{group}</h4><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{data.recipientOptions.filter(person=>person.department===group).map(person=><label key={person.id} className="flex gap-3 rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-700"><input type="checkbox" aria-label={`결재 수신 ${person.name}`} checked={recipientIds.includes(person.id)} onChange={event=>setRecipientIds(previous=>event.target.checked?[...previous,person.id]:previous.filter(id=>id!==person.id))}/><span><strong>{person.name}</strong><span className="block text-xs text-slate-600 dark:text-slate-300">{person.position}</span></span></label>)}</div></div>)}</fieldset>
+    {!data.recipientOptions.length&&<p className="text-sm text-amber-800 dark:text-amber-200">선택할 경영지원·경영진 계정이 없습니다. 직원 계정 소속을 확인해 주세요.</p>}
+    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-600 dark:text-slate-300">상신 시점의 업무일지·승인 야근이 결재본으로 보존됩니다. 이후 변경 사항은 새 상신본에 반영됩니다.</p><button className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50" disabled={writing||!department||!recipientIds.length} type="submit"><Send size={16}/>{writing?'상신 중…':'주간 보고 상신'}</button></div>
+   </form>}
+   <div className="mt-5 space-y-4" aria-label="주간 보고 상신 이력">{!data.submissions.length?<p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">해당 주에 상신한 결재본이 없습니다.</p>:data.submissions.map(submission=>{
+    const mine=submission.recipients.find(person=>person.id===actor.id),canDecide=submission.status==='PENDING'&&mine&&!['APPROVED','REJECTED'].includes(mine.decision||'');
+    return <article key={submission.id} data-weekly-submission={submission.id} className="rounded-lg border border-slate-200 p-4 dark:border-slate-700"><header className="flex flex-wrap justify-between gap-3"><div><h4 className="font-bold">{submission.department==='ALL'?'전체 팀':submission.department} · {submission.weekStart} ~ {submission.weekEnd}</h4><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">상신자 {submission.authorName} · {dateTime(submission.sentAt)}</p></div><span className={'self-start rounded-full px-3 py-1 text-xs font-semibold '+(submission.status==='APPROVED'?'bg-emerald-50 text-emerald-800':submission.status==='REJECTED'?'bg-rose-50 text-rose-800':'bg-amber-50 text-amber-900')}>{statusLabel(submission.status)}</span></header>
+     <ul className="mt-3 grid gap-2 text-xs sm:grid-cols-2">{submission.recipients.map(recipient=><li key={recipient.id} className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800"><strong>{recipient.name}</strong> · {statusLabel(recipient.decision||'PENDING')}{recipient.decidedAt&&<span className="mt-1 block text-slate-600 dark:text-slate-300">{dateTime(recipient.decidedAt)}</span>}{recipient.memo&&<p className="mt-1 whitespace-pre-wrap break-words">{recipient.memo}</p>}</li>)}</ul>
+     <details className="mt-4"><summary className="cursor-pointer text-sm font-semibold text-blue-700 dark:text-blue-300">상신본 업무일지·야근 기록 보기</summary><p className="mt-2 text-xs text-slate-600 dark:text-slate-300">상신 시점에 보존된 결재본입니다.</p><div className="mt-3 space-y-4">{submission.teams.map(team=><div key={team.department}><h5 className="font-semibold">{team.department}</h5><div className="mt-2 space-y-2">{team.employees.map(employee=><details key={employee.id} data-weekly-snapshot-employee={employee.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700"><summary className="cursor-pointer text-sm"><strong>{employee.name}</strong> · {employee.position} · 업무일지 {employee.reportCount}건 · 승인 야근 {employee.overtimeDays}일 / {hours(employee.overtimeHours)}시간</summary><div className="mt-3 space-y-3">{employee.days.filter(day=>day.items.length||day.overtime.some(entry=>entry.status==='APPROVED')).map(day=><section key={day.date} className="border-t border-slate-200 pt-3 text-xs dark:border-slate-700"><strong>{day.date}</strong><span className="ml-2">{day.items.length?statusLabel(day.logStatus):'업무일지 없음'}{day.items.length>0&&<> · {day.reportSource==='AUTO_SCHEDULE'?'일정 기준 자동 보고':'직원 작성 보고'}</>}</span><ul className="mt-2 space-y-2">{day.items.map((item,index)=><li key={`${item.projectCode}-${item.roleName}-${index}`}><strong data-no-translate className="block break-words">{item.projectName}</strong><span className="block">{item.projectCode} · {item.roleName} · {item.autoScheduleDate&&!item.manualFields?.includes('progress')?'일정 기준':'보고 진행률'} {item.progress}% · {item.status}</span>{item.todayTask&&<p className="mt-1 whitespace-pre-wrap break-words">{item.todayTask}</p>}</li>)}</ul>{day.notes&&<p className="mt-2 whitespace-pre-wrap break-words">{day.notes}</p>}{day.overtime.filter(entry=>entry.status==='APPROVED').map((entry,index)=><p className="mt-2 rounded-lg bg-orange-50 p-2 text-orange-900 dark:bg-orange-950 dark:text-orange-100" key={`${entry.projectCode}-${index}`} data-weekly-snapshot-overtime><strong>{day.future?'승인 야근(예정)':'야근 승인'} · {entry.startTime} ~ {entry.endTime} · {hours(entry.hours)}시간</strong><span data-no-translate className="block break-words">{entry.projectName}</span><span>{entry.roleName}</span></p>)}</section>)}</div></details>)}</div></div>)}</div></details>
+     {canDecide&&<div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700"><label className="block text-sm">결재 의견<textarea aria-label={`${submission.id} 결재 의견`} className={control+' mt-2 w-full'} value={memos[submission.id]||''} disabled={writing} rows={2} placeholder="승인 또는 반려 의견을 작성하세요." onChange={event=>setMemos(previous=>({...previous,[submission.id]:event.target.value}))}/></label><div className="mt-3 flex flex-wrap justify-end gap-2"><button className="inline-flex items-center gap-2 rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50" disabled={writing} onClick={()=>void write('weekly-reports/decision',{id:submission.id,revision:submission.revision,decision:'REJECTED',memo:memos[submission.id]||''},'주간 보고를 반려했습니다.')}><X size={16}/>주간 보고 반려</button><button className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50" disabled={writing} onClick={()=>void write('weekly-reports/decision',{id:submission.id,revision:submission.revision,decision:'APPROVED',memo:memos[submission.id]||''},'주간 보고 승인을 저장했습니다. 모든 선택 수신자의 승인 상태를 확인해 주세요.')}><Check size={16}/>주간 보고 승인</button></div></div>}
+    </article>;
+   })}</div>
+  </>}
+ </section>;
+}

@@ -61,9 +61,9 @@ check('질의 팀 전환: 먼저 나온 다른 현장 대신 같은 수주code �
  s.visible()[0].props.children.props.onDepartmentChange('구조팀','QA-SAME');s.render();const current=s.visible()[0].props.children;
  assert.equal(current.props.department,'구조팀');assert.equal(current.props.initialProjectId,'qa-structure-same104');assert.equal(current.props.initialProjectCode,'QA-SAME');assert.equal(s.panels().length,2);assert.ok(s.panels().some(pane=>pane.key===originalKey&&pane.props.hidden));
 });
-check('질의 미연결 팀: 같은 수주 없으면 빈 projectId 전달·다른 현장 자동 선택 금지',()=>{
+check('질의 공통 현장: 해당 팀 일정이 없어도 같은 수주 실프로젝트 연결·다른 현장 선택 금지',()=>{
  const s=screen();s.openModal('qa-finish-same104','조적');s.visible()[0].props.children.props.onDepartmentChange('토목&조경팀','QA-SAME');s.render();const pane=s.visible()[0].props.children;
- assert.equal(pane.props.initialProjectId,'');assert.equal(pane.props.initialProjectCode,'QA-SAME');assert.notEqual(pane.props.initialProjectId,'qa-civil-other104');
+ assert.equal(pane.props.initialProjectId,'qa-finish-same104');assert.equal(pane.props.initialProjectCode,'QA-SAME');assert.notEqual(pane.props.initialProjectId,'qa-civil-other104');
 });
 check('질의 반복 연결: 같은 팀·수주code 요청도 context version 증가',()=>{
  const s=screen();s.openModal('qa-finish-same104','창호');const first=s.visible()[0].props.children.props;
