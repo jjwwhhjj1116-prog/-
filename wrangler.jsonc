@@ -5,7 +5,7 @@
   "pages_build_output_dir": "scheduler-web/dist",
   "vars": {
     "CIVIL_APPROVER_ID": "u_8",
-    "GEMINI_MODEL": "gemini-3.8-flash"
+    "GEMINI_MODEL": "gemini-3.1-flash-lite"
   },
   "d1_databases": [
     {
