@@ -48,9 +48,10 @@ try{
   const before=rows(),version=projectVersion();assert.equal((await request('none','intake/sync','POST',{items:[{...item(902),name:'수주에서 바뀐 이름',startDate:'2026-11-01',pmByDepartment:{마감팀:'다른 사람'}}]})).status,200);
   assert.deepEqual(rows(),before);assert.equal(projectVersion(),version);
  });
- await check('직접 SQL fallback·과거 누락은 직원의 changes 조회 직전에 중앙 등록되고 두 PC 동일 목록으로 조회',async()=>{
-  const before=projectVersion(),first=await request('employee','collaboration/changes');assert.equal(first.status,200);assert.equal(first.data.versions.projects,before+3);assert.equal(typeof first.data.versions.intake,'string');
+ await check('직접 SQL 접수 변경은 버전으로 감지하고 일정표 조회에서 누락 복구하여 두 PC 동일 목록 제공',async()=>{
+  const before=projectVersion(),first=await request('employee','collaboration/changes');assert.equal(first.status,200);assert.equal(first.data.versions.projects,before);assert.equal(typeof first.data.versions.intake,'number');
   const one=await request('employee','collaboration/projects'),two=await request('chief','collaboration/projects');assert.deepEqual(one.data,two.data);assert.equal(one.data.projects.filter(row=>row.project.code===item(901).code).length,3);
+  assert.equal(projectVersion(),before+3);
   const snapshot=rows(),version=projectVersion();await request('employee','collaboration/changes');await request('employee','collaboration/projects');assert.deepEqual(rows(),snapshot);assert.equal(projectVersion(),version);
  });
  await check('다른 ID의 기존 배정·실적·결재 연결은 보존하고 빠진 체크 부서만 추가',async()=>{

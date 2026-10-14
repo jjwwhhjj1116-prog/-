@@ -186,9 +186,8 @@ export async function handleCollaboration(request:Request,env:Environment,archiv
    return json({ok:true});
   }
   if(route==='changes'&&method==='GET'){
-   const {intakeVersion}=await ensureIntakeSchedules(env.DB);
    const result=await env.DB.prepare('SELECT key,revision FROM studio_sync_versions').all<{key:string;revision:number}>();
-   return json({versions:{...Object.fromEntries(result.results.map(r=>[r.key,r.revision])),intake:intakeVersion}});
+   return json({versions:Object.fromEntries(result.results.map(r=>[r.key,r.revision]))});
   }
   if(route==='directory'&&method==='GET'){
    const rows=await env.DB.prepare('SELECT profile,active FROM studio_users').all<any>();
@@ -379,5 +378,10 @@ export async function handleCollaboration(request:Request,env:Environment,archiv
    await env.DB.prepare('UPDATE studio_notifications SET read_at=COALESCE(read_at,?) WHERE id=? AND user_id=?').bind(new Date().toISOString(),id,user.id).run();return json({ok:true});
   }
   return fail('지원하지 않는 요청입니다.',404);
- }catch(error){console.error('Studio collaboration request failed',error instanceof Error?error.name:'Error');return fail('요청 처리 실패. 입력은 보존됩니다. 서버 설정 및 연결을 확인하세요.',503);}
+ }catch(error){
+  const quota=error instanceof Error&&/exceeded D1's free tier daily row (read|write) limit/i.test(error.message);
+  console.error('Studio collaboration request failed',quota?'D1_DAILY_LIMIT':error instanceof Error?error.name:'Error');
+  if(quota)return json({error:'중앙 DB의 오늘 무료 조회·저장 한도를 초과했습니다. 입력은 보존됩니다. 한국시간 오전 9시 한도 초기화 후 다시 연결하거나 관리자에게 문의하세요.',code:'D1_DAILY_LIMIT'},503,{'Retry-After':String(Math.ceil((86400000-Date.now()%86400000)/1000))});
+  return fail('요청 처리 실패. 입력은 보존됩니다. 서버 설정 및 연결을 확인하세요.',503);
+ }
 }

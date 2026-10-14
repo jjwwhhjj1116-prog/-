@@ -90,7 +90,7 @@ export async function projectInquiryRoute(request:Request,env:any,user:any,route
  const directoryRows=(await db.prepare('SELECT id,profile,active FROM studio_users').all()).results;
  const directory=directoryRows.map((record:any)=>{const person=JSON.parse(record.profile);return {...(person.id===record.id?person:{}),id:record.id,active:record.active===1};});
  const code=typeof project.code==='string'?project.code.trim().toUpperCase():'';
- const siteReadRows=(await db.prepare('SELECT id,body,revision FROM studio_projects').all()).results.filter((record:any)=>record.id===projectId||code&&JSON.parse(record.body).code?.trim().toUpperCase()===code);
+ const siteReadRows=(await db.prepare("SELECT id,body,revision FROM studio_projects WHERE id=? UNION ALL SELECT id,body,revision FROM studio_projects WHERE ?<>'' AND json_valid(body) AND upper(trim(json_extract(body,'$.code')))=? AND id<>?").bind(projectId,code,code,projectId).all()).results;
  const siteIds=siteReadRows.map((record:any)=>record.id),siteSql=siteIds.map(()=>'?').join(',');
  const archivedIds=new Set((await db.prepare('SELECT project_id FROM studio_project_archive').all()).results.map((record:any)=>record.project_id));
  const siteRows=siteReadRows.filter((record:any)=>!archivedIds.has(record.id));
@@ -102,7 +102,7 @@ export async function projectInquiryRoute(request:Request,env:any,user:any,route
  const roundRows=(await db.prepare(`SELECT * FROM studio_inquiry_rounds WHERE project_id IN (${siteSql}) AND department=? ORDER BY project_id,round_number`).bind(...siteIds,department).all()).results;
  const roundState=(number:number):any=>roundRows.find((record:any)=>record.round_number===number&&record.status==='SENT')||roundRows.find((record:any)=>record.round_number===number&&record.project_id===projectId)||roundRows.find((record:any)=>record.round_number===number);
  const pmGuard=sitePm&&!admin&&user.department!==department?sitePmRows.map(()=> 'EXISTS(SELECT 1 FROM studio_projects WHERE id=? AND revision=?) AND NOT EXISTS(SELECT 1 FROM studio_project_archive WHERE project_id=?)').join(' AND '):'';
- const siteGuard="(SELECT COALESCE(json_group_array(id),'[]') FROM (SELECT id FROM studio_projects WHERE id=? OR (?<>'' AND upper(trim(json_extract(body,'$.code')))=?) ORDER BY id))=?";
+ const siteGuard="(SELECT COALESCE(json_group_array(id),'[]') FROM (SELECT id FROM studio_projects WHERE id=? UNION SELECT id FROM studio_projects WHERE ?<>'' AND json_valid(body) AND upper(trim(json_extract(body,'$.code')))=? ORDER BY id))=?";
  const accessGuard='EXISTS(SELECT 1 FROM studio_projects WHERE id=? AND revision=?) AND NOT EXISTS(SELECT 1 FROM studio_project_archive WHERE project_id=?) AND EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1 AND profile=? AND department=? AND position=?)'+(pmGuard?' AND '+pmGuard:'')+' AND '+siteGuard;
  const accessParams=[projectId,projectRow.revision,projectId,user.id,user.profile,user.department,user.position,...(pmGuard?sitePmRows.flatMap((record:any)=>[record.id,record.revision,record.id]):[]),projectId,code,code,JSON.stringify([...siteIds].sort())];
  if(method==='GET'){
