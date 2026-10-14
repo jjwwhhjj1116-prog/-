@@ -1,6 +1,6 @@
 import {usePersonalStore} from '../store/usePersonalStore';
 import {useLanguageStore} from '../store/useLanguageStore';
-import {assignedTasksForAliases,assignmentAliases} from '../utils/personalWork';
+import {assignedTasksForAliases,assignmentAliases,validDay} from '../utils/personalWork';
 import {scheduleExtensionPeriods} from '../utils/scheduleExtensionPeriods';
 import { compareStaff } from '../utils/staffOrder';
 import React, { useState, useMemo } from 'react';
@@ -113,6 +113,8 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
   const monthAssignedUserIds = useMemo(() => new Set(users.filter(person =>
     assignedTasksForAliases(assignmentAliases(person, users), deptProjects)
       .some(task => task.startDate <= monthEndStr && task.endDate >= monthStartStr)
+      || deptProjects.some(project => project.scheduleExtensions?.some(request => request.type === 'OVERTIME' && request.status === 'APPROVED'
+        && request.userId === person.id && typeof request.workDate === 'string' && validDay(request.workDate) && request.workDate >= monthStartStr && request.workDate <= monthEndStr))
   ).map(person => person.id)), [users, deptProjects, monthStartStr, monthEndStr]);
 
   // 해당 부서 한국 본사 인원과 당월 실제 배정 인원 (개인별)
@@ -469,6 +471,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                 <span className="w-2.5 h-2.5 rounded bg-cyan-600" /> 내부/기둥
               </span>
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-red-700" /> 승인된 연장 기간</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-indigo-700" /> 야근 · 승인된 근무일</span>
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded border border-amber-600 bg-amber-100" /> 휴가 · 본인 등록
               </span>
@@ -567,8 +570,12 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                   const leaveMemberIds = unit.vietTeamData?.members.map(member => member.id) || [unit.id];
                   const monthLeaves = leaves.filter(leave => leaveMemberIds.includes(leave.user_id)
                     && leave.start_date <= monthEndStr && leave.end_date >= monthStartStr);
+                  const monthOvertime = deptProjects.flatMap(project => (project.scheduleExtensions || [])
+                    .filter(request => request.type === 'OVERTIME' && request.status === 'APPROVED' && leaveMemberIds.includes(request.userId)
+                      && typeof request.workDate === 'string' && validDay(request.workDate) && request.workDate >= monthStartStr && request.workDate <= monthEndStr)
+                    .map(request => ({...request,projectCode:project.code})));
                   const leaveLabel = (leave: typeof monthLeaves[number]) => `${unit.vietTeamData ? `${users.find(person => person.id === leave.user_id)?.name || leave.name || leave.user_id} · ` : ''}${leave.kind}`;
-                  const rowHeight = Math.max(52+monthLeaves.length*14, (maxLane + 1) * 32 + 12)+monthLeaves.length*24;
+                  const rowHeight = Math.max(52+monthLeaves.length*14, (maxLane + 1) * 32 + 12)+monthLeaves.length*24+(monthOvertime.length?24:0);
 
                   return (
                     <div
@@ -614,6 +621,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                             <span className={`text-[10px] text-slate-600 block ${unit.type==='VIET_PERSON'?'whitespace-normal break-words':'truncate'}`}>
                               {unit.subTitle}
                               {monthLeaves.map(l=><span key={l.id} className="block text-amber-800 dark:text-amber-300 whitespace-normal">{l.start_date.slice(5)}~{l.end_date.slice(5)} {leaveLabel(l)}</span>)}
+                              {monthOvertime.length > 0 && <span className="block text-indigo-800 whitespace-normal">야근 {new Set(monthOvertime.map(request => request.workDate)).size}일</span>}
                             </span>
                           </div>
                         </div>
@@ -672,13 +680,16 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                           const holiday = HOLIDAYS[dateStr];
                           const dayLeaves = monthLeaves.filter(leave => leave.start_date <= dateStr && leave.end_date >= dateStr);
                           const dayLeaveLabel = dayLeaves.length ? `${unit.name} ${dateStr} · ${dayLeaves.map(leaveLabel).join(' / ')} · 본인 등록` : undefined;
+                          const dayOvertime = monthOvertime.filter(request => request.workDate === dateStr);
+                          const dayOvertimeLabel = dayOvertime.length ? `${unit.name} ${dateStr} 야근 · ${dayOvertime.map(request => `${request.userName} · ${request.projectCode} ${request.roleName} · ${request.startTime}~${request.endTime} (${Number(request.hours?.toFixed(2))}시간)`).join(' / ')} · 승인됨` : undefined;
 
                           return (
                             <div
                               key={dateStr}
                               data-calendar-person-day={dateStr}
                               data-leave-day={dayLeaves.length ? dateStr : undefined}
-                              title={dayLeaveLabel}
+                              data-overtime-day={dayOvertime.length ? dateStr : undefined}
+                              title={[dayLeaveLabel,dayOvertimeLabel].filter(Boolean).join('\n') || undefined}
                               style={{ flex: 1, minWidth: 0, minHeight: rowHeight }}
                               className={`relative border-r border-slate-100 shrink-0 ${
                                 dayLeaves.length
@@ -690,7 +701,8 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                                   : ''
                               }`}
                             >
-                              {dayLeaves.length > 0 && <span aria-label={dayLeaveLabel} className="absolute inset-x-0 text-center text-[10px] font-bold text-amber-900 dark:text-amber-200 pointer-events-none" style={{ bottom: monthLeaves.length * 24 + 4 }}>휴</span>}
+                              {dayLeaves.length > 0 && <span aria-label={dayLeaveLabel} className="absolute inset-x-0 text-center text-[10px] font-bold text-amber-900 dark:text-amber-200 pointer-events-none" style={{ bottom: monthLeaves.length * 24 + (monthOvertime.length?28:4) }}>휴</span>}
+                              {dayOvertime.length > 0 && <span aria-label={dayOvertimeLabel} className="absolute inset-x-0 mx-0.5 rounded bg-indigo-700 px-0.5 text-center text-[10px] font-bold text-white pointer-events-none" style={{ bottom: monthLeaves.length * 24 + 4 }}>야근</span>}
                             </div>
                           );
                         })}

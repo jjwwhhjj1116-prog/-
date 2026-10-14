@@ -59,14 +59,17 @@ export async function runDailyHarness(sourceText=readFileSync(sourcePath,'utf8')
   await check('업무일지 알림과 최초 mount: 원 작성자 Task·날짜·상신 본문/권한 유지',()=>{const s=screen({worklog:originalLog.id,includeLog:true}),observed=s.settle();try{assert.equal(observed.project,p1.id);assert.equal(observed.task,authorTask);assert.equal(observed.date,originalLog.date);assert.equal(observed.log,originalLog.id);assert.equal(s.note().value,originalLog.overallNotes);assert.equal(s.note().disabled,true);assert.deepEqual(s.readLogs(),[originalLog]);}catch(error){error.observed={settled:observed,trace:s.trace};throw error;}return observed;});
   const dayProject=(id,day,role,progress)=>({id,code:'QA-'+id,name:'합성 날짜 연결 '+id,department:'마감팀',startDate:day,endDate:day,roles:{},subTasks:{[role]:{roleName:role,personIds:[manager.id],startDate:day,endDate:day,status:'진행중',progress,memo:'배정 '+id,reportingMode:'TASK'}}});
   const dayProjects=[dayProject('daily-A','2026-10-06','내부',35),dayProject('daily-B','2026-10-07','외부',60)];
-  const tomorrowContext=s=>{
+  // A one-day assignment now defaults to 100% by schedule. 60% means an explicitly retained manual report.
+  const savedTomorrowLog={...structuredClone(originalLog),id:'daily-B-own-draft',userId:manager.id,userName:manager.name,date:'2026-10-07',approvalStatus:'DRAFT',serverRevision:1,overallNotes:'',items:work.assignedItems(manager.id,'2026-10-07',dayProjects,[manager.id]).map(item=>({...item,progress:60,manualFields:['progress']}))};
+  const tomorrowContext=(s,expectedProgress=60)=>{
    const observed={...s.snapshot(),item:s.reportFields()?.props.item||s.planFields()?.props.item};
-   try{assert.equal(observed.date,'2026-10-07');assert.equal(observed.project,'daily-B');assert.equal(observed.role,'외부');assert.equal(observed.task,'gen-daily-B-외부');assert.equal(observed.item?.progress,60);assert.equal(observed.item?.startDate,'2026-10-07');assert.equal(observed.item?.endDate,'2026-10-07');}catch(error){error.observed={observed,trace:s.trace};throw error;}
+   try{assert.equal(observed.date,'2026-10-07');assert.equal(observed.project,'daily-B');assert.equal(observed.role,'외부');assert.equal(observed.task,'gen-daily-B-외부');assert.equal(observed.item?.progress,expectedProgress);assert.equal(observed.item?.startDate,'2026-10-07');assert.equal(observed.item?.endDate,'2026-10-07');}catch(error){error.observed={observed,trace:s.trace};throw error;}
    return observed;
   };
-  await check('할일 날짜 연결 첫 mount: 내일 B/외부/60%가 오늘 A 자동선택에 덮이지 않음',()=>{const s=screen({projects:dayProjects});s.update({openDate:'2026-10-07'});s.settle();return tomorrowContext(s);});
+  await check('할일 날짜 연결 첫 자동 mount: 내일 하루 B/외부는 일정 기준 100%이며 업무 선택이 수기로 바뀌지 않음',()=>{const s=screen({projects:dayProjects});s.update({openDate:'2026-10-07'});s.settle();const observed=tomorrowContext(s,100);assert.equal(observed.item.autoScheduleDate,'2026-10-07');assert.ok(!observed.item.manualFields.includes('progress'));assert.ok(!observed.item.manualFields.includes('todayTask'));assert.ok(observed.item.todayTask.includes('일정 기준 자동 작성'));return observed;});
+  await check('할일 날짜 연결 첫 수기 mount: 저장된 내일 B/외부/60%가 오늘 A 자동선택에 덮이지 않음',()=>{const s=screen({projects:dayProjects,logs:[savedTomorrowLog]});s.update({openDate:'2026-10-07'});s.settle();const observed=tomorrowContext(s);assert.ok(observed.item.manualFields.includes('progress'));return observed;});
   await check('할일 날짜 연결 재진입: 내일 B 선택 및 오늘 A 수기본문·진척률·상태·초안 복원',()=>{
-   const s=screen({projects:dayProjects});s.settle();assert.equal(s.snapshot().task,'gen-daily-A-내부');
+   const s=screen({projects:dayProjects,logs:[savedTomorrowLog]});s.settle();assert.equal(s.snapshot().task,'gen-daily-A-내부');
    const update=(key,value)=>{const fields=s.reportFields();assert.ok(fields);fields.props.update(fields.props.item.id,key,value);s.settle();};
    update('todayTask','직접 작성한 오늘 산출 검토');update('progress',48);update('status','지연');s.editNote('A 저장 전 종합 원문');
    s.update({openDate:'2026-10-07'});s.settle();const tomorrow=tomorrowContext(s);

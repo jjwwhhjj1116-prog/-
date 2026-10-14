@@ -1,4 +1,5 @@
 import {HOLIDAYS} from '../constants/holidays.ts';
+import {workDays} from './scheduleProgress.ts';
 import {VIET_TEAMS_DATA} from '../data/vietTeams.ts';
 import type {Project,ScheduleAllocation} from '../store/useProjectStore';
 import type {WorkLogItem} from '../store/useWorkLogStore';
@@ -123,9 +124,19 @@ export function reconcileWorkLogItems(previous:WorkLogItem[],userId:string,day:s
    // Newly generated anchor drafts keep the live schedule merge; imported legacy bodies retain their original metadata.
    const generatedAnchor=legacy&&allocation&&(legacy as AssignedTask).legacyAllocationId===allocation.allocationId;
    return legacy&&allocation&&!generatedAnchor&&(legacy.allocationId===undefined||legacy.allocationId===allocation.allocationId)?{...legacy,allocationId:allocation.allocationId,reportBasis:allocation.reportBasis,reportingMode:allocation.reportingMode,scheduleRemoved:false}:item;
- });
+ }).map(item=>previous.some(old=>old.id===item.id&&old.autoScheduleDate)&&!item.scheduleRemoved?automaticWorkLogItems([item],day)[0]:item);
 }
 export const reportsActualProgress=(item:WorkLogItem)=>item.manualFields===undefined||item.manualFields.includes('progress');
+
+export function automaticWorkLogItems(items:WorkLogItem[],day:string):WorkLogItem[]{
+ return items.map(item=>{
+  if(item.scheduleRemoved||!item.startDate||!item.endDate||item.startDate>day||item.endDate<day||item.manualFields===undefined)return item;
+  const total=workDays(item.startDate,item.endDate),elapsed=workDays(item.startDate,day);
+  if(!total||elapsed===undefined)return item;
+  const fields=item.manualFields||[],progress=Math.round(elapsed/total*10000)/100;
+  return {...item,autoScheduleDate:day,...(!fields.includes('progress')?{progress}:{}),...(!fields.includes('status')?{status:progress===100?'완료' as const:'진행중' as const}:{}),...(!fields.includes('todayTask')?{todayTask:`[일정 기준 자동 작성] ${item.roleName} · ${item.scheduleMemo||item.projectName}`}: {})};
+ });
+}
 
 // A site is shared across team records; original IDs remain the write targets.
 export function sameWorkProject(projects:Project[],left:string,right:string){

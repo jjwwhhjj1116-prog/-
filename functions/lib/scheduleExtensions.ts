@@ -31,7 +31,7 @@ export async function scheduleExtensionRoute(request:Request,env:any,user:any,ro
   const minutes=(value:unknown)=>typeof value==='string'&&/^([01]\d|2[0-3]):[0-5]\d$/.test(value)?Number(value.slice(0,2))*60+Number(value.slice(3)):NaN;
   const duration=minutes(input.endTime)-minutes(input.startTime);
   if(type==='OVERTIME'&&(!validDay(input.workDate)||input.workDate<task.startDate||!Number.isFinite(duration)||duration<=0))return fail('배정 시작일 이후의 근무일과 당일 시작·종료 시간을 확인하세요.');
-  if(requests.some((r:any)=>r.taskId===task.id&&r.userId===user.id&&r.status==='PENDING'))return fail('이 업무의 승인 대기 요청이 이미 있습니다.',409);
+  if(requests.some((r:any)=>r.taskId===task.id&&r.userId===user.id&&r.status==='PENDING'&&(r.type||'DEADLINE')===type))return fail('이 업무의 승인 대기 요청이 이미 있습니다.',409);
   if(type==='DEADLINE'&&requests.some((r:any)=>r.taskId===task.id&&r.userId===user.id&&r.status==='APPROVED'&&r.type!=='OVERTIME'&&r.appliedTaskId&&r.appliedTaskId!==task.id&&userTasks.some(t=>t.id===r.appliedTaskId)))return fail('이미 승인된 개인 연장 구간이 있습니다. 최신 연장 구간의 업무를 선택해 이어서 신청하세요.',409);
   if(type==='DEADLINE'){
    if(!pmId)return fail('현재 프로젝트 PM이 없거나 확인되지 않습니다. PM 배정을 먼저 확인하세요.',409);
