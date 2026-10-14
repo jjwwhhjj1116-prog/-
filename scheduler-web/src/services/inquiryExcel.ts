@@ -308,9 +308,34 @@ export async function buildInquiryWorkbookBuffer(inquiries: Inquiry[], options: 
             for (const line of item.group.split('\n')) { sheet.mergeCells(row, 2, row, 9); const cell = sheet.getCell(row, 2); cell.value = line; cell.font = { name: '맑은 고딕', size: 10, bold: true }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } }; sheet.getRow(row).height = 20.25; row++; }
             lastGroups.set(name, item.group);
         }
-        const span = Math.max(1, Math.min(1000, item.excelLayout?.rowSpan ?? (item.images.length ? 2 : 1)));
+        let span = Math.max(1, Math.min(1000, item.excelLayout?.rowSpan ?? (item.images.length ? 2 : 1)));
         metadataRows.push(['ROW', name, row, item.roundNumber === undefined ? inquiryRoundNumber(item) : roundNumber(item.roundNumber)]);
         for (let offset = 0; offset < span; offset++) sheet.getRow(row + offset).height = item.excelLayout?.rowHeights[offset] ?? 90;
+        const newPictures = item.images.filter(image => !image.sourceAnchor);
+        const layouts = new Map<InquiryImage['field'], { col: number; width: number; height: number; columns: number; gap: number; index: number }>();
+        const rowTop = pointPixels(sheet, { col: 0, row: row - 1, nativeCol: 0, nativeRow: row - 1 }).y;
+        const blockHeight = () => Array.from({ length: span }, (_, offset) => rowPixels(sheet, row - 1 + offset)).reduce((sum, height) => sum + height, 0);
+        // Imported anchors and their row heights stay unchanged. New web photos
+        // start below that original block; otherwise leave the first row for text.
+        let pictureTop = item.images.some(image => image.sourceAnchor) ? blockHeight() + 8 : rowPixels(sheet, row - 1) + 8;
+        for (const image of item.images) if (image.sourceAnchor) {
+            const anchor = image.sourceAnchor;
+            const bottom = anchor.br ? pointPixels(sheet, movePoint(anchor.br, row - 1)).y : pointPixels(sheet, movePoint(anchor.tl, row - 1)).y + (anchor.height ?? 160);
+            pictureTop = Math.max(pictureTop, bottom - rowTop + 8);
+        }
+        let requiredHeight = 0;
+        for (const field of ['question', 'answer', 'review'] as const) {
+            const count = newPictures.filter(image => image.field === field).length; if (!count) continue;
+            const col = field === 'question' ? 5 : field === 'answer' ? 6 : 7, availableWidth = colPixels(sheet, col);
+            const columns = count > 1 && availableWidth >= 160 ? 2 : 1, gap = Math.min(8, availableWidth / 4);
+            const width = Math.min(210, (availableWidth - gap * (columns + 1)) / columns), height = width * 100 / 210;
+            layouts.set(field, { col, width, height, columns, gap, index: 0 });
+            requiredHeight = Math.max(requiredHeight, pictureTop + Math.ceil(count / columns) * (height + 8));
+        }
+        while (blockHeight() < requiredHeight) {
+            if (span >= 1000) throw new Error('질의 사진을 담을 행 공간이 너무 큽니다. 사진을 나누어 작성해 주세요.');
+            sheet.getRow(row + span).height = 90; span++;
+        }
         const values = [item.no, item.trade, item.drawingNumbers.join('\n'), item.classification, item.question, item.answer, item.review, item.notes];
         values.forEach((value, col) => {
             if (span > 1 && (item.excelLayout?.mergedColumns ?? [2, 3, 4, 5, 6, 7, 8, 9]).includes(col + 2)) sheet.mergeCells(row, col + 2, row + span - 1, col + 2);
@@ -318,10 +343,15 @@ export async function buildInquiryWorkbookBuffer(inquiries: Inquiry[], options: 
             cell.alignment = { vertical: 'top', horizontal: col < 2 ? 'center' : 'left', wrapText: true };
             cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
         });
-        item.images.forEach((image, index) => {
-            const original = image.sourceAnchor, targetCol = image.field === 'question' ? 5 : image.field === 'answer' ? 6 : 7;
-            const anchor = original ? { ...original, tl: movePoint(original.tl, row - 1), ...(original.br ? { br: movePoint(original.br, row - 1) } : {}) }
-                : { tl: { col: targetCol + (index % 2) * 0.47, row: row - 1 + 0.25 }, width: 210, height: 100 };
+        item.images.forEach(image => {
+            const original = image.sourceAnchor;
+            let anchor: InquiryImage['sourceAnchor'];
+            if (original) anchor = { ...original, tl: movePoint(original.tl, row - 1), ...(original.br ? { br: movePoint(original.br, row - 1) } : {}) };
+            else {
+                const layout = layouts.get(image.field)!, index = layout.index++;
+                const origin = pointPixels(sheet, { col: layout.col, row: row - 1, nativeCol: layout.col, nativeRow: row - 1 });
+                anchor = { tl: pixelPoint(sheet, origin.x + layout.gap + index % layout.columns * (layout.width + layout.gap), rowTop + pictureTop + Math.floor(index / layout.columns) * (layout.height + 8)), width: layout.width, height: layout.height };
+            }
             putPicture(sheet, image, anchor);
         });
         nextRows.set(name, row + span);

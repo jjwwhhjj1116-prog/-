@@ -29,6 +29,62 @@ await test('질의 Excel: 질문·산출·검토 사진 바이트와 열 귀속 
  assert.deepEqual(read.inquiries[0].images.map(i=>i.name),['질문.png','산출.png','검토.png']);assert.equal(read.inquiries[0].images[2].caption,row.images[2].caption);
  assert.ok(read.inquiries[0].images.every(i=>i.dataUrl===png)); assert.equal(read.unassignedImages.length,0);
 });
+function photoRect(sheet, placement) {
+ const point=value=>{
+  let x=(value.nativeColOff??0)/9525,y=(value.nativeRowOff??0)/9525;
+  for(let i=0;i<value.nativeCol;i++)x+=(sheet.getColumn(i+1).width??9)*7+5;
+  for(let i=0;i<value.nativeRow;i++)y+=(sheet.getRow(i+1).height??15)*4/3;
+  return {x,y};
+ };
+ const start=point(placement.range.tl),end=placement.range.br?point(placement.range.br):{x:start.x+placement.range.ext.width,y:start.y+placement.range.ext.height};
+ return {left:start.x,top:start.y,right:end.x,bottom:end.y};
+}
+function assertPhotoBounds(book, original, reopened) {
+ const rectangles=[];
+ for(let i=0;i<original.length;i++){
+  const row=reopened[i],sheet=book.getWorksheet(row.sourceSheet),placements=sheet.getImages();
+  const offset=original.slice(0,i).filter((_,j)=>reopened[j].sourceSheet===row.sourceSheet).reduce((n,item)=>n+item.images.length,0);
+  let rowTop=0;for(let r=1;r<row.sourceRow;r++)rowTop+=(sheet.getRow(r).height??15)*4/3;
+  let rowBottom=rowTop;for(let r=0;r<row.excelLayout.rowSpan;r++)rowBottom+=(sheet.getRow(row.sourceRow+r).height??15)*4/3;
+  for(let j=0;j<original[i].images.length;j++){
+   const image=original[i].images[j],rect=photoRect(sheet,placements[offset+j]),col=image.field==='question'?6:image.field==='answer'?7:8;
+   let left=0;for(let c=1;c<col;c++)left+=(sheet.getColumn(c).width??9)*7+5;
+   const right=left+(sheet.getColumn(col).width??9)*7+5;
+   assert.ok(rect.left>=left-0.001&&rect.right<=right+0.001,`${image.name} leaves its ${image.field} column`);
+   assert.ok(rect.top>=rowTop-0.001&&rect.bottom<=rowBottom+0.001,`${image.name} leaves its inquiry row block`);
+   rectangles.push({...rect,name:image.name});
+  }
+ }
+ for(let i=0;i<rectangles.length;i++)for(let j=i+1;j<rectangles.length;j++){
+  const a=rectangles[i],b=rectangles[j];assert.ok(a.right<=b.left+0.001||b.right<=a.left+0.001||a.bottom<=b.top+0.001||b.bottom<=a.top+0.001,`${a.name} overlaps ${b.name}`);
+ }
+}
+await test('질의 Excel 새 사진: 동일열3/4장·질문/산출/검토·좁은열은 겹침 없이 해당질의 안에 보존',async()=>{
+ for(const field of ['question','answer','review'])for(const count of [3,4]){
+  const row=item('토목&조경팀');row.images=Array.from({length:count},(_,i)=>({...image(field,`${field}-${i}.png`),caption:`도면 ${i} & "설명"`}));
+  const tail={...item('토목&조경팀','2'),question:'다음 질의는 사진과 겹치지 않음'};
+  const data=await buildInquiryWorkbookBuffer([row,tail],{projectName:'사진배치110'}),read=await readInquiryExcel(data,options),book=new ExcelJS.Workbook();await book.xlsx.load(data);
+  assert.equal(read.inquiries.length,2);assert.equal(read.inquiries[1].question,tail.question);assert.equal(read.inquiries[0].images.length,count);
+  for(let i=0;i<count;i++)for(const key of ['field','name','caption','dataUrl'])assert.equal(read.inquiries[0].images[i][key],row.images[i][key]);
+  assertPhotoBounds(book,[row,tail],read.inquiries);assert.equal(read.unassignedImages.length,0);
+ }
+ const narrow=item('구조팀');narrow.excelLayout={rowSpan:1,rowHeights:[45],columnWidths:[1,9,13,21,22,20,18,12,17],reviewHeader:'답변사항'};
+ narrow.images=['question','answer','review'].flatMap(field=>Array.from({length:4},(_,i)=>image(field,`${field}-${i}.png`)));
+ const data=await buildInquiryWorkbookBuffer([narrow],{projectName:'좁은열110'}),read=await readInquiryExcel(data,options),book=new ExcelJS.Workbook();await book.xlsx.load(data);
+ assert.equal(read.inquiries[0].images.length,12);assertPhotoBounds(book,[narrow],read.inquiries);
+});
+await test('질의 Excel 사진 혼합: 원본anchor·행높이·bytes·설명 보존하며 새 웹사진은 원본아래 별도배치',async()=>{
+ const row=item('토목&조경팀');row.excelLayout={rowSpan:2,rowHeights:[66,90],columnWidths:[1,9,13,21,22,63,65,45,17],reviewHeader:'답변사항'};
+ row.images=[{...image('question','원본 도면.png'),caption:'원본 설명',sourceAnchor:{tl:{col:5,row:0,nativeCol:5,nativeRow:0,nativeColOff:95250,nativeRowOff:114300},br:{col:5,row:1,nativeCol:5,nativeRow:1,nativeColOff:1047750,nativeRowOff:285750}}},
+  {...image('question','추가 질문1.png'),caption:'추가 & "질문"'},image('question','추가 질문2.png'),image('review','추가 검토.png')];
+ const data=await buildInquiryWorkbookBuffer([row],{projectName:'혼합사진110'}),read=await readInquiryExcel(data,options),book=new ExcelJS.Workbook();await book.xlsx.load(data);
+ const restored=read.inquiries[0];assert.deepEqual(restored.excelLayout.rowHeights.slice(0,2),[66,90]);assert.equal(restored.images.length,4);
+ for(let i=0;i<4;i++)for(const key of ['field','name','caption','dataUrl'])assert.equal(restored.images[i][key],row.images[i][key]);
+ for(const point of ['tl','br'])for(const key of ['nativeCol','nativeRow','nativeColOff','nativeRowOff'])assert.equal(restored.images[0].sourceAnchor[point][key],row.images[0].sourceAnchor[point][key]);
+ assertPhotoBounds(book,[row],read.inquiries);assert.equal(read.unassignedImages.length,0);
+ const placements=book.getWorksheet(restored.sourceSheet).getImages(),original=photoRect(book.getWorksheet(restored.sourceSheet),placements[0]);
+ for(const placement of placements.slice(1))assert.ok(photoRect(book.getWorksheet(restored.sourceSheet),placement).top>=original.bottom+8);
+});
 await test('질의 Excel: 병합2행·표 밖 사진 원 위치 보존과 자동귀속 금지',async()=>{
  const row=item('구조팀');row.sourceSheet='원본 구조';row.excelLayout={rowSpan:2,rowHeights:[66,90],columnWidths:[1,9,13,21,22,63,65,45,17],reviewHeader:'답변사항',headers:['No','분야','관련도면','부위','질의사항','산출사항','답변사항','비고'],mergedColumns:[2,3,4,5,7,8,9]};
  const orphan={...image('question','미연결.png'),sourceSheet:'원본 구조',sourceRow:47,sourceAnchor:{tl:{col:65,row:46},width:120,height:70}};delete orphan.field;

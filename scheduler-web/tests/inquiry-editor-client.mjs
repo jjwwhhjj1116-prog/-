@@ -3,6 +3,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
+import { deflateSync } from 'node:zlib';
+import { join } from 'node:path';
 import {createServer} from 'vite';
 const require=createRequire(import.meta.url),ts=require('typescript'),jsx=require('react/jsx-runtime');
 const sourceFile=process.argv.find(a=>a.startsWith('--source='))?.slice(9)||new URL('../src/components/ProjectInquiries.tsx',import.meta.url);
@@ -13,6 +15,10 @@ assert.ok(mainReturn,'Actual component JSX return');
 const capturedSource=source.slice(0,mainReturn.getStart(ast))+`capture({draft,remote,cap,ready,busy,error,notice,setDraft,setPreview,apply,travel,persist,selection,setSelection,key,rounds,roundNumber,shown,dirty,editing,setEditing,setRoundNumber,removeRow,restoreRow,changeRoundStatus,addRow,translationOpen,translationScope,translationPreview,setTranslationOpen,setTranslationScope,requestKoreanTranslation,applyKoreanTranslation,history:history.current});\n`+source.slice(mainReturn.getStart(ast));
 const compiled=ts.transpileModule(capturedSource,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 const actualHelpers={};
+const storeSource=readFileSync(new URL('../src/store/useProjectStore.ts',import.meta.url),'utf8'),storeAst=ts.createSourceFile('useProjectStore.ts',storeSource,ts.ScriptTarget.Latest,true);
+const rolesDeclaration=storeAst.statements.filter(ts.isVariableStatement).flatMap(statement=>Array.from(statement.declarationList.declarations)).find(declaration=>declaration.name.getText(storeAst)==='TEAM_ROLES');
+assert.ok(rolesDeclaration?.initializer,'Actual department trade definitions');
+const actualTeamRoles=JSON.parse(JSON.stringify(runInNewContext('('+rolesDeclaration.initializer.getText(storeAst)+')')));
 let helperServer;
 for(const n of ast.statements)if(ts.isImportDeclaration(n)&&n.moduleSpecifier.text.startsWith('../utils/')&&!n.importClause?.isTypeOnly&&n.moduleSpecifier.text!=='../utils/inquiryDrafts'){
  const path=n.moduleSpecifier.text;
@@ -26,13 +32,14 @@ const row=(id='qa-row103',department='마감팀')=>({id,projectId:'qa-project103
 const photo={id:'qa-photo103',name:'합성.png',mimeType:'image/png',dataUrl:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO6Vn1cAAAAASUVORK5CYII=',field:'question'};
 function deferred(){let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};}
 function screen(config={}){
+ const department=config.department||'마감팀',projectId=config.projectId||'qa-project103';
  const hooks=[],effects=[],intervals=[],writes=[],calls=[],teamChanges=[],downloads=[],auth={currentUser:config.actor||actor(),users:[config.actor||actor(),actor('qa-actor-b')]},studio={ready:true},server={rows:structuredClone(config.rows||[row()]),rounds:structuredClone(config.rounds||[])};
  const capabilities=config.capabilities||{canCreate:true,canManage:true,canEdit:true};let translationGate,translationReply,translationCount=0;
- const projectState={personnel:auth.users,projects:[{id:'qa-project103',code:'QA103',name:'합성 프로젝트',department:'마감팀',subTasks:{PM:{personIds:['qa-actor-a','qa-actor-b'],startDate:'2026-10-13',endDate:'2026-10-14'}}}]};
+ const projectState={personnel:auth.users,projects:[{id:projectId,code:'QA103',name:'합성 프로젝트',department,subTasks:{PM:{personIds:['qa-actor-a','qa-actor-b'],startDate:'2026-10-13',endDate:'2026-10-14'}}}]};
  if(config.extraProjects)projectState.projects.push(...config.extraProjects);
- const props={department:'마감팀',initialProjectId:'qa-project103',initialTrade:'조적',visible:true,onDepartmentChange:(...args)=>teamChanges.push(args),...config.props};
+ const props={department,initialProjectId:projectId,initialTrade:actualTeamRoles[department].find(trade=>trade!=='PM'),visible:true,onDepartmentChange:(...args)=>teamChanges.push(args),...config.props};
  let cursor=0,pendingEffects=[],tree,handlers,holdPoll=false,pollGate,writeGate,renderNeeded=false;
- const local=new Map(config.local?[[`qa-actor-a:마감팀:qa-project103`,structuredClone(config.local)]]:[]);
+ const local=new Map(config.local?[[`qa-actor-a:${department}:${projectId}`,structuredClone(config.local)]]:[]);
  const state=(initial)=>{const index=cursor++;if(!(index in hooks))hooks[index]=typeof initial==='function'?initial():initial;return[hooks[index],value=>{hooks[index]=typeof value==='function'?value(hooks[index]):value;renderNeeded=true;}];};
  const ref=initial=>{const index=cursor++;if(!(index in hooks))hooks[index]={current:initial};return hooks[index];};
  const memo=(factory,deps)=>{const index=cursor++,old=hooks[index];if(!old||!deps||deps.some((d,i)=>!Object.is(d,old.deps?.[i]))||deps.length!==old.deps?.length)hooks[index]={value:factory(),deps};return hooks[index].value;};
@@ -49,7 +56,7 @@ function screen(config={}){
    if(path==='react')return {useState:state,useRef:ref,useEffect:effect,useMemo:memo,useCallback:(callback,deps)=>memo(()=>callback,deps)};if(path==='react/jsx-runtime')return jsx;if(path==='lucide-react')return new Proxy({},{get:()=>()=>null});
    if(path==='../store/useAuthStore')return {useAuthStore:Object.assign(selector=>selector(auth),{getState:()=>auth})};
    if(path==='../store/useStudioStore')return {useStudioStore:()=>studio};
-   if(path==='../store/useProjectStore')return {TEAM_ROLES:{마감팀:['PM','조적','창호'],구조팀:['PM','기둥'],['토목&조경팀']:['PM','토목']},useProjectStore:selector=>selector(projectState)};
+   if(path==='../store/useProjectStore')return {TEAM_ROLES:actualTeamRoles,useProjectStore:selector=>selector(projectState)};
    if(path==='../services/studioApi')return {studioApi:api};if(path==='../services/inquiryExcel')return {readInquiryExcel(){throw Error('Import service is independently tested');},downloadInquiryExcel:async(rows,options)=>{downloads.push(structuredClone({rows,options}));}};
    if(path==='../utils/inquiryDrafts')return {readInquiryDraft:async key=>structuredClone(local.get(key)),writeInquiryDraft:async(key,data)=>{writes.push({key,data:structuredClone(data)});local.set(key,structuredClone(data));}};
    if(actualHelpers[path])return actualHelpers[path];throw Error('Unexpected dependency '+path);
@@ -162,6 +169,36 @@ await check('질의 공종 통합 Excel: 실제 버튼은 선택공종 무관3�
  const mode=nodes(s.tree).find(node=>node.type==='select'&&node.props['aria-label']==='엑셀 내보내기 차수');mode.props.onChange({target:{value:'ALL'}});s.render();await s.flush();s.button('전 공종 엑셀 내보내기').props.onClick();await s.flush();const all=s.downloads[1],allRead=await readInquiryExcel(await buildInquiryWorkbookBuffer(all.rows,all.options),{projectId:'qa-reopen109',authorId:'qa-actor-a',authorName:'합성 검수자'});assert.deepEqual(allRead.inquiries.map(row=>row.trade),['조적','창호','내부','가설']);assert.ok(allRead.inquiries.every(row=>row.department==='마감팀'));assert.deepEqual(allRead.inquiries.map(row=>row.roundNumber),[1,1,1,2]);assert.deepEqual(allRead.rounds,rounds.slice(0,2));assert.equal(s.calls.filter(call=>call.method!=='GET').length,0);
  const fixtureOut=process.argv.find(arg=>arg.startsWith('--export-fixture='))?.slice(17);if(fixtureOut)writeFileSync(fixtureOut,bytes);
  exportChecks.push({kind:'ACTUAL_COMPONENT_HANDLER_TO_REAL_XLSX_ROUNDTRIP',currentRound:{department:'마감팀',roundNumber:1,rows:3,trades:['조적','창호','내부'],photos:3,visibleSheets:1,SENTMetadataPreserved:true},allRounds:{rows:4,trades:['조적','창호','내부','가설'],roundNumbers:[1,1,1,2]},foreignTeamsIncluded:0,deletedRowsIncluded:0,sourceAndPhotosPreserved:true,bytes:bytes.length,SHA256:createHash('sha256').update(bytes).digest('hex').toUpperCase(),fixture:fixtureOut||null,operatingWrites:0,nativeExcelGui:'NOT_RUN'});
+});
+await check('질의 구조·토목조경 전 공종 Excel: 실제 공종 정의·1/2/3차 버튼·본문/사진/차수발송/ZIP원본 완전 대조',async()=>{
+ const {buildInquiryWorkbookBuffer,readInquiryExcel}=await import('../src/services/inquiryExcel.ts'),{default:ExcelJS}=await import('exceljs'),{default:JSZip}=await import('jszip');
+ const fixtureDir=process.argv.find(arg=>arg.startsWith('--export-team-fixtures='))?.slice(23),fields=['question','answer','review'],summaries=[];
+ const digest=bytes=>createHash('sha256').update(bytes).digest('hex').toUpperCase();
+ const crc=bytes=>{let value=0xffffffff;for(const byte of bytes){value^=byte;for(let bit=0;bit<8;bit++)value=value>>>1^(value&1?0xedb88320:0);}return (value^0xffffffff)>>>0;};
+ const chunk=(name,data)=>{const type=Buffer.from(name),length=Buffer.alloc(4),checksum=Buffer.alloc(4);length.writeUInt32BE(data.length);checksum.writeUInt32BE(crc(Buffer.concat([type,data])));return Buffer.concat([length,type,data,checksum]);};
+ const png=(id,index)=>{const header=Buffer.alloc(13);header.writeUInt32BE(2,0);header.writeUInt32BE(2,4);header[8]=8;header[9]=6;const rgba=Buffer.from([0,index%256,(index*37)%256,(index*71)%256,255,40,80,120,255,0,160,200,240,255,255,100,50,255]);return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('tEXt',Buffer.from('QA\0'+id)),chunk('IDAT',deflateSync(rgba)),chunk('IEND',Buffer.alloc(0))]);};
+ let photoIndex=0;
+ for(const [department,slug] of [['구조팀','structure'],['토목&조경팀','civil-landscape']]){
+  const trades=actualTeamRoles[department].filter(trade=>trade!=='PM'),projectId='qa-'+slug+'110';assert.ok(trades.length>0);
+  const rows=[1,2,3].flatMap(roundNumber=>trades.map(trade=>{const id=`${slug}-${roundNumber}-${trade}`;return {...row(id,department),projectId,trade,no:'1',roundNumber,group:`${roundNumber}차 질의사항`,classification:`${trade} · ${roundNumber}차 분류`,drawingNumbers:[`${slug}-${roundNumber}-A-201`,`${slug}-${roundNumber}-S-304`],question:`합성 ${department} ${trade} ${roundNumber}차 질의\n150 mm 기존 도면`,answer:`${roundNumber}차 산출 답변 3,300 m²`,review:`${trade} 검토 1:50 · 4/7`,notes:`합성 비고 ${id}`,status:'REGISTERED',images:fields.map(field=>{const name=`${id}-${field}.png`,bytes=png(name,++photoIndex);return {id:'photo-'+name,name,mimeType:'image/png',dataUrl:'data:image/png;base64,'+bytes.toString('base64'),caption:`${trade} ${roundNumber}차 ${field} 도면 & <확인>\n사진 설명`,field};})};}));
+  const rounds=[1,2,3].map(roundNumber=>({projectId,department,roundNumber,status:roundNumber===2?'SENT':'DRAFT',revision:2,createdAt:'2026-10-13T00:00:00Z',updatedAt:'2026-10-14T00:00:00Z',...(roundNumber===2?{sentAt:'2026-10-14T00:00:00Z',sentBy:'qa-actor-a',sentByName:'합성 검수자'}:{})}));
+  const deleted={...rows[0],id:slug+'-deleted',question:'삭제되어 내보내면 안 되는 질의',deletedAt:'2026-10-14T00:00:00Z'},foreign={...row(slug+'-foreign','마감팀'),projectId:slug+'-foreign-project',trade:'조적',images:[photo]},otherProject={...rows[0],id:slug+'-other-project',projectId:slug+'-another-project',question:'다른 프로젝트에서 섞이면 안 되는 질의'};
+  const s=screen({department,projectId,rows:[...rows,deleted,foreign,otherProject],rounds,extraProjects:[{id:foreign.projectId,code:'QA103',name:'같은 수주 마감팀',department:'마감팀'},{id:otherProject.projectId,code:'QA-OTHER',name:'다른 프로젝트',department}]});await s.flush();assert.equal(s.h.draft.rows.filter(row=>!row.deletedAt).length,rows.length);
+  const tabs=()=>nodes(s.tree).find(node=>node.props.role==='tablist'&&node.props['aria-label']==='질의사항 공종').props.children;
+  assert.deepEqual(Array.from(tabs(),tab=>text(tab).trim().replace(/\s+\d+$/,'')),trades);
+  const verify=async(download,expected,expectedRounds,label)=>{
+   assert.equal(download.options.department,department);assert.deepEqual(download.rows.map(row=>row.id),expected.map(row=>row.id));
+   const bytes=await buildInquiryWorkbookBuffer(download.rows,download.options),parsed=await readInquiryExcel(bytes,{projectId:'qa-reopen110',authorId:'qa-actor-a',authorName:'합성 검수자'}),book=new ExcelJS.Workbook();await book.xlsx.load(bytes);const visible=book.worksheets.filter(sheet=>sheet.state==='visible');
+   assert.equal(visible.length,1);assert.equal(visible[0].getCell('B1').text,'■ 합성 프로젝트');assert.equal(visible[0].getImages().length,expected.length*fields.length);assert.deepEqual(parsed.rounds,expectedRounds);assert.equal(parsed.inquiries.length,expected.length);assert.equal(parsed.unassignedImages.length,0);assert.deepEqual(parsed.warnings,[]);
+   for(let index=0;index<expected.length;index++){const actual=parsed.inquiries[index],original=expected[index];for(const field of ['no','department','trade','classification','group','roundNumber','drawingNumbers','question','answer','review','notes'])assert.deepEqual(actual[field],original[field],`${label} ${original.id} ${field}`);assert.equal(actual.images.length,fields.length);for(let imageIndex=0;imageIndex<fields.length;imageIndex++)for(const field of ['dataUrl','name','mimeType','caption','field'])assert.equal(actual.images[imageIndex][field],original.images[imageIndex][field],`${label} ${original.id} image${imageIndex} ${field}`);}
+   const zip=await JSZip.loadAsync(bytes),media=Object.keys(zip.files).filter(name=>/^xl\/media\/[^/]+$/.test(name)&&!zip.files[name].dir);assert.equal(media.length,expected.length*fields.length);const expectedMedia=expected.flatMap(row=>row.images.map(image=>digest(Buffer.from(image.dataUrl.split(',')[1],'base64')))).sort(),actualMedia=(await Promise.all(media.map(async name=>digest(await zip.file(name).async('uint8array'))))).sort();assert.deepEqual(actualMedia,expectedMedia,'ZIP photo bytes differ');
+   const drawingFiles=Object.keys(zip.files).filter(name=>/^xl\/drawings\/drawing\d+\.xml$/.test(name));const drawingXml=(await Promise.all(drawingFiles.map(name=>zip.file(name).async('string')))).join('');assert.equal((drawingXml.match(/<(?:xdr:)?pic>/g)||[]).length,media.length);assert.equal((drawingXml.match(/\btitle=/g)||[]).length,media.length);assert.equal((drawingXml.match(/\bdescr=/g)||[]).length,media.length);
+   const fixture=fixtureDir?join(fixtureDir,slug+'-'+label+'.xlsx'):null;if(fixture)writeFileSync(fixture,bytes,{flag:'wx'});summaries.push({department,label,roundNumbers:[...new Set(expected.map(row=>row.roundNumber))],trades,rows:expected.length,photos:media.length,visibleSheets:visible.length,SENTMetadataPreserved:true,textAndPhotoFieldsPreserved:true,ZIPPhotoSHA256Exact:true,sourceProjectTitleKorean:true,fixture,bytes:bytes.length,SHA256:digest(bytes)});
+  };
+  for(const roundNumber of [1,2,3]){const roundTabs=nodes(s.tree).find(node=>node.props.role==='tablist'&&node.props['aria-label']==='질의 차수').props.children;roundTabs.find(tab=>text(tab).trim().startsWith(roundNumber+'차')).props.onClick();s.render();await s.flush();const trade=trades[(roundNumber*2)%trades.length];tabs().find(tab=>text(tab).trim()===trade+' 1').props.onClick();s.render();await s.flush();assert.equal(s.h.shown.length,1);assert.equal(s.h.shown[0].trade,trade);assert.equal(s.h.roundNumber,roundNumber);assert.ok(!s.button('전 공종 엑셀 내보내기').props.disabled);s.button('전 공종 엑셀 내보내기').props.onClick();await s.flush();await verify(s.downloads.at(-1),rows.filter(row=>row.roundNumber===roundNumber),[rounds[roundNumber-1]],'round-'+roundNumber);}
+  const mode=nodes(s.tree).find(node=>node.type==='select'&&node.props['aria-label']==='엑셀 내보내기 차수');mode.props.onChange({target:{value:'ALL'}});s.render();await s.flush();s.button('전 공종 엑셀 내보내기').props.onClick();await s.flush();await verify(s.downloads.at(-1),rows,rounds,'all-rounds');assert.equal(s.calls.filter(call=>call.method!=='GET').length,0);assert.deepEqual(s.server.rows,[...rows,deleted,foreign,otherProject]);
+ }
+ exportChecks.push({kind:'ACTUAL_STRUCTURE_CIVIL_ALL_TRADES_THREE_ROUNDS_HANDLER_XLSX_ZIP_MATRIX',TEAM_ROLES:actualTeamRoles,cases:summaries,foreignTeamsIncluded:0,foreignProjectsIncluded:0,deletedRowsIncluded:0,operatingWrites:0,nativeExcelGui:'NOT_RUN'});
 });
 const koreanRow=(id='ko-row',extra={})=>({...row(id),status:'REGISTERED',roundNumber:2,classification:'B1',question:'Vui lòng 150mm A-104-03 기존 한국어',answer:'Please check 3,300 m²',review:'',notes:'한국어 비고 4/7, 1:50, 100~200',images:[{...photo,caption:'Please check 150 mm'}],...extra});
 const translationCalls=screen=>screen.calls.filter(call=>call.path==='inquiries/translate-korean');
