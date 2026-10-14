@@ -97,6 +97,7 @@ export default function OrderModal({ onClose }: OrderModalProps) {
                 <label className="block text-sm font-semibold text-gray-300 mb-2">프로젝트 명</label>
                 <input 
                   type="text" 
+                  data-no-field-translate
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full bg-[rgba(0,0,0,0.5)] border border-gray-600 rounded-md px-4 py-3 text-white focus:outline-none focus:border-primary placeholder-gray-500 transition-colors"

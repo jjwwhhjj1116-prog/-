@@ -421,7 +421,7 @@ export const PrintScheduleModal: React.FC<Props> = ({
                                   </span>
                                 ))}
                               </div>
-                              <div className="font-black text-slate-900 leading-snug break-words text-[10px]" title={group.name}>
+                              <div data-no-translate className="font-black text-slate-900 leading-snug break-words text-[10px]" title={group.name}>
                                 {((group.name || '').replace(/^\[.*?\]\s*/, '').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim()) || group.name || '프로젝트'}
                               </div>
                               {group.area && (

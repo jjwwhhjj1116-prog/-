@@ -602,7 +602,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     const safeProjCode = (target.projectCode || 'PROJECT').replace(/[^a-zA-Z0-9_-]/g, '');
     const cleanClientForName = clientName.replace(/[\\/:*?"<>|]/g, '');
     let translatedWorkbook;
-    try{translatedWorkbook = await translateWorkbook(wb);if(translatedWorkbook !== wb) translatedWorkbook = rebuildTranslatedMeetingWorkbook(output, translatedWorkbook);}
+    try{translatedWorkbook = await translateWorkbook(wb,undefined,[output.projectName||'',(output.projectName||'').replace(/^\[.*?\]\s*/,'').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g,'').trim()]);if(translatedWorkbook !== wb) translatedWorkbook = rebuildTranslatedMeetingWorkbook(output, translatedWorkbook);}
     catch{setAiToast('회의록 번역을 완료하지 못했습니다. 다시 시도하거나 한국어로 전환해 주세요.');return;}
     try{downloadMeetingWorkbook(translatedWorkbook, `${useLanguageStore.getState().lang==='vi'?'Bien_ban_hop':'회의록'}_${safeProjCode}_${cleanClientForName}_${meetingDate}.xlsx`);}
     catch{setAiToast('회의록 엑셀 파일을 만들거나 다운로드하지 못했습니다. 다시 시도해 주세요.');return;}
@@ -814,7 +814,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
           {legacyOwned.length>0&&<details className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-4">
             <summary className="cursor-pointer font-bold text-sm">이 PC의 기존 회의록 이관 · 본인 작성 {legacyOwned.length}건</summary>
             <p className="text-sm my-3">아래 회의록을 중앙 목록과 프로젝트별 Drive에 저장합니다. 기존 승인 표시는 새 결재로 간주하지 않으며, 결재 상신은 별도로 진행하세요. 같은 원본을 다시 실행하면 중복 저장하지 않습니다.</p>
-            <ul className="text-sm list-disc pl-5">{legacyOwned.map(m=><li key={m.id}>{m.meetingDate} · {m.title}</li>)}</ul>
+            <ul className="text-sm list-disc pl-5">{legacyOwned.map(m=><li key={m.id}>{m.meetingDate} · <span data-no-translate>{m.title}</span></li>)}</ul>
             <button disabled={!ready||importingLegacy} onClick={()=>void importLegacyMinutes()} className="mt-3 px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50">{importingLegacy?'이관 중…':'확인한 기존 회의록 이관'}</button>
             {legacyMessage&&<p role="status" className="text-sm mt-3">{legacyMessage}</p>}
           </details>}
@@ -910,11 +910,11 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                           {m.projectCode || m.projectId}
                         </td>
                         <td className="p-3.5">
-                          <div className="font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition">
+                          <div data-no-translate className="font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition">
                             {m.title}
                           </div>
                           <div className="text-[11px] text-slate-500 truncate max-w-md">
-                            {m.projectName} · {m.location}
+                            <span data-no-translate>{m.projectName}</span> · {m.location}
                           </div>
                         </td>
                         <td className="p-3.5 text-center">
@@ -1023,7 +1023,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                     className="bg-slate-950 border border-blue-500/60 text-white text-xs font-bold px-3 py-1.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-md truncate cursor-pointer shadow-inner"
                   >
                     {uniqueProjects.map((p) => (
-                      <option key={p.code || p.id} value={p.code || p.id}>
+                      <option data-no-translate key={p.code || p.id} value={p.code || p.id}>
                         [{p.code || p.id}] {p.name}
                       </option>
                     ))}
@@ -1037,7 +1037,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                       className="bg-slate-800 border border-slate-600 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg cursor-pointer"
                     >
                       {projectMeetings.map((m) => (
-                        <option key={m.id} value={m.id}>
+                        <option data-no-translate key={m.id} value={m.id}>
                           {m.type}: {m.title.slice(0, 25)}...
                         </option>
                       ))}
@@ -1122,6 +1122,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
               <label className="block text-[11px] font-bold text-slate-300 mb-1">회 의 명 (제목)</label>
               <input readOnly={!canEditMeeting}
                 type="text"
+                data-no-field-translate
                 value={formTitle}
                 onChange={(e) => setFormTitle(e.target.value)}
                 placeholder="예: [삼성물산 P5] 착수회의 및 공종별 물량산출 기준 확정"
@@ -1499,7 +1500,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                     <th className="p-2 bg-slate-100 dark:bg-slate-800 font-extrabold text-slate-700 dark:text-slate-200 border-r border-slate-700 text-center">
                       회  의  명
                     </th>
-                    <td colSpan={5} className="p-2 font-black text-blue-700 dark:text-blue-300">
+                    <td data-no-translate colSpan={5} className="p-2 font-black text-blue-700 dark:text-blue-300">
                       {formTitle}
                     </td>
                   </tr>
@@ -1665,7 +1666,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
             </div>
 
             <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-xs space-y-1">
-              <div className="font-bold text-slate-900 dark:text-white line-clamp-2">
+              <div data-no-translate className="font-bold text-slate-900 dark:text-white line-clamp-2">
                 {deleteConfirmTarget.title || deleteConfirmTarget.projectName}
               </div>
               <div className="text-slate-500 text-[11px]">

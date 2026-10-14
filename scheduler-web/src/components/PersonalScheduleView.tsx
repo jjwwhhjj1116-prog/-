@@ -697,6 +697,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                               data-allocation-id={task.allocationId}
                               onClick={() => setSelectedProjectId(task.projectId)}
                               style={style}
+                              data-no-translate-attrs="title"
                               title={`${task.projectName}\n공종: ${task.roleName}\n기간: ${task.startDate} ~ ${task.endDate}\n상태: ${task.status}\n메모: ${task.memo}`}
                               className={`absolute rounded-md border text-xs font-bold cursor-pointer transition-all duration-150 flex items-center px-2 z-10 shadow-2xs hover:shadow-md hover:scale-[1.01] ${getTaskColorClass(
                                 task.roleName,
@@ -704,7 +705,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                               )}`}
                             >
                               <span className="truncate text-[11px] tracking-tight leading-tight drop-shadow-xs flex items-center gap-1.5 w-full">
-                                <span className="font-extrabold text-white truncate">
+                                <span data-no-translate className="font-extrabold text-white truncate">
                                   {task.projectDisplayName}
                                 </span>
                                 <span className="font-black bg-black/20 px-1.5 py-0.5 rounded text-white text-[10px] shrink-0">

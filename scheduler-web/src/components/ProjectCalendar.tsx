@@ -511,7 +511,7 @@ export default function ProjectCalendar({
             {waitingIntake.map(item => <div key={item.code} data-pending-intake={item.code} className="flex items-stretch bg-amber-50/60 dark:bg-amber-950/20 text-xs">
               <div className="sticky left-0 z-30 w-[230px] flex-shrink-0 p-3 border-r border-slate-200 dark:border-slate-800 bg-amber-50 dark:bg-slate-900">
                 <span className="block text-[10px] font-bold text-slate-600 dark:text-slate-300">{item.code}</span>
-                <button type="button" onClick={() => onSelectIntake?.(item)} title={item.name} className="w-full text-left font-bold text-slate-900 dark:text-white break-words focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
+                <button data-no-translate type="button" onClick={() => onSelectIntake?.(item)} title={item.name} className="w-full text-left font-bold text-slate-900 dark:text-white break-words focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
                   {item.name}
                 </button>
                 <span className="block mt-1 font-bold text-amber-900 dark:text-amber-200">{lang === 'vi' ? 'Mới · chưa phân công' : '신규 · 미배정'}</span>
@@ -573,7 +573,7 @@ export default function ProjectCalendar({
                       })}
                     </div>
                     <div className="font-black text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2 leading-tight">
-                      {group.name}
+                      <span data-no-translate>{group.name}</span>
                     </div>
                     {group.lanes.some(lane=>lane.unassigned)&&<button type="button" onClick={event=>{event.stopPropagation();handleRowClick();}} className="mt-1 text-left text-[11px] font-bold text-amber-900 dark:text-amber-200 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">{lang==='vi'?'Mới · chưa phân công: phân công PM và nhân viên':'신규 · 미배정: PM·담당 인원 배정 필요'}</button>}
                     {pendingIntake.some(item=>item.code===group.code)&&<button type="button" onClick={event=>{event.stopPropagation();const item=pendingIntake.find(item=>item.code===group.code);if(item)onSelectIntake?.(item);}} className="mt-1 text-left text-[11px] font-bold text-amber-900 dark:text-amber-200 underline underline-offset-2">{lang==='vi'?'Cần xác nhận bộ phận còn thiếu':'참여 팀 확인 필요'}</button>}
@@ -730,6 +730,7 @@ export default function ProjectCalendar({
                             top: `${topPos}px`,
                             height: '26px',
                           }}
+                          data-no-translate-attrs="title"
                           title={`[${lane.department}] ${group.name}\n기간: ${lane.startDate} ~ ${lane.endDate}\n진척률: ${percentLabel(lane.actual)}\n담당: ${lane.pmPerson?.name || 'PM 미배정'}\n상태: ${lane.status}\n클릭하여 프로젝트 통합 공종 투입 현황 확인`}
                           className={`absolute rounded-lg border text-white flex items-center px-2.5 text-[11px] font-bold shadow-md hover:scale-[1.01] hover:brightness-110 transition-all z-20 cursor-pointer overflow-hidden ${laneGradient}`}
                         >
@@ -737,7 +738,7 @@ export default function ProjectCalendar({
                             {lane.department.slice(0, 2)}
                           </span>
                           <span className="truncate drop-shadow-xs font-semibold">
-                            {getCleanProjectName(group.name)}
+                            <span data-no-translate>{getCleanProjectName(group.name)}</span>
                           </span>
                           <span className="ml-auto text-[9px] bg-black/25 px-1 py-0.2 rounded font-mono shrink-0 pl-1">
                             {lane.pmPerson ? lane.pmPerson.name : 'PM 미배정'} · {percentLabel(lane.actual)}

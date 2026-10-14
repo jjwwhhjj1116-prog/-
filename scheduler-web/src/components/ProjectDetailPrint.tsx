@@ -43,7 +43,7 @@ export function ProjectDetailPrint({project,people,leaves,onClose}:{project:Proj
     </div>
     <article className="print-container bg-white text-slate-900 max-w-6xl mx-auto p-6 print:p-0">
       <h1 className="text-xl font-bold">프로젝트 상세 일정표</h1>
-      <h2 className="text-lg font-bold mt-2">[{project.code||project.id}] {project.name}</h2>
+      <h2 className="text-lg font-bold mt-2">[{project.code||project.id}] <span data-no-translate>{project.name}</span></h2>
       <p className="mt-2">{project.department} · {project.startDate} ~ {project.endDate} · {project.status}</p>
       <p>담당 PM: {pmId?personName(pmId):'미배정'}</p>
       <p>계획 {percentLabel(progress.planned)} · 실제 {percentLabel(progress.actual)}</p>
@@ -54,7 +54,7 @@ export function ProjectDetailPrint({project,people,leaves,onClose}:{project:Proj
         const [year,m]=month.split('-').map(Number);
         const days=Array.from({length:new Date(Date.UTC(year,m,0)).getUTCDate()},(_,i)=>`${month}-${String(i+1).padStart(2,'0')}`);
         return <section key={month} className="detail-calendar-month mb-6" data-calendar-month={month}>
-          <h3 className="font-bold text-base mb-2">{year}년 {m}월 · {project.name}</h3>
+          <h3 className="font-bold text-base mb-2">{year}년 {m}월 · <span data-no-translate>{project.name}</span></h3>
           <table className="w-full border-collapse table-fixed text-[10px]" aria-label={`${month} 공종별 일정 캘린더`}>
             <colgroup><col style={{width:'19%'}}/>{days.map(day=><col key={day}/>)}</colgroup>
             <thead><tr><th className="border border-slate-300 p-2 text-left bg-slate-100">공종 / 담당자 / 실제 진척률</th>{days.map(day=>{

@@ -508,7 +508,7 @@ export const DriveView: React.FC = () => {
                 className="w-full bg-slate-950 border-2 border-slate-600 rounded-lg px-3.5 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-blue-400 appearance-none cursor-pointer shadow-inner"
               >
                 {uniqueProjects.map((p) => (
-                  <option key={p.code} value={p.code} className="bg-slate-900 text-white font-bold">
+                  <option data-no-translate key={p.code} value={p.code} className="bg-slate-900 text-white font-bold">
                     [{p.code}] {p.name}
                   </option>
                 ))}
@@ -714,7 +714,7 @@ export const DriveView: React.FC = () => {
           </strong>
           <p className="text-xs font-semibold text-slate-300 max-w-xl leading-relaxed">
             파일당 최대 15GB · 중단 후 같은 파일을 다시 선택하면 재개 · FIN, DWG, PDF, Excel, 압축파일 지원<br />
-            저장 경로: <span className="text-emerald-400 font-bold">기술본부 자료실/{currentProject?.name}/{selectedMainFolder}/{selectedMainFolder !== '01.접수자료' ? `${selectedRole}/` : ''}{selectedSubtitle}</span>
+            저장 경로: <span className="text-emerald-400 font-bold">기술본부 자료실/<span data-no-translate>{currentProject?.name}</span>/{selectedMainFolder}/{selectedMainFolder !== '01.접수자료' ? `${selectedRole}/` : ''}{selectedSubtitle}</span>
           </p>
         </div>
 

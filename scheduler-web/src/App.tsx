@@ -341,7 +341,7 @@ export default function App() {
       {toastMessage && (
         <div className="fixed top-5 right-5 z-50 bg-slate-900 dark:bg-blue-600 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-slate-700 animate-fade-in">
           <CheckCircle2 size={18} className="text-emerald-400 dark:text-white" />
-          <span className="text-xs font-bold">{toastMessage}</span>
+          <span data-no-translate={projects.some(project=>project.name&&toastMessage.includes(project.name))?'':undefined} className="text-xs font-bold">{toastMessage}</span>
         </div>
       )}
 
@@ -1089,6 +1089,7 @@ export default function App() {
                   type="text"
                   required
                   placeholder="예: [강남역 역세권 청년주택] 건축 마감 수량산출"
+                  data-no-field-translate
                   value={newProjectName}
                   onChange={(e) => setNewProjectName(e.target.value)}
                   className="input-stitch w-full text-xs dark:bg-slate-700 dark:text-white dark:border-slate-600"
@@ -1195,7 +1196,7 @@ export default function App() {
                       return next;
                     })} />
                     <div className="min-w-0 flex-1">
-                      <div className="font-semibold">{row.project.code} · {row.project.name} <span className="text-blue-700 dark:text-blue-300">[{row.project.department}]</span></div>
+                      <div className="font-semibold">{row.project.code} · <span data-no-translate>{row.project.name}</span> <span className="text-blue-700 dark:text-blue-300">[{row.project.department}]</span></div>
                       <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">원본 {row.row}행 · {row.project.startDate} ~ {row.project.endDate} · 원본 진척률 {row.oldProgress===null?'미입력':`${row.oldProgress}%`}</div>
                       <div className="mt-2 text-sm text-slate-700 dark:text-slate-200">{row.assignments.join(' · ')}</div>
                       {(exists||!permitted||row.issues.length>0)&&<div className="mt-2 text-sm font-medium text-rose-700 dark:text-rose-300">

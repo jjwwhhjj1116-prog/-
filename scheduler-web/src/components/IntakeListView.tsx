@@ -343,6 +343,7 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, openInta
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
+            data-no-field-translate
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder={t.searchPlaceholder}
@@ -409,13 +410,13 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, openInta
                       {/* 프로젝트명 */}
                       <td className="py-3.5 px-4 cursor-pointer group" onClick={() => setSelectedIntake(item)}>
                         <div className="font-extrabold text-slate-900 dark:text-white group-hover:text-[#00338d] dark:group-hover:text-blue-400 flex items-center gap-1.5 transition-colors">
-                          <span className="group-hover:underline">{item.name}</span>
+                          <span data-no-translate className="group-hover:underline">{item.name}</span>
                           <span className="shrink-0 whitespace-nowrap text-[10px] bg-blue-50 dark:bg-slate-700 text-[#00338d] dark:text-blue-300 px-1.5 py-0.5 rounded font-bold border border-blue-200 dark:border-slate-600">
                             세부내용 확인
                           </span>
                         </div>
                         <div className="text-[11px] text-slate-600 mt-0.5 line-clamp-1 dark:text-slate-400">
-                          {item.rawTitle}
+                          <span data-no-translate>{item.rawTitle}</span>
                         </div>
                         {/* 연면적 및 세부 스펙 태그 */}
                         <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
@@ -538,7 +539,7 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, openInta
                 <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
                   <span className="font-mono text-[#00338d] dark:text-blue-400">{selectedIntake.code}</span>
                   <span className="text-slate-300">·</span>
-                  <span>{selectedIntake.name}</span>
+                  <span data-no-translate>{selectedIntake.name}</span>
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                   작성자: {selectedIntake.author} · 접수일: {selectedIntake.receivedDate} · 기간: {selectedIntake.startDate} ~ {selectedIntake.endDate}
@@ -633,7 +634,7 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, openInta
               )}
               {/* 원본 수주소식 타이틀 */}
               <div className="text-[11px] text-slate-400 font-mono bg-slate-100 dark:bg-slate-800 p-2.5 rounded-lg">
-                그룹웨어 원문: {selectedIntake.rawTitle}
+                그룹웨어 원문: <span data-no-translate>{selectedIntake.rawTitle}</span>
               </div>
             </div>
 

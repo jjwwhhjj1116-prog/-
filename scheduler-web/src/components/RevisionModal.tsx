@@ -59,7 +59,7 @@ export default function RevisionModal({ onClose, projectId }: RevisionModalProps
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <FileText className="text-[#bc13fe]" /> 프로젝트 수정 히스토리
             </h2>
-            <p className="text-sm text-gray-400 mt-1">{project.name}</p>
+            <p data-no-translate className="text-sm text-gray-400 mt-1">{project.name}</p>
           </div>
           <button type="button" onClick={onClose} aria-label="프로젝트 수정 이력 닫기" className="absolute top-3 right-3 p-2 text-gray-400 hover:text-white transition-colors">
             <X size={24} />

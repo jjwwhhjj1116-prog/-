@@ -10,6 +10,7 @@ type FieldPreview={id:number;text:string;label:string;multiline:boolean;scrollTo
 const protectedContent='script,style,noscript,[data-no-translate],.notranslate';
 const excluded=protectedContent+',[contenteditable]';
 const richTextbox=(element:Element)=>element.matches('[role="textbox"][contenteditable]');
+const protectedAttribute=(element:Element,name:string)=>element.getAttribute('data-no-translate-attrs')?.split(/\s+/).includes(name);
 const fieldValue=(field:HTMLElement)=>field instanceof HTMLInputElement||field instanceof HTMLTextAreaElement?field.value:field.innerText;
 
 // Preserve React's text nodes and controlled values. Replacing/wrapping nodes would break reconciliation.
@@ -101,13 +102,18 @@ export function VietnameseTranslation(){
         if(element.closest(protectedContent)||(!richTextbox(element)&&element.closest('[contenteditable]')))continue;
         const names=['title','placeholder','aria-label',...((element instanceof HTMLInputElement&&['button','submit'].includes(element.type))?['value']:[])];
         for(const name of names){const value=element.getAttribute(name);if(value===null)continue;
+          if(protectedAttribute(element,name)){
+            const previous=attrs.get(element)?.get(name);
+            if(previous&&value===previous.shown&&value!==previous.source)element.setAttribute(name,previous.source);
+            attrs.get(element)?.delete(name);continue;
+          }
           let records=attrs.get(element);if(!records){records=new Map();attrs.set(element,records);}
           let record=records.get(name);if(record&&value!==record.shown){record={source:value,shown:value};records.set(name,record);}
           const source=record?.source??value;
           if(!isVietnamese(element)){if(record&&value===record.shown){record.shown=source;if(value!==source)element.setAttribute(name,source);}continue;}
           if(!permitted(source,element))continue;
           if(!record){record={source,shown:source};records.set(name,record);}
-          const current=record;request(source,result=>{if(element.isConnected&&isVietnamese(element)&&records!.get(name)===current&&element.getAttribute(name)===current.shown){current.shown=result;if(element.getAttribute(name)!==result)element.setAttribute(name,result);}});
+          const current=record;request(source,result=>{if(element.isConnected&&isVietnamese(element)&&!protectedAttribute(element,name)&&records!.get(name)===current&&element.getAttribute(name)===current.shown){current.shown=result;if(element.getAttribute(name)!==result)element.setAttribute(name,result);}});
         }
       }
       for(const field of root!.querySelectorAll<HTMLElement>('textarea,input[type="text"],input:not([type]),[role="textbox"][contenteditable]')){
@@ -125,7 +131,7 @@ export function VietnameseTranslation(){
     }
     function schedule(){if(!frame&&!disposed)frame=requestAnimationFrame(scan);}
     const observer=new MutationObserver(schedule);
-    observer.observe(root,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['title','placeholder','aria-label','value','class','style','hidden','contenteditable','data-translation-language']});
+    observer.observe(root,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['title','placeholder','aria-label','value','class','style','hidden','contenteditable','data-translation-language','data-no-translate-attrs']});
     for(const event of ['input','change','focusin','focusout','scroll'])document.addEventListener(event,schedule,true);
     window.addEventListener('resize',schedule);schedule();
     const unregister=registerTranslationPreparation(async()=>{

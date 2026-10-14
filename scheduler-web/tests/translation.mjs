@@ -48,6 +48,13 @@ try{
  useLanguageStore.setState({lang:'ko'});assert.equal(await translateWorkbook(source),source);
  assert.equal((await translateWorkbook(source,'vi')).Sheets['회의록'].A1.v,translated.Sheets['회의록'].A1.v);
  assert.deepEqual(source,before);console.log('PASS explicit export language overrides screen language without changing the original workbook');
+ const koreanProject='[합성 발주처] 아산병원 P동 주차장 증축공사';
+ const projectWorkbook={SheetNames:['일정표'],Sheets:{'일정표':{A1:{t:'s',v:koreanProject},A2:{t:'s',v:`프로젝트 · ${koreanProject}`},B1:{t:'s',v:'개인별 일정 보호 합성106'}}}};
+ const projectOriginal=structuredClone(projectWorkbook),requestCount=clientCalls;
+ const projectExport=await translateWorkbook(projectWorkbook,'vi',[koreanProject]);
+ assert.equal(projectExport.Sheets['일정표'].A1.v,koreanProject);assert.equal(projectExport.Sheets['일정표'].A2.v,projectOriginal.Sheets['일정표'].A2.v);
+ assert.ok(projectExport.Sheets['일정표'].B1.v.startsWith('Dịch:'));assert.equal(clientCalls,requestCount+1);assert.deepEqual(projectWorkbook,projectOriginal);
+ console.log('PASS Vietnamese workbook keeps Korean project names and combined project headings exact while translating other labels without mutating original');
  globalThis.fetch=async()=>new Response(null,{status:503});await assert.rejects(translateText('실패를 성공으로 보고하지 않는 새 합성 52'));
  const {useAuthStore}=await server.ssrLoadModule('/src/store/useAuthStore.ts');
  const staff=useAuthStore.getState().users.find(u=>u.name==='서화원');assert.ok(staff);
@@ -79,6 +86,9 @@ try{
   try{
    useAuthStore.setState({currentUser:a});globalThis.fetch=async(_url,init)=>Response.json({results:JSON.parse(init.body).texts.map(text=>({translatedText:'Dịch: '+text}))});
    const count=dialogs.length;assert.equal(await translatedConfirm('현재 계정 정상 확인창 합성81'),true);await translatedAlert('현재 계정 정상 알림 합성81');assert.equal(dialogs.length,count+2);
+   assert.equal(await translatedConfirm(koreanProject+'\n기록을 보존할까요?', [koreanProject]),true);
+   assert.ok(dialogs.at(-1).text.startsWith(koreanProject+'\nDịch: '),'Project identity remains Korean while the confirmation instruction translates');
+   console.log('PASS project-name confirmation preserves Korean identity while translating the instruction');
    const sameActor=useAuthStore.getState().currentUser;useAuthStore.setState({loginError:'합성 독립 오류'});assert.equal(useAuthStore.getState().currentUser,sameActor);assert.equal(await translatedConfirm('현재 계정 정상 확인창 합성81'),true,'Cached translation and unrelated store updates keep valid confirmations');
    let followedUp=false;const cached=translatedConfirm('현재 계정 정상 확인창 합성81').then(accepted=>{if(accepted)followedUp=true;});useAuthStore.setState({currentUser:{...a}});await cached;assert.equal(followedUp,false,'Cached response must not let an old-session caller perform a follow-up write');
    useLanguageStore.setState({lang:'ko'});useAuthStore.setState({currentUser:a});assert.equal(await translatedConfirm('한국어 정상 확인창 합성81'),true);

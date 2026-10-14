@@ -115,7 +115,7 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
                 </span>
               </div>
 
-              <h2 className="text-xl md:text-2xl font-black text-white tracking-tight leading-snug">
+              <h2 data-no-translate className="text-xl md:text-2xl font-black text-white tracking-tight leading-snug">
                 {baseProject.name}
               </h2>
             </div>

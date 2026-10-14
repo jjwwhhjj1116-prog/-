@@ -282,7 +282,9 @@ export function buildProjectRangeWorkbook(projects: Project[], personnel: Person
 
 export async function exportProjectsToExcel(projects: Project[], personnel: Person[], targetDate = new Date(), monthCount = 1, department: Department | 'ALL' = 'ALL', language: 'ko'|'vi' = useLanguageStore.getState().lang) {
   try {
-    const workbook=await translateWorkbook(buildProjectRangeWorkbook(projects, personnel, targetDate, monthCount, usePersonalStore.getState().leaves, department),language);
+    // Project identities stay Korean in both full detail and shortened timeline cells.
+    const projectNames=projects.flatMap(project=>[project.name,project.name.replace(/^\[.*?\]\s*/, '').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim()]);
+    const workbook=await translateWorkbook(buildProjectRangeWorkbook(projects, personnel, targetDate, monthCount, usePersonalStore.getState().leaves, department),language,projectNames);
     XLSX.writeFile(workbook, `CONCOST_${language==='vi'?'Lich_trinh':'일정표'}_${targetDate.getFullYear()}-${targetDate.getMonth()+1}_${monthCount}${language==='vi'?'thang':'개월'}.xlsx`);
     return true;
   }catch{void translatedAlert('엑셀 번역을 완료하지 못했습니다. 다시 시도하거나 한국어로 전환해 주세요.');return false;}

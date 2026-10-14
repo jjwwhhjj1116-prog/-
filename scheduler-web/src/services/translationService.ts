@@ -75,13 +75,13 @@ export async function translateText(text:string):Promise<string>{
   queueMicrotask(()=>void drain());return promise;
 }
 
-export async function translateWorkbook(workbook:WorkBook,language:Language=useLanguageStore.getState().lang):Promise<WorkBook>{
+export async function translateWorkbook(workbook:WorkBook,language:Language=useLanguageStore.getState().lang,preservedTexts:readonly string[]=[]):Promise<WorkBook>{
   if(language!=='vi')return workbook;
   // Translate a copy of visible cells; formulas, numeric/date cells and restoration JSON remain exact.
   const copy=structuredClone(workbook);
   const cells:CellObject[]=[];
   for(const name of copy.SheetNames){if(name==='복원데이터')continue;
-    for(const [key,cell] of Object.entries(copy.Sheets[name]))if(!key.startsWith('!')&&cell.t==='s'&&!cell.f&&typeof cell.v==='string'&&needsTranslation(cell.v))cells.push(cell);
+    for(const [key,cell] of Object.entries(copy.Sheets[name]))if(!key.startsWith('!')&&cell.t==='s'&&!cell.f&&typeof cell.v==='string'&&needsTranslation(cell.v)&&!preservedTexts.some(text=>text.trim()&&String(cell.v).includes(text.trim())))cells.push(cell);
   }
   const values=await Promise.all(cells.map(cell=>translateText(String(cell.v))));
   cells.forEach((cell,i)=>{cell.v=values[i];delete cell.w;});
@@ -95,9 +95,9 @@ export async function translatedAlert(text:string){
   if(actor!==useAuthStore.getState().currentUser)return;
   window.alert(value);
 }
-export async function translatedConfirm(text:string){
+export async function translatedConfirm(text:string,preservedTexts:readonly string[]=[]){
   const actor=useAuthStore.getState().currentUser;
-  const value=useLanguageStore.getState().lang==='vi'?await translateText(text).catch(()=>text):text;
+  const value=useLanguageStore.getState().lang==='vi'?await Promise.all(text.split('\n').map(line=>preservedTexts.some(name=>name.trim()&&line.includes(name.trim()))?line:translateText(line).catch(()=>line))).then(lines=>lines.join('\n')):text;
   if(actor!==useAuthStore.getState().currentUser)return false;
   return window.confirm(value);
 }

@@ -522,7 +522,7 @@ export default function ProjectModal({ projectId, onClose, onOpenInquiries }: Pr
             <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
               <span className="font-mono text-[#00338d] dark:text-blue-400">{project.code}</span>
               <span className="text-slate-300">·</span>
-              <span>{project.name}</span>
+              <span data-no-translate>{project.name}</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               좌측에서 공종을 선택하고, 우측의 실시간 가용성 및 중복 일정 간트를 확인하여 원클릭으로 최적의 인원을 배정합니다.
@@ -1173,7 +1173,7 @@ export default function ProjectModal({ projectId, onClose, onOpenInquiries }: Pr
                         {unit.overlaps.map((group) => (
                           <details key={group.id} data-availability-project={group.kind === 'project' ? group.id.slice(8) : undefined} className="border-b border-slate-200 py-1.5 last:border-b-0 dark:border-slate-700">
                             <summary className="cursor-pointer rounded text-xs text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 dark:text-slate-200">
-                              <span className="font-bold break-words">{group.projectName}</span>
+                              <span data-no-translate={group.kind==='project'?'':undefined} className="font-bold break-words">{group.projectName}</span>
                               <span className="mt-0.5 block pl-4 text-[11px] tabular-nums text-slate-600 dark:text-slate-300">{availabilityDates(group.periods)}</span>
                               {group.kind === 'project' && <span className="block pl-4 text-[11px] text-slate-600 dark:text-slate-300">{group.roles.map(role => role.name).join(' · ')} · 공종별 기간 보기</span>}
                             </summary>

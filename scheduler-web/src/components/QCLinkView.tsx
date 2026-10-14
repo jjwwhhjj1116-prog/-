@@ -78,7 +78,7 @@ export const QCLinkView: React.FC = () => {
             검토할 프로젝트
             <select aria-label="검토할 프로젝트" disabled={!ready} value={selectedCode} onChange={event => { const project = availableProjects.find(project => project.code === event.target.value); setSelection(user && ready && project ? { actor: user, code: project.code, round: project.round } : null); }} className="mt-2 w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 disabled:opacity-60">
               <option value="">{ready ? '프로젝트를 선택하세요' : '프로젝트 목록을 불러오고 있습니다'}</option>
-              {ready && availableProjects.map(project => <option key={project.code} value={project.code}>{project.code} · {project.name}</option>)}
+              {ready && availableProjects.map(project => <option data-no-translate key={project.code} value={project.code}>{project.code} · {project.name}</option>)}
             </select>
           </label>
           {selectedProject && <label className="block mb-3 text-left text-sm font-semibold text-slate-200">

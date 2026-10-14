@@ -85,7 +85,7 @@ export default function StartProjectModal({ onClose, projectId }: StartProjectMo
         
         <form onSubmit={handleSubmit} className="p-6">
           <div className="mb-6 bg-[rgba(0,0,0,0.3)] p-4 rounded-xl border border-gray-800">
-            <h3 className="text-lg font-bold text-white mb-2">{project.name}</h3>
+            <h3 data-no-translate className="text-lg font-bold text-white mb-2">{project.name}</h3>
             <p className="text-sm text-gray-400">
               총괄 일정: {project.startDate} ~ {project.endDate} | 배정 부서: <span className="text-primary font-bold">{project.department}</span>
             </p>

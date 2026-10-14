@@ -58,6 +58,19 @@ try {
     assert.deepEqual(project, snapshot);
     return { shownPM: owner.name, sourcePMDays: 4, clearedMemberHidden: true, emptyAllocationTaskCount: 0 };
   });
+  await check('프로젝트명 한국어 고정: 실제 통합·인쇄·QC 선택·질의·업무일지 SSR 보호, 일반 라벨 유지', async()=>{
+    const {useStudioStore:studio}=await server.ssrLoadModule('/src/store/useStudioStore.ts');
+    const {useLanguageStore:language}=await server.ssrLoadModule('/src/store/useLanguageStore.ts');
+    const {QCLinkView}=await server.ssrLoadModule('/src/components/QCLinkView.tsx');
+    const {ProjectInquiries}=await server.ssrLoadModule('/src/components/ProjectInquiries.tsx');
+    const {WorkLogProjectSummary}=await server.ssrLoadModule('/src/components/WorkLogReporting.tsx');
+    state(studio,{ready:true,actorId:owner.id});state(language,{lang:'vi'});
+    const protectedNames=html=>[...html.matchAll(/<([a-z][\w-]*)\b[^>]*\bdata-no-translate(?:="[^"]*")?[^>]*>([^<]*)<\/\1>/g)].map(match=>match[2]);
+    const cases=[['integrated',ProjectIntegratedModal,{projectCode:project.code,onClose(){}}],['detail-print',ProjectDetailPrint,{project,people,leaves:[],onClose(){}}],['QC-select',QCLinkView,{}],['inquiries',ProjectInquiries,{department:project.department,initialProjectId:project.id}],['worklog-summary',WorkLogProjectSummary,{project,logs:[],date:'2026-09-09'}]];
+    for(const [name,Component,props]of cases){const html=renderToStaticMarkup(createElement(Component,props)),protectedText=protectedNames(html);assert.ok(protectedText.some(text=>text.includes(project.name)),name+' projectname must be excluded from VI translation');assert.ok(!protectedText.some(text=>text==='프로젝트 상세 일정표'||text==='프로젝트 질의사항'||text==='전체 프로젝트 진행률'),name+' general labels stay translatable');}
+    state(language,{lang:'ko'});assert.deepEqual(project,snapshot);
+    return {surfaces:cases.map(([name])=>name),language:'vi',projectName:project.name,originalProjectUnchanged:true};
+  });
   await check('실제 Excel 월간·범위 workbook roundtrip: canonical PM 열 표시와 복원 원문 보존', () => {
     for (const workbook of [buildProjectsWorkbook([project],people,new Date(2026,8,1)),buildProjectRangeWorkbook([project],people,new Date(2026,8,1),3,[])]) {
       const saved = XLSX.read(XLSX.write(workbook,{type:'buffer',bookType:'xlsx'}),{type:'buffer'});

@@ -16,14 +16,14 @@ export function ProjectArchive(){
  const archived=archivedProjects.filter(p=>canManageSchedule(user,p.department,false));
  if(!available.length&&!archived.length)return null;
  async function act(project:Project,restore:boolean){
-  if(!restore&&!await translatedConfirm(`${project.name}\n활성 일정·할 일에서 제외하고 기록을 보존할까요? 업무일지·회의록·Drive 자료는 유지되며 복원할 수 있습니다.`))return;
+  if(!restore&&!await translatedConfirm(`${project.name}\n활성 일정·할 일에서 제외하고 기록을 보존할까요? 업무일지·회의록·Drive 자료는 유지되며 복원할 수 있습니다.`,[project.name]))return;
   setBusy(true);setError('');try{await changeProjectLifecycle(project,restore);setSelection('');}catch(e){setError(e instanceof Error?e.message:'처리 실패');}finally{setBusy(false);}
  }
  return <details className={panel}><summary className="cursor-pointer font-bold">프로젝트 정리·복원 · 기록 보존</summary>
   <p className="text-sm my-2">종료된 프로젝트를 활성 일정과 할 일에서 제외합니다. 작성된 일지·회의록·Drive 파일은 보존됩니다.</p>
-  <select aria-label="정리할 프로젝트" className="border rounded p-2 bg-white dark:bg-slate-800 max-w-full" value={selection} onChange={e=>setSelection(e.target.value)}><option value="">프로젝트 선택</option>{available.map(p=><option key={p.id} value={p.id}>{p.code} · {p.name} · {p.department}</option>)}</select>
+  <select aria-label="정리할 프로젝트" className="border rounded p-2 bg-white dark:bg-slate-800 max-w-full" value={selection} onChange={e=>setSelection(e.target.value)}><option value="">프로젝트 선택</option>{available.map(p=><option data-no-translate key={p.id} value={p.id}>{p.code} · {p.name} · {p.department}</option>)}</select>
   <button className="border rounded px-3 py-2 ml-2 disabled:opacity-50" disabled={!selection||busy||!ready||!!pending||conflict} onClick={()=>void act(available.find(p=>p.id===selection)!,false)}>정리하여 보관</button>
-  <p className="text-sm my-2">보관된 프로젝트 {archived.length}건</p>{archived.map(p=><div key={p.id} className="flex gap-3 items-center py-1"><span>{p.code} · {p.name} · {p.department}</span><button className="border rounded px-2 shrink-0 disabled:opacity-50" disabled={busy||!ready||!!pending||conflict} onClick={()=>void act(p,true)}>복원</button></div>)}
+  <p className="text-sm my-2">보관된 프로젝트 {archived.length}건</p>{archived.map(p=><div key={p.id} className="flex gap-3 items-center py-1"><span>{p.code} · <span data-no-translate>{p.name}</span> · {p.department}</span><button className="border rounded px-2 shrink-0 disabled:opacity-50" disabled={busy||!ready||!!pending||conflict} onClick={()=>void act(p,true)}>복원</button></div>)}
   {!!pending&&<p>변경 전송이 끝난 뒤 정리할 수 있습니다.</p>}{error&&<p role="alert" className="text-red-700 dark:text-red-300">{error}</p>}
  </details>;
 }
@@ -42,7 +42,7 @@ export function LegacyWorkLogArchive(){
   {!local.length&&<p className="text-sm">이 PC에서 보존할 본인 기존 기록이 없습니다.</p>}
   <button className="my-2 border rounded px-3 py-1 disabled:opacity-50" disabled={!ready||busy||!selected.length} onClick={()=>void save()}>선택 {selected.length}건 원본 보관</button>
   <p className="font-bold">중앙 보관 {records.length}건 · 읽기 전용</p>
-  {records.map(({id,source})=><details key={id} className="border-t mt-2 pt-2"><summary>{source.date} · {source.userName} · 당시 상태 {statusLabel(source.approvalStatus)}</summary>{source.items.map((item,i)=><div key={i} className="whitespace-pre-wrap my-2"><strong>{item.projectName} · {item.roleName}</strong><p>{item.todayTask}</p><p>진척률 {item.progress}% · 다음 업무 {item.tomorrowPlan}</p><p>{item.notes}</p></div>)}<p className="whitespace-pre-wrap">{source.overallNotes}</p></details>)}
+  {records.map(({id,source})=><details key={id} className="border-t mt-2 pt-2"><summary>{source.date} · {source.userName} · 당시 상태 {statusLabel(source.approvalStatus)}</summary>{source.items.map((item,i)=><div key={i} className="whitespace-pre-wrap my-2"><strong><span data-no-translate>{item.projectName}</span> · {item.roleName}</strong><p>{item.todayTask}</p><p>진척률 {item.progress}% · 다음 업무 {item.tomorrowPlan}</p><p>{item.notes}</p></div>)}<p className="whitespace-pre-wrap">{source.overallNotes}</p></details>)}
   {error&&<p role="alert" className="text-red-700 dark:text-red-300">{error}</p>}
  </details>;
 }
