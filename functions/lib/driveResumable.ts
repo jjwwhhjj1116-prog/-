@@ -6,7 +6,7 @@ const hex=(b:ArrayBuffer)=>Array.from(new Uint8Array(b),v=>v.toString(16).padSta
 const googleFetch=(url:string,init:RequestInit={})=>fetch(url,{...init,signal:AbortSignal.timeout(60000)});
 const fail=(message:string,status=400)=>json({error:message},status);
 const googleError=(status:number)=>fail(status===403?'Google Drive 용량 또는 접근 권한을 확인하세요.':'Drive 연결 오류입니다. 같은 파일을 다시 선택하면 확인된 위치부터 재개합니다.',502);
-type Dependencies={token:()=>Promise<string|null>;folder:(data:any)=>Promise<{folderId:string}>};
+type Dependencies={token:()=>Promise<string|null>;folder:(data:any)=>Promise<{folderId:string;folderPath?:string}>};
 export async function resumableUpload(request:Request,DB:D1Database,user:{id:string;name:string},deps:Dependencies){
  const url=new URL(request.url),path=url.pathname.split('/uploads')[1];
  const token=await deps.token();if(!token)return fail('회사 Google Drive 연결이 필요합니다.',503);
@@ -19,6 +19,8 @@ export async function resumableUpload(request:Request,DB:D1Database,user:{id:str
   if(!Array.isArray(m.hashes)||m.hashes.length!==Math.ceil(m.byteSize/CHUNK_BYTES)||m.hashes.some((h:unknown)=>typeof h!=='string'||!/^[a-f0-9]{64}$/.test(h)))return fail('파일 조각 검증 정보가 올바르지 않습니다.');
   m.mimeType=typeof m.mimeType==='string'&&/^[\w.+-]+\/[\w.+-]+$/.test(m.mimeType)?m.mimeType:'application/octet-stream';
   m.uploadedBy=user.name;
+  m.uploadedAt=new Date().toISOString();
+  delete m.driveFolderId;delete m.driveFolderPath;
   const key=hex(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([m.projectCode,m.mainFolder,m.roleName,m.category,m.originalName,m.byteSize,m.hashes]))));
   let row=await DB.prepare('SELECT * FROM studio_drive_uploads WHERE user_id=? AND resume_key=?').bind(user.id,key).first<any>();
   if(!row){
@@ -41,10 +43,11 @@ export async function resumableUpload(request:Request,DB:D1Database,user:{id:str
   const m=JSON.parse(row.metadata);
   const result=()=>json({id,offset:row.offset,completed:!!row.completed});
   async function finish(){
-   const response=await googleFetch(`https://www.googleapis.com/drive/v3/files/${row.google_id}?fields=id,size,sha256Checksum,trashed`,{headers:auth});
+   const response=await googleFetch(`https://www.googleapis.com/drive/v3/files/${row.google_id}?fields=id,size,sha256Checksum,trashed,parents`,{headers:auth});
    if(response.status===404)return null;
    if(!response.ok)throw new Error('Google 파일 확인 실패');
    const f:any=await response.json();
+   if(m.driveFolderId&&!f.parents?.includes(m.driveFolderId))return fail('Drive 보관 위치가 변경되었습니다. 원본 위치를 확인하세요.',409);
    const registered=await DB.prepare('SELECT byte_size,sha256 FROM drive_evidence WHERE id=?').bind(id).first<any>();
    if(registered&&(f.trashed||Number(f.size)!==Number(registered.byte_size)||String(f.sha256Checksum||'').toLowerCase()!==String(registered.sha256||'').toLowerCase()))return fail('기존 Drive 원본을 확인하세요.',409);
    if(f.trashed||Number(f.size)!==m.byteSize||!/^[a-f0-9]{64}$/i.test(f.sha256Checksum||''))return null;
@@ -71,7 +74,11 @@ export async function resumableUpload(request:Request,DB:D1Database,user:{id:str
   }
   if(!row.session_url){
    const done=await finish();if(done)return done;
-   const folder=await deps.folder(m);
+   const folder=await deps.folder({...m,uploadedAt:m.uploadedAt||row.created_at});
+   if(folder.folderPath){
+    m.driveFolderId=folder.folderId;m.driveFolderPath=folder.folderPath;
+    await DB.prepare('UPDATE studio_drive_uploads SET metadata=? WHERE id=?').bind(JSON.stringify(m),id).run();
+   }
    const start=await googleFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,size,sha256Checksum',{method:'POST',headers:{...auth,'Content-Type':'application/json','X-Upload-Content-Type':m.mimeType,'X-Upload-Content-Length':String(m.byteSize)},body:JSON.stringify({id:row.google_id,name:m.originalName,parents:[folder.folderId]})});
    if(!start.ok)return googleError(start.status);
    const location=start.headers.get('Location');

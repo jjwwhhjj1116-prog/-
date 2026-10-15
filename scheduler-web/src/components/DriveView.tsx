@@ -24,7 +24,6 @@ import {
   Search,
   CheckCircle2,
   Download,
-  ExternalLink,
   FolderOpen,
   Clock,
   User,
@@ -93,6 +92,10 @@ export const DriveView: React.FC = () => {
   const [pendingDeleteFile, setPendingDeleteFile] = useState<TechVaultFile | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const downloadingFiles = useRef(new Set<string>());
+  const [downloadingIds, setDownloadingIds] = useState<string[]>([]);
+  const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   // 업로드 상태
   const uploadController=useRef<AbortController|null>(null);
@@ -107,6 +110,7 @@ export const DriveView: React.FC = () => {
   // 회사 Google Drive 서버 연동 상태
   const [isDriveConnected, setIsDriveConnected] = useState<boolean>(false);
   const [driveStatus, setDriveStatus] = useState('CHECKING');
+  const [driveCompanyEmail, setDriveCompanyEmail] = useState<string | null>(null);
   const [driveQuota, setDriveQuota] = useState<{limit?: string; usage?: string} | null>(null);
 
   useEffect(() => {
@@ -118,13 +122,16 @@ export const DriveView: React.FC = () => {
       .then((data: any) => {
         if (data && typeof data.connected === 'boolean') {
           setIsDriveConnected(data.connected);
-          setDriveStatus(data.status);
+          setDriveStatus(data.status || (data.connected ? 'CONNECTED' : 'DISCONNECTED'));
+          setDriveCompanyEmail(typeof data.companyEmail === 'string' ? data.companyEmail : null);
           setDriveQuota(data.storageQuota || null);
         } else throw new Error('Drive 연결 상태 응답 오류');
       })
       .catch(() => {
         setIsDriveConnected(false);
         setDriveStatus('UNAVAILABLE');
+        setDriveCompanyEmail(null);
+        setDriveQuota(null);
       });
   }, []);
 
@@ -197,9 +204,9 @@ export const DriveView: React.FC = () => {
     setIsSyncingFolders(true);
     setSyncNotice(null);
     try {
-      const res = await ensureProjectFolders(currentProject.code, currentProject.name);
+      const res = await ensureProjectFolders(currentProject.code, currentProject.name, {mainFolder: selectedMainFolder, subtitle: selectedSubtitle});
       if (res.success) {
-        setSyncNotice(`Google Drive에 기술본부 자료실 계층 폴더가 완벽히 준비되었습니다.`);
+        setSyncNotice(`저장 폴더를 확인했습니다. ${res.folderPath || `${selectedMainFolder} > ${selectedSubtitle} > 업로더_날짜`}`);
         setTimeout(() => setSyncNotice(null), 5000);
       } else {
         setSyncNotice(`폴더 동기화 안내: ${res.message}`);
@@ -209,6 +216,23 @@ export const DriveView: React.FC = () => {
       console.error('Failed to sync folders:', err);
     } finally {
       setIsSyncingFolders(false);
+    }
+  };
+
+  const handleDownloadFile = async (file: TechVaultFile) => {
+    if (downloadingFiles.current.has(file.id)) return;
+    downloadingFiles.current.add(file.id);
+    setDownloadingIds([...downloadingFiles.current]);
+    setDownloadError(null);
+    setDownloadNotice(null);
+    try {
+      await downloadVaultFile(file);
+      setDownloadNotice(`${file.originalName} 다운로드를 시작했습니다. 브라우저의 다운로드 목록에서 진행 상태를 확인하세요.`);
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : '다운로드 준비에 실패했습니다.');
+    } finally {
+      downloadingFiles.current.delete(file.id);
+      setDownloadingIds([...downloadingFiles.current]);
     }
   };
 
@@ -278,7 +302,7 @@ export const DriveView: React.FC = () => {
     if (!filesToUpload.length || !selectedProjectCode || uploadController.current) return;
 
     if (!isDriveConnected) {
-      setUploadError('회사 Google Drive 계정이 아직 연동되지 않았습니다. [설정] 메뉴에서 관리자가 회사 계정(concost.dt@gmail.com) 1회 연동을 먼저 완료해야 구글 드라이브에 실제 적재됩니다.');
+      setUploadError('회사 Google Drive 연결을 확인하지 못했습니다. 관리자가 [설정]에서 저장 계정 연결을 확인해야 업로드할 수 있습니다.');
       return;
     }
 
@@ -288,6 +312,7 @@ export const DriveView: React.FC = () => {
     setUploadError(null);
 
     let successCount = 0;
+    let lastStoragePath: string | undefined;
     const userName = currentUser?.name || '사용자';
     const projectName = currentProject ? `[${currentProject.code}] ${currentProject.name}` : selectedProjectCode;
 
@@ -309,6 +334,7 @@ export const DriveView: React.FC = () => {
           setAllFiles((prev) => [uploaded, ...prev.filter(f=>f.id!==uploaded.id)]);
         }
         successCount++;
+        lastStoragePath = uploaded.storagePath;
       } catch (err: any) {
         if(controller.signal.aborted){setUploadError('전송을 일시 중지했습니다. 같은 폴더에서 같은 파일을 다시 선택하면 이어서 전송합니다.');break;}
         setUploadError(err.message || `${file.name} 업로드 실패`);
@@ -318,7 +344,7 @@ export const DriveView: React.FC = () => {
     uploadController.current=null;setUploadProgress(null);
     setIsUploading(false);
     if (successCount > 0) {
-      setUploadNotice(`${successCount}개 파일이 Google Drive [${selectedProjectCode} · ${selectedMainFolder} > ${selectedSubtitle}] 폴더에 안전 저장되었습니다.`);
+      setUploadNotice(`${successCount}개 파일을 회사 Google Drive에 저장했습니다. 저장 폴더: ${lastStoragePath || `[${selectedProjectCode}] > ${selectedMainFolder} > ${selectedSubtitle} > 업로더_날짜`}`);
       setTimeout(() => setUploadNotice(null), 5000);
     }
     if (fileInputRef.current) {
@@ -354,7 +380,9 @@ export const DriveView: React.FC = () => {
   return (
     <div className="space-y-5 animate-fadeIn pb-12">
       {listError&&<p role="status" className="rounded-lg bg-amber-100 text-amber-950 p-3">{listError}</p>}
-      {allFiles.some(f=>!f.mainFolder)&&<section className="rounded-lg border border-amber-500 bg-amber-50 text-amber-950 p-3"><h3 className="font-bold">기존 파일 · 분류 미확인</h3><p className="text-sm">이전 저장본에는 팀·공종 분류가 없습니다. 원본은 유지되며 아래에서 다운로드할 수 있습니다.</p>{allFiles.filter(f=>!f.mainFolder).map(f=><button key={f.id} className="block underline text-sm mt-2" onClick={()=>void downloadVaultFile(f).catch(e=>setUploadError(String(e)))}>{f.originalName}</button>)}</section>}
+      {allFiles.some(f=>!f.mainFolder)&&<section className="rounded-lg border border-amber-500 bg-amber-50 text-amber-950 p-3"><h3 className="font-bold">기존 파일 · 분류 미확인</h3><p className="text-sm">이전 저장본에는 팀·공종 분류가 없습니다. 원본은 유지되며 스튜디오 권한으로 다운로드할 수 있습니다.</p>{allFiles.filter(f=>!f.mainFolder).map(f=><button key={f.id} type="button" disabled={downloadingIds.includes(f.id)} className="block underline text-sm mt-2 disabled:opacity-50" onClick={()=>void handleDownloadFile(f)}>{downloadingIds.includes(f.id) ? '다운로드 준비 중…' : `${f.originalName} · 스튜디오 권한으로 다운로드`}</button>)}</section>}
+      {downloadNotice && <p role="status" className="rounded-lg bg-emerald-100 text-emerald-950 p-3 text-sm">{downloadNotice}</p>}
+      {downloadError && <p role="alert" className="rounded-lg bg-rose-100 text-rose-950 p-3 text-sm">{downloadError}</p>}
       {/* 1. 상단 컴팩트 헤더 바 (회사 Google Drive 계정 통합 연동 상태 표시) */}
       <div className="bg-slate-900 border-2 border-slate-800 rounded-xl px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
         <div className="flex items-center gap-3">
@@ -369,7 +397,7 @@ export const DriveView: React.FC = () => {
               {isDriveConnected ? (
                 <span className="inline-flex items-center gap-1.5 text-[11px] font-black text-emerald-400 bg-emerald-950/80 px-2.5 py-0.5 rounded-full border border-emerald-500/40">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  회사 계정 연동됨 (Google Drive)
+                  {driveCompanyEmail ? `저장 계정: ${driveCompanyEmail}` : '저장 계정 연결됨 · 계정 정보 확인 필요'}
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 text-[11px] font-black text-amber-400 bg-amber-950/80 px-2.5 py-0.5 rounded-full border border-amber-500/40">
@@ -378,13 +406,14 @@ export const DriveView: React.FC = () => {
                 </span>
               )}
               <span className="text-[11px] text-slate-400 font-medium hidden md:inline">
-                · 회사 공용 계정 · 프로젝트별 원본 보관
+                · 프로젝트별 원본 보관
                 {driveQuota?.limit != null && driveQuota.usage != null && <> · 계정 잔여 {formatBytes(Math.max(0, Number(driveQuota.limit) - Number(driveQuota.usage)))} / 전체 {formatBytes(Number(driveQuota.limit))}</>}
               </span>
             </div>
             <p className="text-xs font-semibold text-slate-300 mt-0.5">
-              기술본부 자료실 &gt; [{currentProject?.code}] &gt; <span className="text-amber-400 font-bold">{selectedMainFolder}</span> {selectedMainFolder !== '01.접수자료' && <>&gt; <span className="text-emerald-400 font-bold">{selectedRole}</span></>} &gt; <span className="text-white font-bold underline">{selectedSubtitle}</span>
+              기술본부 자료실 &gt; [{currentProject?.code}] &gt; <span className="text-amber-400 font-bold">{selectedMainFolder}</span> &gt; <span className="text-white font-bold">{selectedSubtitle}</span> &gt; 업로더_날짜
             </p>
+            <p className="text-xs text-slate-300 mt-1">회원은 Google 계정 없이 스튜디오에서 업로드·다운로드합니다.{selectedMainFolder !== '01.접수자료' && <> 현재 조회 공종: {selectedRole} · 공종은 파일 분류이며 Drive 하위 폴더가 아닙니다.</>}</p>
           </div>
         </div>
 
@@ -394,26 +423,12 @@ export const DriveView: React.FC = () => {
             disabled={isSyncingFolders || !isDriveConnected}
             onClick={handleSyncFolders}
             className="px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 text-xs font-black border border-blue-500/50 flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer shadow-sm"
-            title="선택된 프로젝트의 기술본부 자료실 4~5단계 계층 폴더를 Google Drive에 즉시 생성/확인합니다"
+            title="선택한 프로젝트·자료 분류·업로더 날짜의 저장 폴더를 확인합니다"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncingFolders ? 'animate-spin' : ''}`} />
             <span>{isSyncingFolders ? 'Drive 동기화 중...' : 'Drive 폴더 즉시생성/확인'}</span>
           </button>
 
-          <a
-            href="https://drive.google.com/drive/my-drive"
-            target="_blank"
-            rel="noreferrer"
-            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-black border border-slate-600 flex items-center gap-1.5 transition-colors"
-          >
-            <ExternalLink className="w-3.5 h-3.5 text-slate-300" />
-            <span>Google Drive 열기</span>
-          </a>
-
-          <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/30 flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            계층 폴더 실연동
-          </span>
         </div>
       </div>
 
@@ -714,7 +729,8 @@ export const DriveView: React.FC = () => {
           </strong>
           <p className="text-xs font-semibold text-slate-300 max-w-xl leading-relaxed">
             파일당 최대 15GB · 중단 후 같은 파일을 다시 선택하면 재개 · FIN, DWG, PDF, Excel, 압축파일 지원<br />
-            저장 경로: <span className="text-emerald-400 font-bold">기술본부 자료실/<span data-no-translate>{currentProject?.name}</span>/{selectedMainFolder}/{selectedMainFolder !== '01.접수자료' ? `${selectedRole}/` : ''}{selectedSubtitle}</span>
+            새 파일 저장 경로: <span className="text-emerald-400 font-bold">기술본부 자료실/[{currentProject?.code}] <span data-no-translate>{currentProject?.name}</span>/{selectedMainFolder}/{selectedSubtitle}/업로더_날짜</span><br />
+            업로드한 회원 이름과 서버 기준 날짜로 폴더가 생성됩니다. 기존 자료는 원래 위치에서 유지됩니다.
           </p>
         </div>
 
@@ -814,6 +830,7 @@ export const DriveView: React.FC = () => {
                     <strong className="block text-sm font-black text-white truncate max-w-lg" title={file.originalName}>
                       {file.originalName}
                     </strong>
+                    {file.storagePath && <p className="mt-1 break-all text-[11px] text-slate-300">저장 폴더: {file.storagePath}</p>}
                     <div className="flex items-center gap-2.5 text-xs text-slate-300 font-semibold mt-0.5">
                       <span className="text-emerald-400 font-bold">
                         [{file.teamName} / {file.roleName}]
@@ -839,26 +856,15 @@ export const DriveView: React.FC = () => {
                     GOOGLE DRIVE
                   </span>
 
-                  {file.driveUrl && (
-                    <a
-                      href={file.driveUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-black flex items-center gap-1 transition-colors border border-slate-600"
-                    >
-                      <ExternalLink className="w-3 h-3 text-slate-300" />
-                      Drive 열기
-                    </a>
-                  )}
-
-                  <a
-                    href={`/api/drive/files/download?id=${encodeURIComponent(file.id)}`}
-                    download={file.originalName}
-                    className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1 transition-all shadow-md shadow-emerald-600/20 cursor-pointer"
+                  <button
+                    type="button"
+                    disabled={downloadingIds.includes(file.id)}
+                    onClick={() => void handleDownloadFile(file)}
+                    className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/20 cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    다운로드
-                  </a>
+                    {downloadingIds.includes(file.id) ? '다운로드 준비 중…' : '스튜디오 권한으로 다운로드'}
+                  </button>
 
                   {['yjw@con-cost.com','yjpark@con-cost.com'].includes((currentUser?.email||'').toLowerCase()) && <button
                     type="button"

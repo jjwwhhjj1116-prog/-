@@ -5,9 +5,10 @@ import {resumableVaultUpload, type UploadProgress} from './resumableUpload';
  * [폴더 계층 구조]
  * 1단계 (Root)    : 기술본부 자료실
  * 2단계 (Project) : [프로젝트코드] 프로젝트명
- * 3단계 (Team)    : 마감팀 / 구조팀 / 토목&조경팀
- * 4단계 (Role)    : 조적, 창호, 외부, 내부, 골조 등 (팀별 공종)
- * 5단계 (Subtitle): 1.프로그램파일(FIN), 2.CAD작업도면, 3.질의사항&견적조건, 4.기타
+ * 3단계 (Main)    : 01.접수자료 / 02.마감자료 / 03.구조자료
+ * 4단계 (Subtitle): 납품자료, 프로그램파일, CAD작업도면 등
+ * 5단계 (Uploader): 업로더_YYYY.MM.DD (서버 기준 날짜)
+ * 공종은 스튜디오의 파일 분류로 보관하며 기존 파일의 실제 위치는 유지한다.
  * 
  * - 보안 정책: 클레임센터 스튜디오 방식으로 개인 Google OAuth 팝업 차단 (origin_mismatch 해결)
  * - 웹 로그인된 회원은 누구나 드래그앤드롭/파일선택으로 안전하게 업로드 및 웹 뷰어 다운로드 수행
@@ -228,6 +229,7 @@ export interface TechVaultFile {
   byteSize: number;
   sha256: string;
   storageProvider: 'GOOGLE_DRIVE';
+  storagePath?: string;
   uploadedBy: string;
   uploadedAt: string;
   downloadUrl?: string;
@@ -560,6 +562,7 @@ export async function fetchVaultFiles(projectCode?: string): Promise<TechVaultFi
           byteSize: Number(f.byte_size) || 0,
           sha256: f.sha256 || '',
           storageProvider: 'GOOGLE_DRIVE' as const,
+          storagePath: typeof f.storage_path === 'string' ? f.storage_path : undefined,
           uploadedBy: f.uploaded_by || '사용자',
           uploadedAt: f.uploaded_at || new Date().toISOString(),
           downloadUrl: `/api/drive/files/download?id=${encodeURIComponent(f.id)}`,
@@ -573,7 +576,7 @@ export async function fetchVaultFiles(projectCode?: string): Promise<TechVaultFi
 }
 
 /**
- * 기술본부 5단계 분류 파일 업로드 실행
+ * 서버에서 선택 분류·업로더 날짜 폴더를 확인한 뒤 재개 가능한 전송을 수행한다.
  */
 export async function uploadVaultFile(params: {
   projectCode:string;projectName:string;mainFolder?:MainFolderType;teamName:string;roleName:string;subtitle:SubtitleType;file:File;uploadedBy:string;
@@ -589,8 +592,8 @@ export async function uploadVaultFile(params: {
 /** 전체 파일을 Blob으로 만들지 않고 브라우저 다운로드 관리자로 전송한다. */
 export async function downloadVaultFile(file:TechVaultFile):Promise<void>{
  const url=`/api/drive/files/download?id=${encodeURIComponent(file.id)}`;
- const ready=await fetch(url,{method:'HEAD'});
- if(!ready.ok)throw new Error(ready.status===409?'Drive 원본이 변경되었거나 연결 정보가 없습니다. 원본을 확인하세요.':'다운로드 준비 실패: 로그인·회사 Drive 연결·원본 접근 권한을 확인하세요.');
+ const ready=await fetch(url,{method:'HEAD',credentials:'same-origin',cache:'no-store',redirect:'error',signal:AbortSignal.timeout(30000)});
+ if(!ready.ok)throw new Error(({401:'로그인이 만료되었습니다. 다시 로그인한 후 다운로드하세요.',403:'이 자료를 다운로드할 스튜디오 권한이 없습니다.',404:'보관된 원본 파일을 찾을 수 없습니다. 관리자에게 확인하세요.',409:'Drive 원본이 변경되었거나 연결 정보가 없습니다. 관리자에게 원본 확인을 요청하세요.'} as Record<number,string>)[ready.status]||'다운로드 준비 실패: 회사 Drive 연결·원본 접근 권한을 확인하세요.');
  const a=document.createElement('a');a.href=url;a.download=file.originalName;
  document.body.appendChild(a);a.click();a.remove();
 }
@@ -620,16 +623,16 @@ export async function deleteVaultFile(fileId: string): Promise<boolean> {
 /**
  * 선택된 프로젝트의 Google Drive 5대 계층 폴더 사전 자동생성
  */
-export async function ensureProjectFolders(projectCode: string, projectName: string): Promise<{ success: boolean; driveUrl?: string; message?: string }> {
+export async function ensureProjectFolders(projectCode: string, projectName: string, context?: {mainFolder: MainFolderType; subtitle: SubtitleType}): Promise<{ success: boolean; folderPath?: string; message?: string }> {
   try {
     const res = await fetch('/api/drive/folders/ensure', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectCode, projectName }),
+      body: JSON.stringify({ projectCode, projectName, ...context }),
     });
     if (res.ok) {
       const data = await res.json();
-      return { success: true, driveUrl: data.driveUrl };
+      return { success: true, folderPath: typeof data.folderPath === 'string' ? data.folderPath : undefined };
     }
     const err = await res.json().catch(() => ({}));
     return { success: false, message: err.message || '폴더 생성 실패' };

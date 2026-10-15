@@ -251,11 +251,13 @@ export const SettingsView: React.FC = () => {
                 </span>
                 <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
                   Google Drive 클라우드 중앙 저장소 연결
-                  <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-400/30 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className={`text-[11px] px-2 py-0.5 rounded font-semibold border flex items-center gap-1 ${googleDriveConfig.connected ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30' : 'bg-amber-500/20 text-amber-300 border-amber-400/30'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${googleDriveConfig.connected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
                     {googleDriveConfig.connected ? '연결 확인됨' : '연결 미확인'}
                   </span>
                 </h3>
+                <p className="mt-2 text-xs text-slate-300">실제 저장 계정: <strong className="text-white">{googleDriveConfig.connected && googleDriveConfig.companyEmail ? googleDriveConfig.companyEmail : '연결 상태 테스트로 확인하세요'}</strong></p>
+                <p className="mt-1 text-xs text-slate-300">지원 이메일은 Drive 저장 계정과 별개입니다. 회원은 개인 Google 계정 없이 스튜디오 권한으로 자료를 이용합니다.</p>
               </div>
               <span className="text-xs text-slate-400 font-mono">
                 최종 확인: {googleDriveConfig.lastCheckedAt || '아직 확인하지 않음'}
@@ -283,7 +285,7 @@ export const SettingsView: React.FC = () => {
                 <span className="text-orange-400 font-mono font-bold block mb-1">STEP 03</span>
                 <strong className="text-white block mb-1">Drive 자동 폴더 매핑</strong>
                 <p className="text-slate-400 text-[11px] leading-relaxed">
-                  자료실 업로드 시 <code className="text-orange-300 bg-slate-900 px-1 py-0.5 rounded">공종_날짜_이름</code> 자동 폴더가 Google Drive에 실시간 생성됩니다.
+                  프로젝트·자료 분류 아래 <code className="text-orange-300 bg-slate-900 px-1 py-0.5 rounded">업로더_YYYY.MM.DD</code> 폴더가 생성됩니다. 공종은 스튜디오의 파일 분류로 보관합니다.
                 </p>
               </div>
             </div>
@@ -338,6 +340,7 @@ export const SettingsView: React.FC = () => {
                     <div>
                       <span className="text-[10px] text-slate-400 block font-sans font-bold">2. 사용자 지원 및 개발자 이메일</span>
                       <span className="font-bold text-slate-800 dark:text-white">concost.dt@gmail.com</span>
+                      <span className="text-[10px] text-slate-500 block font-sans mt-1">앱 지원 연락처이며 실제 Drive 저장 계정은 위 연결 상태에서 확인합니다.</span>
                     </div>
                     <button
                       type="button"

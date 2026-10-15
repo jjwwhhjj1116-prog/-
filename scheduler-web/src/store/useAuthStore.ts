@@ -28,6 +28,7 @@ export interface GoogleDriveConfig {
   redirectUri: string;
   rootFolderId: string;
   connected: boolean;
+  companyEmail?: string;
   autoCreateFolder: boolean;
   lastCheckedAt?: string;
 }
@@ -192,11 +193,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ googleDriveConfig: updated });
   },
 
-  // 구글 드라이브 연결 테스트 (클레임센터 스튜디오 OAuth 검증 시뮬레이션)
+  // 서버에서 실제 저장 계정과 연결 상태를 확인한다.
   testGoogleDriveConnection: async () => {
     let connected = false;
-    try { const response = await fetch('/api/google/status'); const status = await response.json(); connected = response.ok && status.connected === true; } catch { /* 연결 실패 */ }
-    const updated = {...get().googleDriveConfig, clientSecret:'', connected, lastCheckedAt:new Date().toISOString()};
+    let companyEmail = '';
+    try { const response = await fetch('/api/google/status'); const status = await response.json(); connected = response.ok && status.connected === true; if(connected && typeof status.companyEmail === 'string')companyEmail=status.companyEmail; } catch { /* 연결 실패 */ }
+    const updated = {...get().googleDriveConfig, clientSecret:'', connected, companyEmail, lastCheckedAt:new Date().toISOString()};
     localStorage.setItem(GDRIVE_STORAGE_KEY, JSON.stringify(updated));
     set({googleDriveConfig:updated});
     return connected;

@@ -85,7 +85,7 @@ async function getCompanyAccessToken(env: Env): Promise<string | null> {
  * 회사 구글 드라이브 내 폴더 검색 및 미존재 시 자동 생성
  */
 async function serverFindOrCreateFolder(name: string, parentId: string, accessToken: string): Promise<string> {
-  const escaped = name.replace(/'/g, "\\'");
+  const escaped = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   const q = `name = '${escaped}' and '${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
   const sRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&spaces=drive`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -95,7 +95,9 @@ async function serverFindOrCreateFolder(name: string, parentId: string, accessTo
   if (sRes.ok) {
     const sData = await sRes.json<any>();
     if (sData.files && sData.files.length > 0) {
-      return sData.files[0].id;
+      const id = sData.files[0].id;
+      if (!/^[A-Za-z0-9_-]+$/.test(id || '')) throw new Error('Drive 폴더 ID 확인 실패');
+      return id;
     }
   }
 
@@ -112,7 +114,9 @@ async function serverFindOrCreateFolder(name: string, parentId: string, accessTo
     }),
   });
 
+  if (!cRes.ok) throw new Error('Drive 폴더 생성 실패');
   const cData = await cRes.json<any>();
+  if (!/^[A-Za-z0-9_-]+$/.test(cData.id || '')) throw new Error('Drive 폴더 ID 확인 실패');
   return cData.id;
 }
 
@@ -130,8 +134,10 @@ async function serverEnsureDriveHierarchy(params: {
   roleName: string;
   subtitle: string;
   accessToken: string;
+  uploadedBy?: string;
+  uploadedAt?: string;
 }): Promise<{ folderId: string; folderPath: string }> {
-  const { projectCode, projectName, mainFolder, roleName, subtitle, accessToken } = params;
+  const { projectCode, projectName, mainFolder, subtitle, accessToken } = params;
 
   // 1단계: '기술본부 자료실' (최상위)
   const rootId = await serverFindOrCreateFolder('기술본부 자료실', 'root', accessToken);
@@ -150,17 +156,13 @@ async function serverEnsureDriveHierarchy(params: {
   else normalizedMain = '02.마감자료';
   const mainId = await serverFindOrCreateFolder(normalizedMain, projectId, accessToken);
 
-  // 4단계: 서브타이틀 폴더 (01.접수자료는 1.도면 및 발주처 제공자료, 그 외는 5대 서브타이틀)
-  let parentForSub = mainId;
-  let pathStr = `기술본부 자료실 > ${cleanProjectName} > ${normalizedMain}`;
-  if (roleName && roleName !== '공종' && roleName !== '공통' && roleName !== '마감팀' && roleName !== '구조팀') {
-    parentForSub = await serverFindOrCreateFolder(roleName, mainId, accessToken);
-    pathStr += ` > ${roleName}`;
-  }
-
-  // 5단계: 세분화 서브타이틀 폴더
-  const finalFolderId = await serverFindOrCreateFolder(subtitle, parentForSub, accessToken);
-  pathStr += ` > ${subtitle}`;
+  // 선택한 분류 아래 작성자·한국 날짜로 보관한다. 공종은 자료실 메타정보로 구분한다.
+  // 기존 공종 우선 폴더와 원본은 이동하지 않으며 등록 파일 ID로 계속 다운로드한다.
+  const categoryId = await serverFindOrCreateFolder(subtitle, mainId, accessToken);
+  const uploadDay = new Date(Date.parse(params.uploadedAt || new Date().toISOString()) + 9 * 60 * 60 * 1000).toISOString().slice(0, 10).replaceAll('-', '.');
+  const authorFolder = `${params.uploadedBy || '사용자'}_${uploadDay}`;
+  const finalFolderId = await serverFindOrCreateFolder(authorFolder, categoryId, accessToken);
+  const pathStr = `기술본부 자료실 > ${cleanProjectName} > ${normalizedMain} > ${subtitle} > ${authorFolder}`;
 
   return { folderId: finalFolderId, folderPath: pathStr };
 }
@@ -511,7 +513,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         if (!fileId) {
           return new Response(JSON.stringify({ error: 'File ID is required' }), { status: 400, headers });
         }
-        const file = await env.DB.prepare('SELECT * FROM drive_evidence WHERE id = ?').bind(fileId).first<any>();
+        const file = await env.DB.prepare("SELECT e.*, json_extract(u.metadata,'$.driveFolderId') AS folder_id FROM drive_evidence e LEFT JOIN studio_drive_uploads u ON u.id=e.id WHERE e.id = ?").bind(fileId).first<any>();
         if (!file) {
           return new Response(JSON.stringify({ error: 'File not found' }), { status: 404, headers });
         }
@@ -521,10 +523,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         if(!googleId)return new Response(JSON.stringify({error:'기존 파일의 Drive 원본 연결을 확인하세요.'}),{status:409,headers});
         const token=await getCompanyAccessToken(env);if(!token)return new Response(JSON.stringify({error:'회사 Drive 연결을 확인하세요.'}),{status:503,headers});
         const base=`https://www.googleapis.com/drive/v3/files/${googleId}`;
-        const metadata=await fetch(`${base}?fields=size,sha256Checksum,trashed`,{headers:{Authorization:`Bearer ${token}`}});
+        const metadata=await fetch(`${base}?fields=size,sha256Checksum,trashed,parents`,{headers:{Authorization:`Bearer ${token}`}});
         if(!metadata.ok)return new Response(JSON.stringify({error:'Drive 원본 또는 접근 권한을 확인하세요.'}),{status:metadata.status===404?404:502,headers});
         const info=await metadata.json<any>();
-        if(info.trashed||Number(info.size)!==Number(file.byte_size)||(/^[a-f0-9]{64}$/i.test(file.sha256||'')&&info.sha256Checksum?.toLowerCase()!==file.sha256.toLowerCase()))return new Response(JSON.stringify({error:'Drive 파일이 업로드 당시 원본과 다릅니다.'}),{status:409,headers});
+        if(info.trashed||Number(info.size)!==Number(file.byte_size)||(file.folder_id&&!info.parents?.includes(file.folder_id))||(/^[a-f0-9]{64}$/i.test(file.sha256||'')&&info.sha256Checksum?.toLowerCase()!==file.sha256.toLowerCase()))return new Response(JSON.stringify({error:'Drive 파일이 업로드 당시 원본 또는 보관 위치와 다릅니다.'}),{status:409,headers});
         const downloadHeaders:Record<string,string>={
           'Content-Type':file.mime_type||'application/octet-stream','Content-Disposition':`attachment; filename="download"; filename*=UTF-8''${encodeURIComponent(file.original_name||'download').replace(/'/g,'%27')}`,
           'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':'sandbox','X-Storage-Source':'GOOGLE_DRIVE','Accept-Ranges':'bytes'
@@ -541,7 +543,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       // 3-2. 파일 목록 조회 (GET /api/drive/files)
       if (request.method === 'GET') {
         const projectCode = url.searchParams.get('projectCode') || '';
-        let query = 'SELECT e.id, e.project_code, e.category, e.original_name, e.mime_type, e.byte_size, e.sha256, e.uploaded_by, e.uploaded_at, e.storage_provider, e.drive_url, m.project_name, m.team_name, m.role_name, m.main_folder FROM drive_evidence e LEFT JOIN studio_vault_metadata m ON m.file_id=e.id';
+        let query = "SELECT e.id, e.project_code, e.category, e.original_name, e.mime_type, e.byte_size, e.sha256, e.uploaded_by, e.uploaded_at, e.storage_provider, m.project_name, m.team_name, m.role_name, m.main_folder, json_extract(u.metadata,'$.driveFolderPath') AS storage_path FROM drive_evidence e LEFT JOIN studio_vault_metadata m ON m.file_id=e.id LEFT JOIN studio_drive_uploads u ON u.id=e.id";
         let params: any[] = [];
 
         if (projectCode) {
@@ -559,6 +561,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           files: results || [],
           googleDriveConnected: Boolean(await getCompanyAccessToken(env)),
           storagePolicy: 'GOOGLE_DRIVE_REQUIRED',
+          accessMode: 'STUDIO_SESSION_PROXY',
         }), { headers });
       }
 
@@ -608,6 +611,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             roleName: body.roleName || '공종',
             subtitle: body.category,
             accessToken: companyToken,
+            uploadedBy: actor.name,
+            uploadedAt,
           });
 
           // Base64 -> 바이너리
@@ -670,7 +675,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             uploadedBy: body.uploadedBy,
             uploadedAt,
             storageProvider: 'GOOGLE_DRIVE',
-            driveUrl,
           },
         }), { headers });
       }
@@ -716,41 +720,17 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           }), { status: 400, headers });
         }
 
-        const rootId = await serverFindOrCreateFolder('기술본부 자료실', 'root', companyToken);
-        const cleanProjectName = projectName ? (projectName.includes(projectCode) ? projectName : `[${projectCode}] ${projectName}`.trim()) : `[${projectCode}] 프로젝트`;
-        const projectId = await serverFindOrCreateFolder(cleanProjectName, rootId, companyToken);
-
-        const subTree: Record<string, string[]> = {
-          '01.접수자료': ['1.도면 및 발주처 제공자료'],
-          '02.마감자료': [
-            '1.납품자료',
-            '2.프로그램파일(FIN)',
-            '3.CAD작업도면',
-            '4.견적조건 및 질의사항',
-            '5.VIET QS 작업자료',
-            '6.타분야자료',
-          ],
-          '03.구조자료': [
-            '1.납품자료',
-            '2.프로그램파일(RC)',
-            '3.CAD작업도면',
-            '4.견적조건 및 질의사항',
-            '5.VIET QS 작업자료',
-          ],
-        };
-
-        for (const [mainCat, subs] of Object.entries(subTree)) {
-          const mainId = await serverFindOrCreateFolder(mainCat, projectId, companyToken);
-          for (const sub of subs) {
-            await serverFindOrCreateFolder(sub, mainId, companyToken);
-          }
-        }
+        const hierarchy = await serverEnsureDriveHierarchy({
+          projectCode, projectName: projectName || `[${projectCode}] 프로젝트`,
+          mainFolder: typeof body.mainFolder === 'string' ? body.mainFolder : '02.마감자료',
+          roleName: '공통', subtitle: typeof body.subtitle === 'string' ? body.subtitle : '1.납품자료',
+          accessToken: companyToken, uploadedBy: actor.name,
+        });
 
         return new Response(JSON.stringify({
           success: true,
-          projectFolderId: projectId,
-          projectFolderPath: `기술본부 자료실 > ${cleanProjectName}`,
-          driveUrl: `https://drive.google.com/drive/folders/${projectId}`,
+          folderPath: hierarchy.folderPath,
+          accessMode: 'STUDIO_SESSION_PROXY',
         }), { headers });
       }
     }
