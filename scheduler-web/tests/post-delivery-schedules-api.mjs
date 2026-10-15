@@ -41,6 +41,26 @@ try{
  await check('현장 code 중복 통합 · 본인팀 record 우선 · 국내 등록 capability',async q=>{
   const finish=await q.call('worker','post-delivery-schedules'),structure=await q.call('struct','post-delivery-schedules');assert.equal(finish.status,200);assert.equal(finish.data.projects.length,2);assert.equal(finish.data.projects.find(p=>p.projectCode==='QA-SHARED').projectId,'pF');assert.equal(structure.data.projects.find(p=>p.projectCode==='QA-SHARED').projectId,'pS');assert.deepEqual(finish.data.capabilities,{canRegister:true,department:'마감팀',userId:'worker'});assert.equal(finish.data.projects.find(p=>p.projectId==='pF').tasks[0].canEdit,false);
  });
+ await check('신규 보완은 납품 상태 또는 실적100 현장만 허용 · 과거 납기와 미래 납기만으로 납품 간주 금지',async q=>{
+  for(const [index,status,progress,endDate,expected]of [[0,'진행중',25,'2026-10-14',409],[1,'착수예정',0,'2026-10-31',409],[2,'납품',0,'2026-10-14',200],[3,'수정',100,'2026-10-31',200]]){
+   const project=q.project('pF');Object.assign(project,{status,progress,endDate});q.db.prepare('UPDATE studio_projects SET body=?,revision=revision+1 WHERE id=?').run(JSON.stringify(project),'pF');
+   const result=await q.create('worker',q.draft('eligibility-'+index,{startDate:'2026-10-31',endDate:'2026-11-02'}));assert.equal(result.status,expected,result.data.error);if(expected===409)assert.match(result.data.error,/납품/);
+   const listed=(await q.call('worker','post-delivery-schedules')).data.projects.find(project=>project.projectId==='pF');assert.equal(listed.delivered,expected===200,status+' '+progress);assert.ok(listed.tasks.some(task=>task.id==='legacy'),'미납품 현장 기존 일정도 조회 유지');
+  }
+  assert.equal(q.notes().length,4);
+ });
+ await check('공통 현장 신규 납품 판정은 실제 본인팀 저장 target 기준 · 타팀 경로로 미납품 우회 불가',async q=>{
+  const structure=q.project('pS');structure.status='진행중';structure.progress=20;q.db.prepare('UPDATE studio_projects SET body=? WHERE id=?').run(JSON.stringify(structure),'pS');
+  const forFinish=(await q.call('worker','post-delivery-schedules')).data.projects.find(project=>project.projectCode==='QA-SHARED'),forStructure=(await q.call('struct','post-delivery-schedules')).data.projects.find(project=>project.projectCode==='QA-SHARED');assert.equal(forFinish.delivered,true);assert.equal(forStructure.delivered,false);assert.equal((await q.create('struct',q.draft('blocked'))).status,409);assert.equal(q.notes().length,0);
+  structure.status='납품';q.db.prepare('UPDATE studio_projects SET body=? WHERE id=?').run(JSON.stringify(structure),'pS');const finish=q.project('pF');finish.status='진행중';finish.progress=0;q.db.prepare('UPDATE studio_projects SET body=? WHERE id=?').run(JSON.stringify(finish),'pF');
+  const registered=await q.create('struct',q.draft('own-delivered'));assert.equal(registered.status,200,registered.data.error);assert.equal(registered.data.project.id,'pS');assert.equal(registered.data.task.department,'구조팀');
+ });
+ await check('납품 상태가 변경돼도 기존 본인 보고 조회·수정·취소 및 정확 ID 재시도 보존',async q=>{
+  const body=q.draft(),created=(await q.create('worker',body)).data,project=q.project('pF');project.status='진행중';project.progress=0;q.db.prepare('UPDATE studio_projects SET body=?,revision=revision+1 WHERE id=?').run(JSON.stringify(project),'pF');
+  const listed=(await q.call('worker','post-delivery-schedules')).data.projects.find(project=>project.projectId==='pF');assert.equal(listed.delivered,false);assert.equal(listed.tasks.find(task=>task.id==='new').canEdit,true);assert.equal(listed.tasks.find(task=>task.id==='new').canCancel,true);
+  const retry=await q.create('worker',body);assert.equal(retry.status,200,retry.data.error);assert.deepEqual(retry.data.task,created.task);assert.equal(q.notes().length,2);assert.equal((await q.create('worker',q.draft('another'))).status,409);
+  const edited=await q.edit('worker',created,{memo:'기존 보완 본인 수정'});assert.equal(edited.status,200,edited.data.error);const cancelled=await q.cancel('worker',edited.data);assert.equal(cancelled.status,200,cancelled.data.error);assert.equal(cancelled.data.task.submissionStatus,'CANCELLED');assert.equal(q.notes().length,6);assert.deepEqual(q.project('pF').postDeliveryTasks[0],q.legacy);
+ });
  await check('빈 코드 현장은 ID 원문별 분리 · 공백/대소문자 ID와 공종이 같은 현장도 합치지 않음',async q=>{
   for(const id of ['blank','BLANK',' blank ']){const p={...structuredClone(q.source),id,code:'   ',postDeliveryTasks:[]};q.db.prepare('INSERT INTO studio_projects VALUES (?,?,?,?,?)').run(id,JSON.stringify(p),1,'synthetic','admin');}
   const response=await q.call('worker','post-delivery-schedules');assert.equal(response.data.projects.length,5);for(const id of ['blank','BLANK',' blank '])assert.ok(response.data.projects.some(project=>project.projectId===id));

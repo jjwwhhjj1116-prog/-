@@ -341,8 +341,7 @@ export default function ProjectCalendar({
         </div>
 
         {/* 상단 액션 버튼 그룹 */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {onOpenPostDelivery&&<button type="button" onClick={onOpenPostDelivery} className="flex items-center gap-1.5 rounded-lg bg-violet-700 px-3 py-2 text-xs font-bold text-white hover:bg-violet-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"><CalendarPlus size={15}/>프로젝트 보완 일정 등록</button>}
+        <div data-registration-toolbar="project" className="flex w-full items-center gap-2 flex-wrap">
           {/* 당월 일정만 보기 토글 버튼 */}
           <button
             onClick={() => setOnlyCurrentMonth(!onlyCurrentMonth)}
@@ -421,6 +420,7 @@ export default function ProjectCalendar({
               <ChevronRight size={16} />
             </button>
           </div>
+          {onOpenPostDelivery&&<button data-post-delivery-register type="button" onClick={onOpenPostDelivery} className="ml-auto flex items-center gap-1.5 rounded-lg bg-orange-700 px-3 py-2 text-xs font-bold text-white hover:bg-orange-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600"><CalendarPlus size={15}/>프로젝트 보완 일정 등록</button>}
         </div>
       </div>
 
@@ -759,7 +759,7 @@ export default function ProjectCalendar({
                     })}
                     {group.lanes.flatMap((lane,laneIdx)=>lane.postDeliveryTasks.map((task,index)=>{
                       const barStyle=getLaneBarStyle(task.startDate,task.endDate);
-                      return barStyle?<button key={`${lane.projectId}-${task.id}`} type="button" onClick={handleRowClick} data-post-delivery-id={task.id} data-post-delivery-department={lane.department} style={{...barStyle,top:`${laneOffsets[laneIdx]+35+index*22}px`,height:19}} title={`${group.name}\n${lane.department} · 보완 · 자동 보고 · ${task.kind}\n${task.startDate} ~ ${task.endDate}\n${task.memo}`} className="absolute z-20 overflow-hidden rounded border border-violet-300 bg-violet-700 text-white text-[10px] font-bold text-left px-1.5 truncate">{lane.department.slice(0,2)} · 보완: {task.memo}</button>:null;
+                      return barStyle?<button key={`${lane.projectId}-${task.id}`} type="button" onClick={handleRowClick} data-post-delivery-id={task.id} data-post-delivery-department={lane.department} style={{...barStyle,top:`${laneOffsets[laneIdx]+35+index*22}px`,height:19}} title={`${group.name}\n${lane.department} · 보완 · 자동 보고 · ${task.kind}\n${task.startDate} ~ ${task.endDate}\n${task.memo}`} className="absolute z-20 overflow-hidden rounded border border-orange-300 bg-orange-700 text-white text-[10px] font-bold text-left px-1.5 truncate">{lane.department.slice(0,2)} · 보완: {task.memo}</button>:null;
                     }))}
                   </div>
                 </div>
@@ -782,7 +782,7 @@ export default function ProjectCalendar({
             <span className="w-3 h-2.5 rounded bg-emerald-600 border border-emerald-400"></span> 토목&조경팀 일정
           </span>
           <span className="text-slate-300 dark:text-slate-700">|</span>
-          <span className="flex items-center gap-1.5 font-semibold"><span className="h-2.5 w-3 rounded bg-violet-700"/>보완 · 자동 보고</span>
+          <span className="flex items-center gap-1.5 font-semibold"><span className="h-2.5 w-3 rounded bg-orange-700"/>보완 · 자동 보고</span>
           <span className="text-slate-600 dark:text-slate-300 font-medium">
             💡 하나의 프로젝트 행 안에 마감팀(파란색), 구조팀(보라색), 토목&조경팀(초록색) 일정이 공종별 층으로 동시 표현됩니다.
           </span>

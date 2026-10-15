@@ -21,6 +21,7 @@ export interface SupplementScheduleProject {
   projectName: string;
   department: Department;
   deliveryDate: string;
+  delivered: boolean;
   projectRevision: number;
   tasks: SupplementScheduleTask[];
 }

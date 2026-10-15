@@ -5,6 +5,7 @@ const parse=(value:string)=>{try{return JSON.parse(value);}catch{return {};}};
 const json=(body:any,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
 const same=(a:any,b:any)=>JSON.stringify(a)===JSON.stringify(b);
 const code=(project:any)=>String(project.code||'').trim().toUpperCase()||String(project.id);
+const delivered=(project:any)=>project.status==='납품'||project.progress>=100;
 const managed=(task:any)=>['submissionStatus','createdBy','createdByName','submittedAt','reviewerIds','revision','department','cancelledAt'].some(key=>task&&Object.hasOwn(task,key));
 const domestic=(row:any)=>row?.active===1&&parse(row.profile).id===row.id&&parse(row.profile).company==='컨코스트';
 const canRegister=(row:any)=>domestic(row)&&departments.includes(row.department);
@@ -35,7 +36,7 @@ export async function postDeliverySchedulesRoute(request:Request,env:any,user:an
   for(const record of records){const key=code(record.project);groups.set(key,[...(groups.get(key)||[]),record]);}
   const projects=[...groups.values()].map(group=>{
    const selected=group.find(record=>record.project.department===actor.department)||group[0],project=selected.project;
-   return {projectId:project.id,projectCode:project.code,projectName:project.name,department:project.department,deliveryDate:project.endDate,projectRevision:selected.revision,
+   return {projectId:project.id,projectCode:project.code,projectName:project.name,department:project.department,deliveryDate:project.endDate,delivered:delivered(project),projectRevision:selected.revision,
     tasks:group.flatMap(record=>(record.project.postDeliveryTasks||[]).map((task:any)=>({...task,projectId:record.id,projectRevision:record.revision,deliveryDate:record.project.endDate,canEdit:canRegister(actor)&&task.createdBy===actor.id&&task.submissionStatus==='REPORTED',canCancel:canRegister(actor)&&task.createdBy===actor.id&&task.submissionStatus==='REPORTED'})))};
   });
   return json({projects,capabilities:{canRegister:canRegister(actor),department:actor.department,userId:actor.id}});
@@ -62,6 +63,7 @@ export async function postDeliverySchedulesRoute(request:Request,env:any,user:an
    return fail('이미 사용된 일정 ID입니다. 새 일정을 다시 열어 등록하세요.',409);
   }
  }
+ if(creating&&!delivered(project))return fail('납품이 완료된 프로젝트만 새 보완 일정을 등록할 수 있습니다. 프로젝트의 납품 상태 또는 완료율을 확인하세요.',409);
  if(!Number.isInteger(input.revision)||input.revision!==target.revision)return fail('현장 일정이 변경되었습니다. 입력을 유지하고 최신 내용을 확인하세요.',409);
  if(!creating&&(!existing||existing.createdBy!==actor.id))return fail('본인이 등록한 보완 일정만 수정·취소할 수 있습니다.',403);
  if(!creating&&(!Number.isInteger(input.taskRevision)||input.taskRevision!==existing.revision))return fail('다른 화면에서 보완 일정이 변경되었습니다. 최신 내용을 확인하세요.',409);

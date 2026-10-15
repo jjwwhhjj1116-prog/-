@@ -332,7 +332,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {viewMode==='PERSONAL'&&onOpenPostDelivery && <button type="button" onClick={onOpenPostDelivery} className="flex items-center gap-1.5 rounded-xl bg-violet-700 px-3.5 py-2 text-xs font-bold text-white hover:bg-violet-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"><CalendarPlus size={16}/>프로젝트 보완 일정 등록</button>}
+          {viewMode==='PERSONAL'&&onOpenPostDelivery && <button data-post-delivery-register type="button" onClick={onOpenPostDelivery} className="order-last ml-auto flex items-center gap-1.5 rounded-xl bg-orange-700 px-3.5 py-2 text-xs font-bold text-white hover:bg-orange-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600"><CalendarPlus size={16}/>프로젝트 보완 일정 등록</button>}
           {/* 엑셀 다운로드 버튼 */}
           <button
             onClick={() => exportProjectsToExcel(projects, personnel, currentDate, 1, department)}
@@ -481,7 +481,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                 <span className="w-2.5 h-2.5 rounded bg-cyan-600" /> 내부/기둥
               </span>
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-red-700" /> 승인된 연장 기간</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-violet-700" /> 보완 · 자동 보고</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-orange-700" /> 보완 · 자동 보고</span>
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-indigo-700" /> 야근 · 승인된 근무일</span>
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded border border-amber-600 bg-amber-100" /> 휴가 · 본인 등록
@@ -749,7 +749,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                               className={`absolute rounded-md border text-xs font-bold cursor-pointer transition-all duration-150 flex items-center px-2 z-10 shadow-2xs hover:shadow-md hover:scale-[1.01] ${getTaskColorClass(
                                 task.roleName,
                                 task.status
-                              )} ${task.postDeliveryId?'!bg-violet-700 !border-violet-800 !text-white':''}`}
+                              )} ${task.postDeliveryId?'!bg-orange-700 !border-orange-800 !text-white':''}`}
                             >
                               {extensions.map(period=><span key={period.start} data-extension-start={period.start} data-extension-end={period.end} title={`승인된 연장 기간: ${period.start} ~ ${period.end}`} className="absolute inset-y-0 rounded-sm bg-red-700" style={{left:`${differenceInDays(parseISO(period.start),parseISO(visibleStart))/visibleDays*100}%`,width:`${(differenceInDays(parseISO(period.end),parseISO(period.start))+1)/visibleDays*100}%`}}><span className="sr-only">승인된 연장 기간 {period.start} ~ {period.end}</span></span>)}
                               <span className="relative truncate text-[11px] tracking-tight leading-tight drop-shadow-xs flex items-center gap-1.5 w-full">
