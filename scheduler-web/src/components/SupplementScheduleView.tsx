@@ -1,6 +1,6 @@
 import {useEffect, useId, useRef, useState} from 'react';
 import {CalendarDays, ChevronLeft, ChevronRight, Plus, RefreshCw, X} from 'lucide-react';
-import {useProjectStore, type Department} from '../store/useProjectStore';
+import {DEPARTMENTS, useProjectStore, type Department} from '../store/useProjectStore';
 import {useAuthStore} from '../store/useAuthStore';
 import {refreshStudioMeetings, refreshStudioProjects} from '../store/useStudioStore';
 import {localDate, validDateRange} from '../utils/scheduleProgress';
@@ -22,7 +22,7 @@ export function SupplementScheduleView({department,onClose,initialProjectId,init
  const [busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[notice,setNotice]=useState(''),[cancelConfirm,setCancelConfirm]=useState(false);
  const panel=useRef<HTMLElement>(null),closeButton=useRef<HTMLButtonElement>(null),mounted=useRef(false),requestId=useRef(0),busyRef=useRef(false),registrationId=useRef(''),initialApplied=useRef(false),sessionEpoch=useRef(0),previousProjects=useRef(sourceProjects);
  const current=(actor:typeof user,session:number)=>mounted.current&&!!actor&&actor===useAuthStore.getState().currentUser&&session===sessionEpoch.current;
- const selectedProject=data?.projects.find(p=>p.projectId===projectId),canRegister=!!data?.capabilities.canRegister&&data.capabilities.userId===user?.id,ownTeam=data?.capabilities.department||department;
+ const selectedProject=data?.projects.find(p=>p.projectId===projectId),canRegister=!!data?.capabilities.canRegister&&data.capabilities.userId===user?.id,ownTeam=data?.capabilities.department&&DEPARTMENTS.includes(data.capabilities.department)?data.capabilities.department:department;
  const rows=(data?.projects||[]).flatMap(project=>project.tasks.map(task=>({project,task})));
  const aliases=assignmentAliases(user,users);
  const mine=rows.filter(({task})=>!!user&&(taskAssignedTo(task,user.id,aliases)||task.createdBy===user.id)&&task.submissionStatus!=='CANCELLED');

@@ -14,7 +14,7 @@ const fixtureTask={id:'task-own',projectId:'host-structure',projectRevision:22,d
 const fixture=()=>({capabilities:{canRegister:true,department:'구조팀',userId:'member-a'},projects:[{projectId:'representative',projectCode:'TK-QA-SUPPLEMENT',projectName:'검수전용 한국어 프로젝트',department:'구조팀',deliveryDate:'2026-10-10',projectRevision:7,tasks:[structuredClone(fixtureTask)]}]});
 function screen(options={}){
  let data=options.data||fixture(),tree,cursor=0,renderNeeded=false,pendingEffects=[],mutationGate,closed=0,refreshes=0,notifications=0;
- const calls=[],hooks=[],effects=[],user={id:'member-a',no:104,name:'작성자 가',department:'구조팀',company:'컨코스트'},auth={currentUser:user,users:[user,{id:'lead',name:'팀장 가'},{id:'chief',name:'실장 가'}]},projects={projects:[]};
+ const calls=[],hooks=[],effects=[],user={id:'member-a',no:104,name:'작성자 가',department:'구조팀',company:'컨코스트',...options.user},auth={currentUser:user,users:[user,{id:'lead',name:'팀장 가'},{id:'chief',name:'실장 가'}]},projects={projects:[]};
  const state=initial=>{const index=cursor++;if(!(index in hooks))hooks[index]=typeof initial==='function'?initial():initial;return[hooks[index],value=>{hooks[index]=typeof value==='function'?value(hooks[index]):value;renderNeeded=true;}];};
  const ref=initial=>{const index=cursor++;if(!(index in hooks))hooks[index]={current:initial};return hooks[index];};
  const effect=(create,deps)=>{const index=cursor++,old=effects[index];if(!old||deps.some((value,i)=>!Object.is(value,old.deps[i])))pendingEffects.push(()=>{old?.cleanup?.();effects[index]={deps,cleanup:create()};});};
@@ -27,7 +27,7 @@ function screen(options={}){
   if(path==='react/jsx-runtime')return jsx;
   if(path==='lucide-react')return new Proxy({},{get:()=>()=>null});
   if(path==='../store/useAuthStore')return{useAuthStore:authHook};
-  if(path==='../store/useProjectStore')return{useProjectStore:selector=>selector(projects)};
+  if(path==='../store/useProjectStore')return{DEPARTMENTS:['마감팀','구조팀','토목&조경팀'],useProjectStore:selector=>selector(projects)};
   if(path==='../services/studioApi')return{StudioError};
   if(path==='../utils/personalWork')return personalWork;
   if(path==='../services/postDeliveryScheduleService')return service;
@@ -50,6 +50,13 @@ await check('service uses encoded host and optimistic project/task revisions; no
 });
 await check('personal calendar covers both inclusive days, excludes cancelled rows, and keeps Korean project labels',async()=>{
  const data=fixture();data.projects[0].tasks.push({...fixtureTask,id:'cancelled',startDate:'2026-10-18',endDate:'2026-10-18',submissionStatus:'CANCELLED',canEdit:false,canCancel:false});const s=screen({data});await s.flush();const chips=nodes(s.tree).filter(n=>n.type==='button'&&n.props.title?.startsWith('검수전용 한국어 프로젝트'));assert.equal(chips.length,2);assert.ok(chips.every(n=>'data-no-translate'in n.props));assert.equal(s.find('select','보완 프로젝트').props.children[1][0].props['data-no-translate'],true);assert.match(text(s.tree),/등록 즉시 확정/);assert.ok(!text(s.tree).includes('승인 대기'));
+});
+await check('technical staff retain own team while administrative viewers see the calling team without gaining registration rights',async()=>{
+ for(const team of ['마감팀','구조팀','토목&조경팀']){
+  const data=fixture();data.capabilities={...data.capabilities,canRegister:false,department:'개발 TF'};data.projects[0].tasks=['마감팀','구조팀','토목&조경팀'].map((department,index)=>({...fixtureTask,id:'report-'+index,department,memo:department+' 보고 원문',canEdit:false,canCancel:false}));
+  const s=screen({data,user:{department:'개발 TF',role:'ADMIN'},props:{department:team}});await s.flush();await s.click('우리 팀 보고 목록');const list=nodes(s.tree).find(n=>n.type==='ul');assert.match(text(list),new RegExp(team+' 보고 원문'));for(const other of ['마감팀','구조팀','토목&조경팀'].filter(value=>value!==team))assert.ok(!text(list).includes(other+' 보고 원문'));assert.ok(!nodes(s.tree).some(n=>n.type==='button'&&text(n)==='등록하고 자동 보고'));assert.ok(!nodes(s.tree).some(n=>n.type==='button'&&text(n)==='새 일정'));
+ }
+ const data=fixture(),s=screen({data,props:{department:'마감팀'}});await s.flush();await s.click('우리 팀 보고 목록');assert.match(text(nodes(s.tree).find(n=>n.type==='ul')),/기존 도면 보완/);assert.match(text(s.tree),/구조팀 보완 일정 보고/);assert.equal(s.calls.filter(call=>call.method!=='GET').length,0);
 });
 await check('legacy staff number and unique name assignments remain on personal calendar without granting edit rights',async()=>{
  const data=fixture();data.projects[0].tasks=[{...fixtureTask,id:'legacy-no',createdBy:undefined,createdByName:undefined,personIds:['104'],memo:'사번 배정 보완',canEdit:false,canCancel:false},{...fixtureTask,id:'legacy-name',createdBy:undefined,createdByName:undefined,personIds:['작성자 가'],memo:'이름 배정 보완',canEdit:false,canCancel:false}];const s=screen({data});await s.flush();const legacy=nodes(s.tree).filter(n=>n.type==='button'&&n.props.title?.includes('배정 보완'));assert.equal(legacy.length,4);legacy[0].props.onClick();s.render();await s.flush();assert.match(text(s.tree),/보완 일정 상세/);assert.ok(!nodes(s.tree).some(n=>n.type==='button'&&text(n)==='수정하고 재보고'));assert.equal(s.find('textarea','보완 내용').props.maxLength,500);
