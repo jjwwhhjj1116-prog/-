@@ -1,7 +1,7 @@
 import {translatedAlert} from '../services/translationService';
 import {LegacyWorkLogArchive} from './RetainedRecords';
 import {usePersonalStore} from '../store/usePersonalStore';
-import {automaticWorkLogItems,sameWorkProject,workProjectOptions,assignedItems,assignedTasks,assignmentAliases,reconcileWorkLogItems,leavesFor,reportsActualProgress,legacyAllocationTask,approvedTaskProgress,nextDay,validDay} from '../utils/personalWork';
+import {automaticWorkLogItems,sameWorkProject,workProjectOptions,assignedItems,assignedTasks,assignmentAliases,reconcileWorkLogItems,leavesFor,legacyAllocationTask,approvedTaskProgress,nextDay,validDay} from '../utils/personalWork';
 
 import {WorkLogHistory,TaskReportFields,WorkLogProjectSummary,DailyPlanFields,ScheduleExtensionRequests,WorkLogTaskInfo,WorkLogSteps} from './WorkLogReporting';
 
@@ -19,7 +19,6 @@ import {
   ClipboardCheck,
   Plus,
   Save,
-  Send,
   Trash2,
   Sparkles,
   CalendarDays, History, Hourglass, Sun, Clock, CheckCircle2, FileText,
@@ -44,7 +43,6 @@ export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}
     setSelectedWorkLogId,
     saveWorkLog,
     readWorkLog,
-    submitApprovalToLeader,
     approveFinalByChief,
     generateItemsFromSchedule
   } = useWorkLogStore();
@@ -307,26 +305,6 @@ export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}
     return updatedLog;
   }, [users, selectedUserName, currentUser, activeLog, selectedDate, items, overallNotes, saveWorkLog,formRevision,reportMode,draftKey,loaded]);
 
-  useEffect(()=>{
-    if(!visible||!canEdit||!loaded||busy||!selectedItem||typeof window==='undefined'||typeof window.setTimeout!=='function'||activeLog?.serverRevision!==formRevision)return;
-    const source=editorSource.current;if(!source||source.key!==draftKey||JSON.stringify(items)===JSON.stringify(source.items)&&overallNotes===source.notes)return;
-    const timer=window.setTimeout(()=>{void run(async()=>{await handleSaveLog();setNotice('변경 사항이 자동 저장되었습니다.');});},1000);
-    return()=>window.clearTimeout(timer);
-  },[visible,canEdit,loaded,busy,selectedItem,items,overallNotes,draftKey,activeLog?.serverRevision,formRevision,handleSaveLog]);
-
-  // 1단계: 작성자가 [결재 상신] 누르면 각 팀 팀장(마감팀: 김재헌 팀장, 구조팀: 신동헌 팀장)에게 전달
-  const handleSubmitToLeader = async () => {
-    if(!items.some(item=>item.todayTask.trim()&&(item.manualFields===undefined||item.manualFields.includes('todayTask'))))throw Error('실제 수행한 업무를 한 건 이상 입력하세요. 배정 메모만으로 보고를 상신하지 않습니다.');
-    if(items.some(item=>reportsActualProgress(item)&&!item.todayTask.trim()))throw Error('진척률을 보고하는 업무의 실제 수행 내용을 입력하세요.');
-    const saved = await handleSaveLog();
-    if (saved) {
-      await submitApprovalToLeader(saved.id);
-      const dept = saved.department;
-      const leaderName = TEAM_APPROVAL_LINES[dept]?.leader.name || '팀장';
-      void translatedAlert(`작성자 서명 완료 및 ${leaderName}에게 1차 결재가 상신되었습니다. (${leaderName} 검토 대기)`);
-    }
-  };
-
   // 1차 팀장 검토 승인
   const handleApproveByLeader = async () => {
     if (!activeLog) return;
@@ -350,8 +328,8 @@ export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}
   };
 
   const [notice, setNotice] = useState('');
-  const autosaveComplete=canEdit&&notice==='변경 사항이 자동 저장되었습니다.'&&!!activeLog&&formRevision===activeLog.serverRevision&&JSON.stringify(items)===JSON.stringify(activeLog.items)&&overallNotes===activeLog.overallNotes;
-  const visibleNotice=notice==='변경 사항이 자동 저장되었습니다.'&&!autosaveComplete?'':notice;
+  const saveNotice=notice==='임시 저장했습니다.'||notice==='저장했습니다.';
+  const noticeText=saveNotice&&(formRevision!==activeLog?.serverRevision||JSON.stringify(items)!==JSON.stringify(activeLog?.items)||overallNotes!==activeLog?.overallNotes)?'이전 입력은 저장했습니다. 추가 변경 사항은 저장을 눌러 주세요.':notice;
   const readRequests=useRef(new WeakMap<object,Map<string,'pending'|'read'>>());
   useEffect(()=>{
     if(!visible||viewTab!=='REPORT'||!loaded||!activeLog||activeLog.approvalStatus==='DRAFT'||
@@ -416,12 +394,12 @@ export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}
   // Keep the journal's legacy ID; only the extension form uses its uniquely linked current assignment.
   const extensionMatches=extensionTasks.filter(task=>task.id===selectedTaskId||!!selectedItem&&selectedItem.id===`gen-${selectedItem.projectId}-${selectedItem.roleName}`&&sameAllocation(selectedItem,task));
   const extensionTaskId=extensionMatches.length===1?extensionMatches[0].id:'';
-  const reportSteps=['작업 선택','실제 업무 결과','업무보고 제출'];
+  const reportSteps=['작업 선택','실제 업무 결과','저장'];
   const currentStep=!selectedItem?1:!canEdit?reportSteps.length:2;
   return <div className="space-y-4 text-slate-900 dark:text-slate-100" data-worklog-screen>
     <header className={panel+' px-5 pt-5'}>
       <div className="grid gap-5 xl:grid-cols-[minmax(240px,.8fr)_minmax(0,1.2fr)] items-center pb-4">
-        <div className="flex items-center gap-3"><ClipboardCheck size={42} className="rounded-xl bg-orange-600 p-2 text-white shrink-0"/><div><h2 className="text-xl font-bold">프로젝트 업무일지</h2><p className="text-xs text-slate-600 dark:text-slate-300 mt-1">배정 일정에 따라 자동 저장하고 오후 5시에 보고합니다. 변경 사항과 신청만 입력하세요.</p></div></div>
+        <div className="flex items-center gap-3"><ClipboardCheck size={42} className="rounded-xl bg-orange-600 p-2 text-white shrink-0"/><div><h2 className="text-xl font-bold">프로젝트 업무일지</h2><p className="text-xs text-slate-600 dark:text-slate-300 mt-1">일정 기준 진행률을 확인하고 필요한 내용만 작성·저장하세요.</p></div></div>
         <div className={'grid gap-3 '+(viewTab==='HISTORY'?'sm:grid-cols-2':'sm:grid-cols-3')} aria-label="보고 대상 연결">
           <label className="min-w-0 text-xs text-slate-600 dark:text-slate-300">보고 프로젝트<select aria-label="보고 프로젝트" className={field+' mt-1'} value={workProjectOptions(projects).find(project=>sameWorkProject(projects,project.id,projectFilter))?.id||'ALL'} onChange={e=>{rememberDraft();setProjectFilter(e.target.value);setRoleFilter('');setSelectedTaskId('');}}><option value="ALL">전체 프로젝트</option>{workProjectOptions(projects).map(project=><option data-no-translate key={project.id} value={project.id}>{project.code} · {project.name}</option>)}</select></label>
           <label className="min-w-0 text-xs text-slate-600 dark:text-slate-300">보고 역할<select aria-label="보고 역할" className={field+' mt-1'} value={roleFilter} onChange={e=>{rememberDraft();setRoleFilter(e.target.value);setSelectedTaskId('');}}><option value="">전체 역할</option>{roles.map(role=><option key={role}>{role}</option>)}</select></label>
@@ -434,11 +412,11 @@ export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}
       </div>
     </header>
     {preservedDraft&&<details className="rounded-lg bg-amber-100 p-3 text-amber-950"><summary>다른 화면에서 상신되어 최신 결재본을 표시합니다. 이전 미저장 입력 확인</summary><pre data-no-translate className="whitespace-pre-wrap break-words text-xs mt-2">{preservedDraft}</pre></details>}
-    <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-800 dark:bg-blue-950 dark:text-blue-200">배정 일정 기준 자동 저장 · 오후 5시(한국시간) 자동 보고{activeLog?.autoReportedAt?` · 자동 보고 완료 ${new Date(activeLog.autoReportedAt).toLocaleString('ko-KR')}`:' · 수정한 내용은 자동 저장됩니다.'}</p>
+    <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-800 dark:bg-blue-950 dark:text-blue-200">입력한 내용은 임시 저장 또는 저장을 눌러 보관하세요. 저장한 내용은 오후 5시(한국시간)에 정기 보고됩니다.{activeLog?.autoReportedAt&&` · 보고 완료 ${new Date(activeLog.autoReportedAt).toLocaleString('ko-KR')}`}</p>
     {!loaded&&<p role="status" className="rounded-lg bg-amber-100 p-3 text-amber-950">중앙 업무일지를 연결하고 있습니다. 연결 후 작성할 수 있습니다.</p>}
     {leavesFor(leaves,reportUserId,selectedDate).length>0&&<p className="rounded-lg bg-amber-100 p-3 text-amber-950">휴가 등록일: {leavesFor(leaves,reportUserId,selectedDate).map(leave=>leave.kind).join(', ')} · 배정 업무를 확인하고 담당자와 조정하세요.</p>}
     {activeLog?.serverRevision!==formRevision&&activeLog?.approvalStatus==='DRAFT'&&<p role="status" className="rounded-lg bg-amber-100 p-3 text-amber-950">다른 화면의 저장본이 갱신되었습니다. 현재 입력은 유지되며 덮어쓰기를 막습니다. <button className="underline" onClick={()=>{localDrafts.current.delete(draftKey);editorSource.current={key:draftKey,logId:activeLog.id,items:structuredClone(activeLog.items),notes:activeLog.overallNotes};setItems(activeLog.items);setOverallNotes(activeLog.overallNotes);setFormRevision(activeLog.serverRevision);}}>최신 저장본 불러오기</button></p>}
-    {visibleNotice&&<p role="status" className="rounded-lg bg-amber-100 p-3 text-amber-950">{visibleNotice}</p>}
+    {noticeText&&<p role="status" className="rounded-lg bg-amber-100 p-3 text-amber-950">{noticeText}</p>}
     {(viewTab==='EXTENSIONS'||viewTab==='OVERTIME')?<ScheduleExtensionRequests projects={projects} projectId={projectFilter} tasks={extensionTasks} selectedTaskId={extensionTaskId} requestType={viewTab==='OVERTIME'?'OVERTIME':'DEADLINE'} suggestedDate={selectedDate}/>:viewTab==='HISTORY'?<div className={panel+' grid xl:grid-cols-[minmax(0,1fr)_280px] gap-4 p-5'}><WorkLogHistory logs={userWorkLogs} projects={projects} roleName={roleFilter} projectId={projectFilter} onOpen={openLog}/><WorkLogProjectSummary project={selectedProject} logs={userWorkLogs} date={selectedDate}/></div>:<section aria-label="업무보고 화면" className={panel+' p-5 space-y-5'}>
       <div className="grid sm:grid-cols-3 gap-3" aria-label="업무보고 현황">{[['오늘 작성한 업무일지',userWorkLogs.filter(log=>log.userId===reportUserId&&log.date===todayDate).length,ClipboardCheck,'blue'],['진행 중인 업무',allTasks.filter(task=>task.status!=='완료'&&task.progress<100&&task.startDate<=todayDate).length,Clock,'orange'],['완료한 업무',allTasks.filter(task=>task.status==='완료'||task.progress===100).length,CheckCircle2,'emerald']].map(([label,count,Icon,color])=>{const Symbol=Icon as typeof ClipboardCheck;return <article key={String(label)} className="flex gap-3 items-center rounded-lg border border-slate-200 p-5 dark:border-slate-700"><Symbol size={36} className={`rounded-full p-2 ${color==='blue'?'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300':color==='orange'?'bg-orange-50 text-orange-700 dark:bg-orange-950 dark:text-orange-300':'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'}`}/><div><p className="text-xs text-slate-600 dark:text-slate-300">{String(label)}</p><strong className="text-2xl">{String(count)}</strong><span className="ml-1 text-xs text-slate-600 dark:text-slate-300">건</span></div></article>;})}</div>
       <p className="text-xs text-slate-600 dark:text-slate-300">배정된 모든 작업을 기준으로 집계합니다.</p>
@@ -452,7 +430,7 @@ export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}
             <div><TaskReportFields key={selectedItem.id} item={selectedItem} task={currentTask} approvedProgress={approvedTaskProgress(currentTask,projects)} canEdit={canEdit} update={handleUpdateItem}/>{reportMode==='DAILY'&&<details className="border-t border-slate-200 pt-4 mt-4 dark:border-slate-700"><summary className="text-sm font-semibold cursor-pointer">업무계획 · 선택 입력</summary><DailyPlanFields item={selectedItem} canEdit={canEdit} update={handleUpdateItem}/></details>}</div>
           </div>:<div className="rounded-lg border border-dashed border-slate-300 p-10 text-center dark:border-slate-600"><FileText size={28} className="mx-auto text-slate-500"/><p className="mt-3 text-sm text-slate-600 dark:text-slate-300">상단에서 프로젝트와 배정된 작업을 선택하세요.</p></div>}
           <label className="block text-sm font-semibold">종합 보고 및 특이사항<textarea aria-label="종합 보고 및 특이사항" disabled={!canEdit} rows={2} className={field+' mt-2 font-normal'} value={overallNotes} onChange={e=>{setNotice('');setOverallNotes(e.target.value);}}/></label>
-          <div className="flex flex-wrap justify-between items-center gap-3 border-t border-slate-200 pt-4 dark:border-slate-700"><span className="text-sm text-slate-600 dark:text-slate-300">작업 결과 · {selectedItem?`${selectedItem.progress}%`:'작업 선택'}{autosaveComplete&&<strong className="ml-3 text-emerald-700 dark:text-emerald-300">자동 저장 완료</strong>}</span><div className="flex gap-2"><button className={button} disabled={!canEdit||busy} onClick={()=>void run(()=>handleSaveLog())}><Save size={14} className="inline mr-1"/>임시 저장</button><button className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={!canEdit||busy||!selectedItem} onClick={()=>void run(handleSubmitToLeader)}><Send size={14} className="inline mr-1"/>업무보고 제출</button></div></div>
+          <div className="flex flex-wrap justify-between items-center gap-3 border-t border-slate-200 pt-4 dark:border-slate-700"><span className="text-sm text-slate-600 dark:text-slate-300">작업 결과 · {selectedItem?`${selectedItem.progress}%`:'작업 선택'}</span><div className="flex gap-2"><button className={button} disabled={!canEdit||busy} onClick={()=>void run(async()=>{await handleSaveLog();setNotice('임시 저장했습니다.');})}><Save size={14} className="inline mr-1"/>임시 저장</button><button className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={!canEdit||busy||!selectedItem} onClick={()=>void run(async()=>{await handleSaveLog();setNotice('저장했습니다.');})}><Save size={14} className="inline mr-1"/>저장</button></div></div>
         </div>
       </section>
       <details className="border-t border-slate-200 pt-4 dark:border-slate-700"><summary className="text-sm font-semibold cursor-pointer">업무일지 결재 · {stage}</summary><section className="space-y-4 pt-4" aria-label="업무일지 결재">{!hasApprovalLine&&<p role="status">결재선이 설정되지 않았습니다. 소속과 결재 담당자를 확인하세요.</p>}<div className="grid sm:grid-cols-3 gap-3">{[['작성자',activeLog?.authorSignature?.name||activeLog?.userName||currentUser?.name,activeLog?.authorSignature?.signed],[hasApprovalLine?`1차 ${leaderTitle} 검토 (${approvalDepartment})`:`${leaderTitle} 검토`,activeLog?.leaderReview?.name||line?.leader.name,activeLog?.leaderReview?.approved],[`${chiefTitle} 최종 승인`,activeLog?.chiefApproval?.name||line?.chief.name,activeLog?.chiefApproval?.approved]].map(([label,name,done])=><div key={String(label)} className="rounded-lg border border-slate-200 p-4 text-sm dark:border-slate-700"><p className="text-slate-600 dark:text-slate-300">{label}</p><strong className="block mt-2">{name}</strong><p className="mt-2">{done?'확인 완료':'대기'}</p></div>)}</div><div className="flex gap-3">{activeLog?.approvalStatus==='SUBMITTED_LEADER'&&!activeLog.leaderReview?.approved&&currentUser?.id===leaderId&&<button className={button} disabled={busy} onClick={()=>void run(handleApproveByLeader)}>{leaderTitle} 검토 승인</button>}{activeLog?.approvalStatus==='SUBMITTED_LEADER'&&activeLog.leaderReview?.approved&&currentUser?.id===chiefId&&<button className={button} disabled={busy} onClick={()=>void run(handleApproveFinalByChief)}>{chiefTitle} 최종 승인</button>}</div></section></details>
