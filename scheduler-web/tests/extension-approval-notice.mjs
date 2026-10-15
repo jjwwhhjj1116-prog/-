@@ -7,6 +7,7 @@ const require=createRequire(import.meta.url),React=require('react'),jsx=require(
 const compiled=ts.transpileModule(readFileSync(new URL('../src/components/StudioCollaboration.tsx',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022}}).outputText;
 const nodes=n=>Array.isArray(n)?n.flatMap(nodes):n&&n.props?[n,...nodes(n.props.children)]:[];
 const notice=(id='r1')=>({id:'extension-approved:'+id,meeting_id:'extension:qa-project',message:'합성 공종 연장 승인 2026-10-14 → 2026-10-16',created_at:'2026-10-14T00:00:00Z',read_at:null});
+const overtimeNotice=(id='ot1',date='2026-10-15',start='17:00',end='18:00',hours=1)=>({...notice(id),message:`QA-ONLY · 합성 프로젝트 · PM 추가 시간 승인 (${date} ${start} ~ ${end}, ${hours}시간) · 합성 팀장`});
 function screen({notifications=[notice()],ready=true,actorId='worker',api=async()=>({ok:true})}={}){
  const slots=[],calls=[],opens=[],personal={},actor={currentUser:{id:'worker'}},studio={ready,actorId,notifications,status:'연결',pending:0,conflict:false,unreadCount:notifications.filter(n=>!n.read_at).length};let cursor=0,tree,refreshes=0;
  const auth=selector=>selector(actor);auth.getState=()=>actor;
@@ -24,4 +25,47 @@ await check('이후 다른 연장 승인 및 계정 전환 시 개인 알림 독
 await check('읽음 실패는 원래 알림 보존 및 화면 오류 안내',async()=>{const e=screen({api:async()=>{throw Error('읽음 저장 실패');}});await e.click('확인');assert.equal(e.studio.notifications[0].read_at,null);assert.ok(e.all().some(n=>n.props.role==='alert'&&n.props.children==='읽음 저장 실패'));});
 await check('읽음 응답 전에 계정 변경 시 이전 알림 오류 또는 갱신 제외',async()=>{let reject;const e=screen({api:()=>new Promise((_,r)=>{reject=r;})});await e.click('확인');e.actor.currentUser={id:'other'};reject(Error('이전 계정 실패'));await new Promise(resolve=>setImmediate(resolve));e.render();assert.equal(e.refreshes(),0);assert.equal(e.dialog(),undefined);assert.equal(e.all().filter(n=>n.props.role==='alert'&&String(n.props.children).includes('이전 계정 실패')).length,0);});
 await check('팝업 닫기 버튼은 상단 우측에 있으며 읽음 처리',async()=>{const e=screen(),button=e.all().find(n=>n.props['aria-label']==='일정 연장 승인 안내 닫기');assert.ok(button.props.className.includes('right-3 top-3'));await e.click('일정 연장 승인 안내 닫기');assert.equal(e.dialog(),undefined);});
+await check('야근 승인은 날짜·시간 원문을 보존하고 야근 제목·안내·닫기 이름으로 표시',async()=>{
+ const notification=overtimeNotice(),e=screen({notifications:[notification]});
+ assert.equal(e.dialog().props['aria-label'],'야근 승인 안내');assert.ok(e.all().some(node=>node.type==='h2'&&node.props.children==='야근이 승인되었습니다'));
+ assert.ok(e.all().some(node=>node.type==='p'&&node.props.children===notification.message));assert.ok(e.all().some(node=>node.type==='p'&&node.props.children==='승인된 야근일이 개인·팀 일정표에 반영됩니다.'));
+ const close=e.all().find(node=>node.props['aria-label']==='야근 승인 안내 닫기');assert.ok(close.props.className.includes('right-3 top-3'));
+ await e.click('야근 승인 안내 닫기');assert.equal(e.dialog(),undefined);assert.deepEqual(JSON.parse(JSON.stringify(e.calls)),[['notifications/read','POST',{id:notification.id}]]);assert.equal(notification.read_at,null);
+});
+await check('야근 신청 확인은 정확한 원본 신청 ID·프로젝트·유형을 전달하고 해당 알림만 읽음',async()=>{
+ const notification=overtimeNotice(),e=screen({notifications:[notification]});await e.click('야근 신청 확인');
+ assert.deepEqual(JSON.parse(JSON.stringify(e.personal.openExtension)),{projectId:'qa-project',type:'OVERTIME',requestId:'ot1'});assert.deepEqual(e.opens,['worklog']);assert.equal(e.dialog(),undefined);
+ assert.deepEqual(JSON.parse(JSON.stringify(e.calls)),[['notifications/read','POST',{id:notification.id}]]);
+});
+await check('연장·야근 혼합 알림을 순서대로 각각 표시하고 현재 알림만 한 번 읽음 처리',async()=>{
+ const notifications=[notice('deadline-a'),overtimeNotice('ot-a'),notice('deadline-b'),overtimeNotice('ot-b','2026-10-16','18:30','20:00',1.5)],e=screen({notifications});
+ for(const notification of notifications){
+  const overtime=notification.id.includes(':ot-');assert.equal(e.dialog().props['aria-label'],overtime?'야근 승인 안내':'일정 연장 승인 안내');assert.ok(e.all().some(node=>node.type==='p'&&node.props.children===notification.message));
+  await e.click('확인');
+ }
+ assert.equal(e.dialog(),undefined);assert.deepEqual(JSON.parse(JSON.stringify(e.calls)),notifications.map(notification=>['notifications/read','POST',{id:notification.id}]));assert.equal(e.refreshes(),4);assert.ok(notifications.every(notification=>notification.read_at===null));
+});
+await check('프로젝트명에 야근 문구가 있어도 완료일 연장·비관련 알림의 의미를 바꾸지 않음',()=>{
+ const deadline={...notice(),message:'QA-ONLY · 야근 추가 시간 승인 (2026-10-15 17:00 ~ 18:00, 1시간) 검토 현장 · PM 일정 연장 승인 (2026-11-14 → 2026-11-16) · 합성 팀장'},e=screen({notifications:[deadline]});
+ assert.equal(e.dialog().props['aria-label'],'일정 연장 승인 안내');assert.ok(e.all().some(node=>node.type==='h2'&&node.props.children==='일정 연장이 승인되었습니다'));
+ for(const notification of [{...overtimeNotice(),id:'decision:unrelated'},{...overtimeNotice(),meeting_id:'worklog:unrelated'},{...overtimeNotice(),read_at:'2026-10-15'}])assert.equal(screen({notifications:[notification]}).dialog(),undefined);
+});
+await check('야근 읽음의 늦은 성공·실패가 새 계정 알림과 갱신을 건드리지 않음',async()=>{
+ for(const fail of [false,true]){
+  let resolve,reject;const e=screen({notifications:[overtimeNotice()],api:()=>new Promise((ok,no)=>{resolve=ok;reject=no;})});await e.click('확인');
+  e.actor.currentUser={id:'other'};e.studio.actorId='other';e.studio.notifications=[notice('other-deadline')];e.render();
+  if(fail)reject(Error('이전 야근 읽음 실패'));else resolve({ok:true});await new Promise(done=>setImmediate(done));e.render();
+  assert.equal(e.refreshes(),0);assert.equal(e.dialog().props['aria-label'],'일정 연장 승인 안내');assert.ok(!e.all().some(node=>node.props.role==='alert'&&String(node.props.children).includes('이전 야근 읽음 실패')));
+ }
+});
+await check('계정이 바뀐 뒤 남은 야근 열기 버튼은 이전 신청 화면을 열거나 읽음 처리하지 않음',()=>{
+ const e=screen({notifications:[overtimeNotice()]}),button=e.all().find(node=>node.type==='button'&&node.props.children==='야근 신청 확인');assert.ok(button);
+ e.actor.currentUser={id:'other'};button.props.onClick();e.render();assert.equal(e.personal.openExtension,undefined);assert.equal(e.calls.length,0);assert.equal(e.opens.length,0);
+});
+await check('이미 확인한 야근 승인도 결재 알림 목록에서 같은 야근 신청으로 다시 열림',async()=>{
+ const notification={...overtimeNotice(),read_at:'2026-10-15T00:00:00Z'},e=screen({notifications:[notification]});assert.equal(e.dialog(),undefined);
+ e.all().find(node=>node.type==='button'&&node.props['aria-expanded']===false).props.onClick();e.render();
+ const button=e.all().find(node=>node.type==='button'&&Array.isArray(node.props.children)&&node.props.children.includes(notification.message));assert.ok(button);button.props.onClick();await new Promise(resolve=>setImmediate(resolve));e.render();
+ assert.deepEqual(JSON.parse(JSON.stringify(e.personal.openExtension)),{projectId:'qa-project',type:'OVERTIME',requestId:'ot1'});assert.deepEqual(e.opens,['worklog']);assert.equal(e.calls.length,0);assert.equal(notification.read_at,'2026-10-15T00:00:00Z');
+});
 const output=process.argv.find(arg=>arg.startsWith('--output='))?.slice(9);if(output)writeFileSync(output,JSON.stringify({results,pass:results.filter(r=>r.status==='PASS').length,fail:results.filter(r=>r.status==='FAIL').length},null,2));if(results.some(r=>r.status==='FAIL'))process.exitCode=1;

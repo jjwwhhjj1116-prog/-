@@ -63,7 +63,13 @@ export async function scheduleExtensionRoute(request:Request,env:any,user:any,ro
   if(input.memo!==undefined&&(typeof input.memo!=='string'||input.memo.length>1000))return fail('처리 메모는 1,000자 이내로 입력하세요.');
   if(match[3]==='approve'){
    const task=assignedTasks(pending.userId,[project],aliasesFor(pending.userId)).find(t=>t.id===pending.taskId);
-   if(!task||task.endDate!==pending.previousEnd||pending.allocationId!==undefined&&pending.allocationId!==task.allocationId)return fail('배정 또는 마감일이 변경되어 승인할 수 없습니다. 요청을 반려하고 다시 신청하세요.',409);
+   let expectedEnd=pending.previousEnd;
+   if(pending.type==='OVERTIME'&&task&&task.endDate!==expectedEnd){
+    // An approved deadline extension must explain the end change on this same assignment.
+    const extensions=requests.filter((r:any)=>r.status==='APPROVED'&&(r.type||'DEADLINE')==='DEADLINE'&&r.userId===pending.userId&&r.taskId===pending.taskId&&(r.appliedTaskId??r.taskId)===pending.taskId&&typeof r.decidedAt==='string'&&typeof pending.createdAt==='string'&&r.decidedAt>=pending.createdAt&&validDay(r.previousEnd)&&validDay(r.requestedEnd)&&r.requestedEnd>r.previousEnd).sort((a:any,b:any)=>a.requestedEnd.localeCompare(b.requestedEnd));
+    for(const extension of extensions)if(extension.previousEnd===expectedEnd)expectedEnd=extension.requestedEnd;
+   }
+   if(!task||task.endDate!==expectedEnd||pending.allocationId!==undefined&&pending.allocationId!==task.allocationId)return fail('배정 또는 마감일이 변경되어 승인할 수 없습니다. 요청을 반려하고 다시 신청하세요.',409);
    if(pending.type==='OVERTIME'&&pending.workDate<task.startDate)return fail('배정 시작일이 변경되어 승인할 수 없습니다. 요청을 반려하고 다시 신청하세요.',409);
    if(staged&&!pmValid)return fail('PM 배정이 변경되어 승인할 수 없습니다. 요청을 반려하고 다시 신청하세요.',409);
    if(staged&&pending.approvalStage==='TEAM'&&!pending.pmReview?.approvedAt)return fail('PM 검토를 먼저 완료하세요.',409);

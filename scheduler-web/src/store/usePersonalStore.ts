@@ -3,7 +3,7 @@ import {studioApi} from '../services/studioApi';
 import {useAuthStore} from './useAuthStore';
 import {useWorkLogStore,type DailyWorkLog} from './useWorkLogStore';
 import type {Leave} from '../utils/personalWork';
-export const usePersonalStore=create<{leaves:Leave[];checks:{day:string;task_id:string;done:number}[];loaded:boolean;openDate:string|null;openTaskId?:string|null;openWorkLogId?:string|null;openExtension?:string|null}>(()=>({leaves:[],checks:[],loaded:false,openDate:null,openWorkLogId:null,openExtension:null}));
+export const usePersonalStore=create<{leaves:Leave[];checks:{day:string;task_id:string;done:number}[];loaded:boolean;openDate:string|null;openTaskId?:string|null;openWorkLogId?:string|null;openExtension?:string|{projectId:string;type:'OVERTIME';requestId:string}|null}>(()=>({leaves:[],checks:[],loaded:false,openDate:null,openWorkLogId:null,openExtension:null}));
 let refreshId=0;
 export async function refreshPersonal(){
  const actor=useAuthStore.getState().currentUser;if(!actor)return false;
