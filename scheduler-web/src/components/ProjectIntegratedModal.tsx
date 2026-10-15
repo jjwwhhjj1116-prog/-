@@ -13,6 +13,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { VIET_TEAMS_DATA } from '../data/vietTeams';
 import { assignmentPersonId } from '../utils/personalWork';
 import { projectPMId } from '../utils/pendingAssignment';
+import {visiblePostDeliveryTasks,postDeliveryDepartment} from '../utils/postDeliveryVisibility';
 
 interface ProjectIntegratedModalProps {
   projectCode: string;
@@ -178,7 +179,7 @@ export const ProjectIntegratedModal: React.FC<ProjectIntegratedModalProps> = ({
             </span>
           </div>
           {relatedProjects.some(project=>!projectPMId(project))&&<p role="status" className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 text-xs text-amber-200">신규 프로젝트 · PM 및 담당 인원 배정이 필요합니다. 해당 팀 실장·팀장이 팀 일정표에서 지정해 주세요.</p>}
-          {relatedProjects.some(project=>(project.postDeliveryTasks||[]).length>0)&&<section className="rounded-xl border border-violet-600/50 bg-violet-950/20 p-3"><h3 className="text-sm font-bold text-violet-200">납품 후 검토·수정 일정</h3><ul className="mt-2 space-y-1 text-xs text-slate-200">{relatedProjects.flatMap(project=>(project.postDeliveryTasks||[]).map(task=><li key={`${project.id}-${task.id}`}>{project.department} · {task.kind} · {task.startDate} ~ {task.endDate} · {task.memo} · 담당 {task.personIds.map(id=>assigneeName(id, false)).join(', ')}</li>))}</ul></section>}
+          {relatedProjects.some(project=>visiblePostDeliveryTasks(project).length>0)&&<section className="rounded-xl border border-violet-600/50 bg-violet-950/20 p-3"><h3 className="text-sm font-bold text-violet-200">납품 후 검토·수정 일정</h3><ul className="mt-2 space-y-1 text-xs text-slate-200">{relatedProjects.flatMap(project=>visiblePostDeliveryTasks(project).map(task=><li key={`${project.id}-${task.id}`}>{postDeliveryDepartment(project,task)} · {task.kind} · {task.startDate} ~ {task.endDate} · {task.memo} · 담당 {task.personIds.map(id=>assigneeName(id, false)).join(', ')}</li>))}</ul></section>}
 
           <div className={`grid grid-cols-1 ${civilProject ? 'xl:grid-cols-3 lg:grid-cols-2' : 'lg:grid-cols-2'} gap-6`}>
             

@@ -11,6 +11,7 @@ import { projectProgress, percentLabel,projectScheduleRange } from '../utils/sch
 import { HOLIDAYS } from '../constants/holidays';
 import { exportProjectsToExcel } from '../services/excelService';
 import { projectPMId } from '../utils/pendingAssignment';
+import {visiblePostDeliveryTasks,postDeliveryDepartment} from '../utils/postDeliveryVisibility';
 
 interface Props {
   isOpen: boolean;
@@ -45,7 +46,7 @@ export const PrintScheduleModal: React.FC<Props> = ({
   const filteredProjects = useMemo(() => {
     return departmentFilter === 'ALL'
       ? projects
-      : projects.filter((p) => p.department === departmentFilter);
+      : projects.filter((p) => p.department === departmentFilter || visiblePostDeliveryTasks(p,departmentFilter).length>0);
   }, [projects, departmentFilter]);
 
   // 1. 프로젝트 코드 기준 통합 그룹핑 (메인 캘린더와 100% 동일한 통합 양식)
@@ -84,24 +85,28 @@ export const PrintScheduleModal: React.FC<Props> = ({
         };
       }
 
-      if (p.department && !groupMap[code].departments.includes(p.department)) {
-        groupMap[code].departments.push(p.department);
-      }
+      const includesMain=departmentFilter==='ALL'||p.department===departmentFilter;
+      const follows=visiblePostDeliveryTasks(p,departmentFilter);
+      const departments=[...new Set([...(includesMain?[p.department]:[]),...follows.map(task=>postDeliveryDepartment(p,task))])];
+      for(const department of departments){
+      if(!groupMap[code].departments.includes(department))groupMap[code].departments.push(department);
+      const main=department===p.department;
 
       const pmId = projectPMId(p);
       const pmName = (personMap.get(pmId) || pmId || '-');
 
       groupMap[code].lanes.push({
         projectId: p.id,
-        department: p.department || '마감팀',
-        pmName,
-        startDate: projectScheduleRange(p).start || '',
-        endDate: projectScheduleRange(p).end || '',
-        progress: projectProgress(p).actual,
-        planned: projectProgress(p).planned,
+        department,
+        pmName:main?pmName:'-',
+        startDate: main?projectScheduleRange(p).start || '':'',
+        endDate: main?projectScheduleRange(p).end || '':'',
+        progress: main?projectProgress(p).actual:undefined,
+        planned: main?projectProgress(p).planned:undefined,
         status: p.status || '진행중',
-        postDeliveryTasks:p.postDeliveryTasks||[],
+        postDeliveryTasks:follows.filter(task=>postDeliveryDepartment(p,task)===department),
       });
+      }
     });
 
     const deptOrder: Record<string, number> = {
@@ -114,7 +119,7 @@ export const PrintScheduleModal: React.FC<Props> = ({
       grp.lanes.sort((a, b) => ((deptOrder[a.department] ?? 99) - (deptOrder[b.department] ?? 99)));
       return grp;
     });
-  }, [filteredProjects, personMap]);
+  }, [filteredProjects, personMap,departmentFilter]);
 
   const [baseYear, baseMonthNumber] = baseMonth.split('-').map(Number);
   const months = Array.from({length: 3}, (_, index) => {

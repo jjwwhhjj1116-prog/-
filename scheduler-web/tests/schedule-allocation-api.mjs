@@ -88,11 +88,11 @@ await check('roles-only 최초 구간 이관은 전체55·공종35·승인원문
  const helper=progress.allocationScheduleOnly||(()=>false),old={조적:{personId:'worker',startDate:'2026-10-06',endDate:'2026-10-07',progress:35}},defaults={조적:{...old.조적,roleName:'조적',status:'예정',memo:'',version:'v1',allocations:[]}};assert.equal(helper(old,defaults),true);for(const [key,value]of [['progress',70],['actualProgressDate','2026-10-06'],['status','완료'],['memo','다른 메모']])assert.equal(helper(old,{조적:{...defaults.조적,[key]:value}}),false);
  const saved=await req('worker','worklogs/legacy-materialized','PUT',{log:log('legacy-materialized',r.data.project)});assert.equal(saved.status,200);await approve(saved.data.log);const final=(await get(p.id)).project;assert.equal(final.progress,70);assert.equal(final.subTasks.조적.progress,70);assert.equal(final.subTasks.조적.actualProgressDate,'2026-10-06');assert.equal(final.subTasks.조적.memo,'구형 승인 메모');assert.equal(final.endDate,p.endDate);
 });
-await check('계획 표시범위는 구간·구형 공종·후속 기간만 포함, 원납기·빈구간·legacy 계약 보존',()=>{
+await check('본 일정 표시범위는 공종만 포함하고 보완은 별도, 원납기·빈구간·legacy 계약 보존',()=>{
  const p=project('display-range');p.startDate='2026-07-02';p.endDate='2026-10-20';p.postDeliveryTasks=[];p.subTasks={PM:{...task([]),roleName:'PM'},조적:task([segment('a',['worker'],'2026-08-24','2026-08-28'),segment('b',['other'],'2026-08-31','2026-09-04')])};const original=clone(p);
  assert.deepEqual(progress.projectScheduleRange(p),{start:'2026-08-24',end:'2026-09-04'});assert.deepEqual(p,original);
  p.roles.창호={personId:'other',startDate:'2026-09-10',endDate:'2026-09-12'};assert.deepEqual(progress.projectScheduleRange(p),{start:'2026-08-24',end:'2026-09-12'});
- p.postDeliveryTasks=[{id:'follow',startDate:'2026-09-15',endDate:'2026-09-16'}];assert.deepEqual(progress.projectScheduleRange(p),{start:'2026-08-24',end:'2026-09-16'});
+ p.postDeliveryTasks=[{id:'follow',startDate:'2026-09-15',endDate:'2026-09-16'}];assert.deepEqual(progress.projectScheduleRange(p),{start:'2026-08-24',end:'2026-09-12'});
  p.roles={};p.postDeliveryTasks=[];p.subTasks.조적.allocations=[];assert.deepEqual(progress.projectScheduleRange(p),{start:'',end:''});
  delete p.subTasks.조적.allocations;delete p.subTasks.PM.allocations;assert.deepEqual(progress.projectScheduleRange(p),{start:'2026-07-02',end:'2026-10-20'});assert.equal(p.endDate,'2026-10-20');
 });

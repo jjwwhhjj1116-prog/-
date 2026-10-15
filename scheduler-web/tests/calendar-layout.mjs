@@ -6,6 +6,7 @@ import { runInNewContext } from 'node:vm';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
+import { nativeSsrPackages } from './ssr-native-packages.mjs';
 
 const require = createRequire(import.meta.url);
 const ts = require('typescript'), React = require('react'), jsx = require('react/jsx-runtime');
@@ -17,9 +18,10 @@ let externalRequests = 0;
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 globalThis.fetch = async () => { externalRequests++; throw Error('합성 캘린더 검수의 외부 요청은 금지됩니다.'); };
 const server = await createServer({
-  plugins: calendarSource ? [{ name: 'protected-calendar-layout', enforce: 'pre', load(id) {
+  ssr: {noExternal: [/^(react|react-dom|zustand|xlsx|date-fns|lucide-react)(\/|$)/]},
+  plugins: [nativeSsrPackages(), ...(calendarSource ? [{ name: 'protected-calendar-layout', enforce: 'pre', load(id) {
     if (id.replaceAll('\\', '/').endsWith('/src/components/ProjectCalendar.tsx')) return readFileSync(calendarSource, 'utf8');
-  } }] : [],
+  } }] : [])],
   server: { middlewareMode: true, hmr: false }, appType: 'custom',
 });
 const person = { id: 'calendar-layout-person', no: 90001, name: '합성 담당자', engName: 'Synthetic', company: '컨코스트', department: '마감팀', originalDept: '마감팀', position: '프로', phone: '', email: 'calendar-layout@example.invalid', idPrefix: 'calendar-layout', active: true, role: 'MEMBER' };
@@ -70,6 +72,8 @@ try {
   const { usePersonalStore: personal } = await server.ssrLoadModule('/src/store/usePersonalStore.ts');
   const { useLanguageStore: language } = await server.ssrLoadModule('/src/store/useLanguageStore.ts');
   const work = await server.ssrLoadModule('/src/utils/personalWork.ts');
+  const extensionPeriods = await server.ssrLoadModule('/src/utils/scheduleExtensionPeriods.ts');
+  const postDeliveryVisibility = await server.ssrLoadModule('/src/utils/postDeliveryVisibility.ts');
   const staff = await server.ssrLoadModule('/src/utils/staffOrder.ts');
   const holidays = await server.ssrLoadModule('/src/constants/holidays.ts');
   const { VIET_TEAMS_DATA } = await server.ssrLoadModule('/src/data/vietTeams.ts');
@@ -82,6 +86,8 @@ try {
     const hooks = [];
     const mockReact = { ...React, useState(initial) { const index = cursor++; if (!hooks[index]) hooks[index] = { value: index === 1 ? date : typeof initial === 'function' ? initial() : initial }; return [hooks[index].value, value => { hooks[index].value = typeof value === 'function' ? value(hooks[index].value) : value; }]; }, useMemo: fn => fn() };
     const modules = { react: mockReact, 'react/jsx-runtime': jsx, 'date-fns': require('date-fns'), 'date-fns/locale': require('date-fns/locale'), 'lucide-react': require('lucide-react'), '../store/useProjectStore': { useProjectStore: hook(projects) }, '../store/useAuthStore': { useAuthStore: hook(auth) }, '../store/usePersonalStore': { usePersonalStore: hook(personal) }, '../store/useLanguageStore': { useLanguageStore: hook(language) }, '../utils/personalWork': work, '../utils/staffOrder': staff, '../utils/vietPersonnel': vietPersonnel, '../data/vietTeams': { VIET_TEAMS_DATA }, '../constants/holidays': holidays, './VietTeamModal': { VietTeamModal: () => null }, './ProjectCalendar': { default: ProjectCalendar }, '../services/excelService': excel };
+    modules['../utils/scheduleExtensionPeriods'] = extensionPeriods;
+    modules['../utils/postDeliveryVisibility'] = postDeliveryVisibility;
     const exports = {};
     runInNewContext(ts.transpileModule(personalText, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText, { exports, Date, console, require(id) { assert.ok(id in modules, '예상하지 못한 개인 캘린더 의존성: ' + id); return modules[id]; } });
     const render = () => { cursor = 0; tree = exports.PersonalScheduleView({ department: '마감팀' }); };

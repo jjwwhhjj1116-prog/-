@@ -36,6 +36,14 @@ export interface Revision {
 }
 
 export interface PostDeliveryTask {
+  submissionStatus?: 'REPORTED' | 'CANCELLED';
+  createdBy?: string;
+  createdByName?: string;
+  submittedAt?: string;
+  reviewerIds?: string[];
+  revision?: number;
+  department?: Department;
+  cancelledAt?: string;
   progress?:number;
   actualProgressDate?:string;
   reportingMode?: 'DAILY' | 'TASK';

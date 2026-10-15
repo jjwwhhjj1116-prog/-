@@ -1,5 +1,6 @@
 import {HOLIDAYS} from '../constants/holidays.ts';
 import {workDays} from './scheduleProgress.ts';
+import {isPostDeliveryConfirmed,postDeliveryDepartment} from './postDeliveryVisibility.ts';
 import {VIET_TEAMS_DATA} from '../data/vietTeams.ts';
 import type {Project,ScheduleAllocation} from '../store/useProjectStore';
 import type {WorkLogItem} from '../store/useWorkLogStore';
@@ -58,8 +59,9 @@ export function assignedTasks(userId:string,projects:Project[],aliases:string[]=
    }
   }
   for(const task of p.postDeliveryTasks||[]){
+   if(!isPostDeliveryConfirmed(task))continue;
    if(!taskAssignedTo(task,userId,aliases)||!validDay(task.startDate)||!validDay(task.endDate)||task.startDate>task.endDate)continue;
-   rows.push({id:`gen-${p.id}-followup-${task.id}`,projectId:p.id,projectCode:p.code||p.id,projectName:p.name,department:p.department,roleName:`납품 후 ${task.kind}`,scheduleMemo:task.memo,
+   rows.push({id:`gen-${p.id}-followup-${task.id}`,projectId:p.id,projectCode:p.code||p.id,projectName:p.name,department:postDeliveryDepartment(p,task),roleName:`납품 후 ${task.kind}`,scheduleMemo:task.memo,
     todayTask:task.memo,progress:task.progress??(task.status==='완료'?100:0),status:task.status==='완료'?'완료':task.status==='진행중'?'진행중':'대기',tomorrowPlan:'',notes:`검토·수정 기간: ${task.startDate} ~ ${task.endDate}`,startDate:task.startDate,endDate:task.endDate,reportingMode:assignedReportingMode(task,userId,aliases),reportBasis:assignedReportingMode(task,userId,aliases),scheduleDerived:true,manualFields:[]});
   }
  }

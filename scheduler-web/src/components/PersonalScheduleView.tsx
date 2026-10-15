@@ -1,6 +1,7 @@
 import {usePersonalStore} from '../store/usePersonalStore';
 import {useLanguageStore} from '../store/useLanguageStore';
 import {assignedTasksForAliases,assignmentAliases,validDay} from '../utils/personalWork';
+import {postDeliveryDepartment} from '../utils/postDeliveryVisibility';
 import {scheduleExtensionPeriods} from '../utils/scheduleExtensionPeriods';
 import { compareStaff } from '../utils/staffOrder';
 import React, { useState, useMemo } from 'react';
@@ -26,6 +27,7 @@ import {
   Settings2,
   Printer,
   FileSpreadsheet,
+  CalendarPlus,
 } from 'lucide-react';
 import { useProjectStore, type Department } from '../store/useProjectStore';
 import { useAuthStore } from '../store/useAuthStore';
@@ -40,6 +42,7 @@ import { HOLIDAYS } from '../constants/holidays';
 interface PersonalScheduleViewProps {
   department: Department;
   onOpenPrintModal?: (date?: Date) => void;
+  onOpenPostDelivery?: () => void;
 }
 
 interface AssignedTask {
@@ -56,6 +59,7 @@ interface AssignedTask {
   memo: string;
   version?: string;
   lane?: number; // 겹침 방지 서브 레인 번호
+  postDeliveryId?: string;
 }
 
 // 캘린더에 표시할 행 유닛: 한국 본사 개인 또는 베트남 팀 유닛
@@ -69,7 +73,7 @@ interface ScheduleRowUnit {
   isVietnam: boolean;
 }
 
-export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ department, onOpenPrintModal }) => {
+export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ department, onOpenPrintModal, onOpenPostDelivery }) => {
   const lang=useLanguageStore(state=>state.lang);
   const { projects, setSelectedProjectId, personnel } = useProjectStore();
   const { users } = useAuthStore();
@@ -108,14 +112,18 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
     setCurrentDate(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
   };
 
-  const deptProjects = useMemo(() => projects.filter(project => project.department === department), [projects, department]);
+  const deptOvertime = useMemo(() => projects.flatMap(project => (project.scheduleExtensions || [])
+    .filter(request => {
+      if(request.type!=='OVERTIME'||request.status!=='APPROVED')return false;
+      const follow=project.postDeliveryTasks?.find(task=>`gen-${project.id}-followup-${task.id}`===(request.appliedTaskId||request.taskId));
+      return (follow?postDeliveryDepartment(project,follow):project.department)===department;
+    }).map(request=>({...request,projectCode:project.code}))),[projects,department]);
   // 소속과 다른 팀의 PM/공종을 맡은 직원도 해당 배정팀에서 휴가를 확인할 수 있다.
   const monthAssignedUserIds = useMemo(() => new Set(users.filter(person =>
-    assignedTasksForAliases(assignmentAliases(person, users), deptProjects)
-      .some(task => task.startDate <= monthEndStr && task.endDate >= monthStartStr)
-      || deptProjects.some(project => project.scheduleExtensions?.some(request => request.type === 'OVERTIME' && request.status === 'APPROVED'
-        && request.userId === person.id && typeof request.workDate === 'string' && validDay(request.workDate) && request.workDate >= monthStartStr && request.workDate <= monthEndStr))
-  ).map(person => person.id)), [users, deptProjects, monthStartStr, monthEndStr]);
+    assignedTasksForAliases(assignmentAliases(person, users), projects)
+      .some(task => task.department === department && task.startDate <= monthEndStr && task.endDate >= monthStartStr)
+      || deptOvertime.some(request => request.userId === person.id && typeof request.workDate === 'string' && validDay(request.workDate) && request.workDate >= monthStartStr && request.workDate <= monthEndStr)
+  ).map(person => person.id)), [users, projects, deptOvertime, department, monthStartStr, monthEndStr]);
 
   // 해당 부서 한국 본사 인원과 당월 실제 배정 인원 (개인별)
   const koreaUsers = useMemo(() => {
@@ -201,7 +209,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
       rawMap[u.id] = [];
     });
 
-    deptProjects.forEach((p) => {
+    projects.forEach((p) => {
       const shortName = getProjectShortName(p.name);
       const displayName = getProjectDisplayName(p.name);
 
@@ -209,8 +217,10 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
         const person=users.find(person=>person.id===unit.id),team=unit.vietTeamData;
         const aliases=team?[team.id,team.code,team.displayName,...team.members.flatMap(member=>assignmentAliases(users.find(user=>user.id===member.id)||{id:member.id},users))]:assignmentAliases(person||{id:unit.id},users);
         for(const task of assignedTasksForAliases(aliases,[p])){
+          if(task.department!==department)continue;
           const source=p.subTasks?.[task.roleName];
-          rawMap[unit.id].push({id:task.id,allocationId:task.allocationId,projectId:p.id,projectName:p.name,projectShortName:shortName,projectDisplayName:displayName,roleName:task.roleName+(source?.subType?` (${source.subType})`:''),startDate:task.startDate,endDate:task.endDate,status:task.status==='대기'?'예정':task.status,memo:task.scheduleMemo||'',version:source?.version});
+          const follow=p.postDeliveryTasks?.find(item=>task.id===`gen-${p.id}-followup-${item.id}`);
+          rawMap[unit.id].push({id:task.id,allocationId:task.allocationId,projectId:p.id,projectName:p.name,projectShortName:shortName,projectDisplayName:displayName,roleName:task.roleName+(source?.subType?` (${source.subType})`:''),startDate:task.startDate,endDate:task.endDate,status:task.status==='대기'?'예정':task.status,memo:task.scheduleMemo||'',version:source?.version,...(follow?{postDeliveryId:follow.id}:{})});
         }
       });
     });
@@ -253,7 +263,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
     });
 
     return packedMap;
-  }, [scheduleRowUnits, deptProjects, users]);
+  }, [scheduleRowUnits, projects, users, department]);
 
   // 간트 바 스타일 위치 계산
   const getGanttBarStyle = (task: AssignedTask, lane: number) => {
@@ -323,9 +333,10 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          {viewMode==='PERSONAL'&&onOpenPostDelivery && <button type="button" onClick={onOpenPostDelivery} className="flex items-center gap-1.5 rounded-xl bg-violet-700 px-3.5 py-2 text-xs font-bold text-white hover:bg-violet-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"><CalendarPlus size={16}/>프로젝트 보완 일정 등록</button>}
           {/* 엑셀 다운로드 버튼 */}
           <button
-            onClick={() => exportProjectsToExcel(deptProjects, personnel, currentDate, 1, department)}
+            onClick={() => exportProjectsToExcel(projects, personnel, currentDate, 1, department)}
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition active:scale-95 cursor-pointer"
             title="현재 월 실시간 타임라인 간트 일정표 엑셀 다운로드"
           >
@@ -405,7 +416,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
       {/* 2. 메인 캘린더 렌더링 */}
       {viewMode === 'TEAM' ? (
         <div className="space-y-4">
-          <ProjectCalendar date={currentDate} onDateChange={setCurrentDate} onOpenPrintModal={onOpenPrintModal} />
+          <ProjectCalendar date={currentDate} onDateChange={setCurrentDate} onOpenPrintModal={onOpenPrintModal} onOpenPostDelivery={onOpenPostDelivery} />
         </div>
       ) : (
         <div className="corporate-card overflow-hidden">
@@ -471,6 +482,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                 <span className="w-2.5 h-2.5 rounded bg-cyan-600" /> 내부/기둥
               </span>
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-red-700" /> 승인된 연장 기간</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-violet-700" /> 보완 · 자동 보고</span>
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-indigo-700" /> 야근 · 승인된 근무일</span>
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded border border-amber-600 bg-amber-100" /> 휴가 · 본인 등록
@@ -570,10 +582,8 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                   const leaveMemberIds = unit.vietTeamData?.members.map(member => member.id) || [unit.id];
                   const monthLeaves = leaves.filter(leave => leaveMemberIds.includes(leave.user_id)
                     && leave.start_date <= monthEndStr && leave.end_date >= monthStartStr);
-                  const monthOvertime = deptProjects.flatMap(project => (project.scheduleExtensions || [])
-                    .filter(request => request.type === 'OVERTIME' && request.status === 'APPROVED' && leaveMemberIds.includes(request.userId)
-                      && typeof request.workDate === 'string' && validDay(request.workDate) && request.workDate >= monthStartStr && request.workDate <= monthEndStr)
-                    .map(request => ({...request,projectCode:project.code})));
+                  const monthOvertime = deptOvertime.filter(request => leaveMemberIds.includes(request.userId)
+                      && typeof request.workDate === 'string' && validDay(request.workDate) && request.workDate >= monthStartStr && request.workDate <= monthEndStr);
                   const leaveLabel = (leave: typeof monthLeaves[number]) => `${unit.vietTeamData ? `${users.find(person => person.id === leave.user_id)?.name || leave.name || leave.user_id} · ` : ''}${leave.kind}`;
                   const rowHeight = Math.max(52+monthLeaves.length*14, (maxLane + 1) * 32 + 12)+monthLeaves.length*24+(monthOvertime.length?24:0);
 
@@ -726,28 +736,29 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                           if (!style) return null;
                           const visibleStart=task.startDate>monthStartStr?task.startDate:monthStartStr,visibleEnd=task.endDate<monthEndStr?task.endDate:monthEndStr;
                           const visibleDays=differenceInDays(parseISO(visibleEnd),parseISO(visibleStart))+1;
-                          const extensions=scheduleExtensionPeriods(deptProjects.find(project=>project.id===task.projectId),task).map(period=>({start:period.start>visibleStart?period.start:visibleStart,end:period.end<visibleEnd?period.end:visibleEnd})).filter(period=>period.start<=period.end);
+                          const extensions=scheduleExtensionPeriods(projects.find(project=>project.id===task.projectId),task).map(period=>({start:period.start>visibleStart?period.start:visibleStart,end:period.end<visibleEnd?period.end:visibleEnd})).filter(period=>period.start<=period.end);
 
                           return (
                             <div
                               key={task.id}
                               data-allocation-id={task.allocationId}
+                              data-post-delivery-id={task.postDeliveryId}
                               onClick={() => setSelectedProjectId(task.projectId)}
                               style={style}
                               data-no-translate-attrs="title"
-                              title={`${task.projectName}\n공종: ${task.roleName}\n기간: ${task.startDate} ~ ${task.endDate}\n상태: ${task.status}\n메모: ${task.memo}`}
+                              title={`${task.projectName}\n공종: ${task.roleName}\n기간: ${task.startDate} ~ ${task.endDate}\n상태: ${task.status}${task.postDeliveryId?' · 보완 · 자동 보고':''}\n메모: ${task.memo}`}
                               className={`absolute rounded-md border text-xs font-bold cursor-pointer transition-all duration-150 flex items-center px-2 z-10 shadow-2xs hover:shadow-md hover:scale-[1.01] ${getTaskColorClass(
                                 task.roleName,
                                 task.status
-                              )}`}
+                              )} ${task.postDeliveryId?'!bg-violet-700 !border-violet-800 !text-white':''}`}
                             >
                               {extensions.map(period=><span key={period.start} data-extension-start={period.start} data-extension-end={period.end} title={`승인된 연장 기간: ${period.start} ~ ${period.end}`} className="absolute inset-y-0 rounded-sm bg-red-700" style={{left:`${differenceInDays(parseISO(period.start),parseISO(visibleStart))/visibleDays*100}%`,width:`${(differenceInDays(parseISO(period.end),parseISO(period.start))+1)/visibleDays*100}%`}}><span className="sr-only">승인된 연장 기간 {period.start} ~ {period.end}</span></span>)}
                               <span className="relative truncate text-[11px] tracking-tight leading-tight drop-shadow-xs flex items-center gap-1.5 w-full">
-                                <span data-no-translate className="font-extrabold text-white truncate">
+                                <span data-no-translate className="font-extrabold truncate text-white">
                                   {task.projectDisplayName}
                                 </span>
-                                <span className="font-black bg-black/20 px-1.5 py-0.5 rounded text-white text-[10px] shrink-0">
-                                  {task.roleName}
+                                <span className="font-black px-1.5 py-0.5 rounded text-[10px] shrink-0 bg-black/20 text-white">
+                                  {task.postDeliveryId?'보완 · 자동 보고':task.roleName}
                                 </span>
                               </span>
                             </div>

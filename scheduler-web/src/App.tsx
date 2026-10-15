@@ -51,6 +51,7 @@ import { exportProjectsToExcel, parseProjectsWorkbook, parseLegacyProjectsWorkbo
 import * as XLSX from 'xlsx';
 import {useLanguageStore} from './store/useLanguageStore';
 import {ProjectInquiries} from './components/ProjectInquiries';
+import {SupplementScheduleView} from './components/SupplementScheduleView';
 
 // 좌측 카테고리 정의 (최상단에 '프로젝트 접수목록' 추가, 회의록 하위 2단 카테고리 추가)
 export type NavCategory =
@@ -98,6 +99,13 @@ export default function App() {
   // 기본 활성 메뉴: 프로젝트 일정표
   const [activeMenu, setActiveMenu] = useState<NavCategory>('프로젝트 일정표');
   const [weeklyReportWeek,setWeeklyReportWeek]=useState<string|undefined>();
+  const [supplementContext,setSupplementContext]=useState<{department?:Department;projectId?:string;taskId?:string}|null>(null);
+  const openSupplement=(department?:Department,projectId?:string,taskId?:string)=>setSupplementContext({department,projectId,taskId});
+  const openSupplementReport=(projectId:string,taskId:string)=>{
+    const project=projects.find(item=>item.id===projectId),task=project?.postDeliveryTasks?.find(item=>item.id===taskId);
+    openSupplement(task?.department||project?.department,projectId,taskId);
+  };
+  useEffect(()=>setSupplementContext(null),[actorId]);
   const openWeeklyReport=(week:string)=>{setWeeklyReportWeek(week);setActiveMenu('주간 업무·야근 보고');};
   const [minutesMenuOpen,setMinutesMenuOpen]=useState(true);
   const [todoMenuOpen,setTodoMenuOpen]=useState(true);
@@ -231,7 +239,7 @@ export default function App() {
   // 엑셀 내보내기 핸들러
   const [printDate, setPrintDate] = useState(new Date());
   const handleExportExcel = async (date = new Date()) => {
-    if(!await exportProjectsToExcel(filterDepartment === 'ALL' ? projects : projects.filter(p => p.department === filterDepartment), personnel, date, 1, filterDepartment))return;
+    if(!await exportProjectsToExcel(projects, personnel, date, 1, filterDepartment))return;
     setToastMessage('프로젝트 일정표가 엑셀(.xlsx)로 다운로드되었습니다.');
     setTimeout(() => setToastMessage(null), 3500);
   };
@@ -323,7 +331,7 @@ export default function App() {
   }
   if (!sharedLoaded && localViewActorId !== actorId) {
     return <div className={`min-h-screen ${darkMode?'dark bg-slate-950 text-slate-100':'bg-slate-50 text-slate-900'}`}>
-      {studio.actorId===actorId&&studio.conflict&&<StudioCollaboration onOpenMeeting={()=>setActiveMenu('회의록 작성')} onOpenWorkLog={()=>setActiveMenu('업무일지')} onOpenWeeklyReport={openWeeklyReport} />}
+      {studio.actorId===actorId&&studio.conflict&&<StudioCollaboration onOpenMeeting={()=>setActiveMenu('회의록 작성')} onOpenWorkLog={()=>setActiveMenu('업무일지')} onOpenWeeklyReport={openWeeklyReport} onOpenSupplement={openSupplementReport} />}
       <main className="min-h-screen max-w-lg mx-auto flex flex-col items-center justify-center gap-4 p-6 text-center">
         <h1 className="text-xl font-bold">중앙 일정 확인 중</h1>
         <p role="status" className="text-sm">{studio.actorId===actorId?studio.status:'중앙 서버 연결을 시작하고 있습니다.'}</p>
@@ -483,7 +491,7 @@ export default function App() {
         </div>
       </header>
       <AutomaticWorklogSync />
-      <StudioCollaboration onOpenMeeting={()=>setActiveMenu('회의록 작성')} onOpenWorkLog={()=>setActiveMenu('업무일지')} onOpenWeeklyReport={openWeeklyReport} />
+      <StudioCollaboration onOpenMeeting={()=>setActiveMenu('회의록 작성')} onOpenWorkLog={()=>setActiveMenu('업무일지')} onOpenWeeklyReport={openWeeklyReport} onOpenSupplement={openSupplementReport} />
       {!sharedReady&&<p role="status" className="border-b border-amber-300 bg-amber-100 px-4 py-2 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">{sharedLoaded?(studio.conflict?'다른 사람이 같은 일정을 변경했습니다. 상단에서 충돌을 해결하세요.':'중앙 서버 연결이 끊겼습니다. 마지막으로 확인한 일정과 이 PC 변경을 표시합니다. 최신 여부를 확인하세요.'):'이 PC 저장본을 보고 있습니다. 중앙 서버 연결 전에는 최신 일정이 아닐 수 있습니다.'}</p>}
 
       {/* 바디 레이아웃 */}
@@ -1033,6 +1041,7 @@ export default function App() {
 
               {/* 메인 캘린더 컴포넌트 */}
               <ProjectCalendar
+                onOpenPostDelivery={()=>openSupplement(filterDepartment==='ALL'?undefined:filterDepartment)}
                 onOpenPrintModal={(date) => { setPrintDate(date || new Date()); setIsPrintModalOpen(true); }}
                 onExportExcel={handleExportExcel}
                 onImportExcel={() => fileInputRef.current?.click()}
@@ -1048,6 +1057,7 @@ export default function App() {
           {activeMenu === '마감팀 일정표' && (
             <PersonalScheduleView
               department="마감팀"
+              onOpenPostDelivery={()=>openSupplement('마감팀')}
               onOpenPrintModal={(date) => { setPrintDate(date || new Date()); setIsPrintModalOpen(true); }}
             />
           )}
@@ -1056,6 +1066,7 @@ export default function App() {
           {activeMenu === '구조팀 일정표' && (
             <PersonalScheduleView
               department="구조팀"
+              onOpenPostDelivery={()=>openSupplement('구조팀')}
               onOpenPrintModal={(date) => { setPrintDate(date || new Date()); setIsPrintModalOpen(true); }}
             />
           )}
@@ -1064,6 +1075,7 @@ export default function App() {
           {activeMenu === '토목&조경팀 일정표' && (
             <PersonalScheduleView
               department="토목&조경팀"
+              onOpenPostDelivery={()=>openSupplement('토목&조경팀')}
               onOpenPrintModal={(date) => { setPrintDate(date || new Date()); setIsPrintModalOpen(true); }}
             />
           )}
@@ -1176,6 +1188,7 @@ export default function App() {
       )}
 
       {/* 사내 로그인 모달 */}
+      {supplementContext&&<div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/50 p-3"><SupplementScheduleView department={supplementContext.department} initialProjectId={supplementContext.projectId} initialTaskId={supplementContext.taskId} onClose={()=>setSupplementContext(null)}/></div>}
       <LoginModal
         isOpen={isLoginModalOpen}
         onClose={() => setIsLoginModalOpen(false)}

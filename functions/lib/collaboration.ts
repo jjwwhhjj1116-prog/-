@@ -11,6 +11,7 @@ import {scheduleExtensionRoute} from './scheduleExtensions.ts';
 import {ensureIntakeSchedules,pendingIntakeSchedules} from './intakeSchedule.ts';
 import {projectInquiryRoute} from './projectInquiries.ts';
 import {applyProjectDates} from '../../scheduler-web/src/utils/projectScheduleDates.ts';
+import {postDeliverySchedulesRoute,protectReportedPostDeliveryTasks} from './postDeliverySchedules.ts';
 // A small, versioned collaboration API. D1 is the shared source; cookies identify the actor.
 export type StudioUser = { id:string; name:string; department:string; position:string; profile:string; login?:string; salt?:string; password_hash?:string };
 type Environment = { DB: D1Database; CIVIL_APPROVER_ID?: string; GEMINI_API_KEY?: string; GEMINI_MODEL?: string };
@@ -165,6 +166,7 @@ export async function handleCollaboration(request:Request,env:Environment,archiv
    const result=await syncAutomaticWorklogs({...env,DB},administrator?{}:{onlyUserId:user.id});
    return result.conflicts?json({error:'동시 변경으로 일부 자동 보고를 보류했습니다. 다음 갱신에서 다시 확인합니다.',result},409):json(result);
   }
+  const supplements=await postDeliverySchedulesRoute(request,env,user,route);if(supplements)return supplements;
   const inquiry=await projectInquiryRoute(request,env,user,route);if(inquiry)return inquiry;
   const personal=await personalRoute(request,env,user,route);if(personal)return personal;
   const weeklyApproval=await weeklyApprovalRoute(request,env,user,route);if(weeklyApproval)return weeklyApproval;
@@ -261,6 +263,7 @@ export async function handleCollaboration(request:Request,env:Environment,archiv
     if(await env.DB.prepare('SELECT project_id FROM studio_project_archive WHERE project_id=?').bind(project.id).first())return fail('정리된 프로젝트입니다. 복원 후 편집하세요. 대기 변경은 보존됩니다.',409);
     const row=await env.DB.prepare('SELECT * FROM studio_projects WHERE id=?').bind(project.id).first<any>();
     if(!row){
+     try{protectReportedPostDeliveryTasks(null,null,project);}catch(e){return fail((e as Error).message,403);}
      try{validLegacyDates(project);}catch(e){return fail((e as Error).message,400);}
      const code=project.code.trim().toUpperCase();
      const linked=await env.DB.prepare("SELECT id FROM studio_intake_documents WHERE json_valid(data) AND upper(trim(json_extract(data,'$.code')))=? LIMIT 1").bind(code).first();
@@ -274,6 +277,7 @@ export async function handleCollaboration(request:Request,env:Environment,archiv
     }
     const current=JSON.parse(row.body);
     if(current.department!==project.department)return fail('프로젝트 부서를 변경할 수 없습니다.',403);
+    try{protectReportedPostDeliveryTasks(current,base||{},project);}catch(e){return fail((e as Error).message,403);}
     let merged;try{merged=mergeProject(current,base||{},project);validProject(merged,current);}catch(e){return json({error:(e as Error).message,current,revision:row.revision},409);}
     try{validLegacyDates(merged,current);}catch(e){return fail((e as Error).message,400);}
     const saved=await env.DB.prepare('UPDATE studio_projects SET body=?,revision=revision+1,updated_at=?,updated_by=? WHERE id=? AND revision=?').bind(JSON.stringify(merged),new Date().toISOString(),user.id,project.id,row.revision).run();

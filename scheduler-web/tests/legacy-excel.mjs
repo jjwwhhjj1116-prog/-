@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {nativeSsrPackages} from './ssr-native-packages.mjs';
 import {createServer} from 'vite';
 import {readFileSync} from 'node:fs';
 import * as XLSX from 'xlsx';
@@ -6,7 +7,7 @@ import * as XLSX from 'xlsx';
 const storage=new Map();
 globalThis.localStorage={getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,String(value)),removeItem:key=>storage.delete(key)};
 globalThis.window={localStorage:globalThis.localStorage};
-const server=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom'});
+const server=await createServer({ssr:{noExternal:[/^(react|react-dom|zustand|xlsx)(\/|$)/]},plugins:[nativeSsrPackages()],server:{middlewareMode:true,hmr:false},appType:'custom'});
 try {
   const {parseLegacyProjectsWorkbook}=await server.ssrLoadModule('/src/services/excelService.ts');
   const staff=[

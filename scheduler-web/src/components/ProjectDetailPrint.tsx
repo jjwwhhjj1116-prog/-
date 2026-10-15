@@ -6,6 +6,7 @@ import {TEAM_ROLES} from '../store/useProjectStore';
 import {assignmentSegments,assignmentPersonId,type AssignmentPerson,type Leave} from '../utils/personalWork';
 import {projectProgress,percentLabel} from '../utils/scheduleProgress';
 import {projectPMId} from '../utils/pendingAssignment';
+import {visiblePostDeliveryTasks} from '../utils/postDeliveryVisibility';
 
 export function ProjectDetailPrint({project,people,leaves,onClose}:{project:Project;people:(AssignmentPerson&{name:string})[];leaves:Leave[];onClose:()=>void}) {
   const names=new Map(people.map(p=>[p.id,p.name]));
@@ -21,7 +22,7 @@ export function ProjectDetailPrint({project,people,leaves,onClose}:{project:Proj
     if(!segments.length)return [{role,task,hasSchedule:false,ids:responsibility,start:'',end:''}];
     return segments.map(segment=>({role,allocationId:segment.id,task:task?{...task,memo:segment.memo??''}:task,hasSchedule:true,ids:segment.personIds.filter(Boolean),start:segment.startDate,end:segment.endDate}));
   });
-  (project.postDeliveryTasks||[]).forEach((item,index)=>rows.push({role:`납품 후 ${item.kind} ${index+1}`,task:{roleName:`납품 후 ${item.kind}`,personId:item.personIds[0]||'',personIds:item.personIds,startDate:item.startDate,endDate:item.endDate,status:item.status,memo:item.memo},hasSchedule:true,ids:item.personIds,start:item.startDate,end:item.endDate}));
+  visiblePostDeliveryTasks(project).forEach((item,index)=>rows.push({role:`납품 후 ${item.kind} ${index+1}`,task:{roleName:`납품 후 ${item.kind}`,personId:item.personIds[0]||'',personIds:item.personIds,startDate:item.startDate,endDate:item.endDate,status:item.status,memo:item.memo},hasSchedule:true,ids:item.personIds,start:item.startDate,end:item.endDate}));
   const identities=new Map([...new Set([...(pmId?[pmId]:[]),...rows.flatMap(row=>row.ids)])].map(id=>[id,assignmentPersonId(id,directory)||id]));
   const personName=(id:string)=>names.get(identities.get(id)||id)||id;
   const absences=leaves.filter(l=>rows.some(r=>r.ids.some(id=>identities.get(id)===l.user_id)&&l.start_date<=r.end&&l.end_date>=r.start));

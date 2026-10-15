@@ -80,7 +80,7 @@ export const percentLabel = (value: number | undefined) => value === undefined ?
 export function projectScheduleRange(project:Project){
  const tasks=Object.values(projectTasks(project));
  if(tasks.some(task=>task.allocations!==undefined)){
-  const periods=[...tasks.flatMap<Pick<ProgressTask,'startDate'|'endDate'>>(task=>task.allocations===undefined?[task]:task.allocations),...(project.postDeliveryTasks||[])].filter(task=>validDateRange(task.startDate,task.endDate));
+  const periods=tasks.flatMap<Pick<ProgressTask,'startDate'|'endDate'>>(task=>task.allocations===undefined?[task]:task.allocations).filter(task=>validDateRange(task.startDate,task.endDate));
   return {start:periods.map(task=>task.startDate).sort()[0]||'',end:periods.map(task=>task.endDate).sort().at(-1)||''};
  }
  const starts=[project.startDate,...tasks.map(t=>t.startDate)].filter(validDate).sort();

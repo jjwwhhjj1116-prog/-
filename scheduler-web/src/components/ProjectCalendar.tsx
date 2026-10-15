@@ -14,8 +14,9 @@ import {
   isWeekend
 } from 'date-fns';
 import { ko, vi } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Printer, Info } from 'lucide-react';
+import { CalendarPlus, ChevronLeft, ChevronRight, Printer, Info } from 'lucide-react';
 import { useProjectStore, type Department, type PostDeliveryTask } from '../store/useProjectStore';
+import {postDeliveryDepartment,visiblePostDeliveryTasks} from '../utils/postDeliveryVisibility';
 import { exportProjectsToExcel, importProjectsFromExcel } from '../services/excelService';
 
 import { HOLIDAYS } from '../constants/holidays';
@@ -25,6 +26,7 @@ interface ProjectCalendarProps {
   date?: Date;
   onDateChange?: (date: Date) => void;
   onOpenPrintModal?: (date?: Date) => void;
+  onOpenPostDelivery?: () => void;
   onExportExcel?: (date?: Date) => void;
   onImportExcel?: () => void;
   onSelectProject?: (projectCode: string) => void;
@@ -37,6 +39,7 @@ export default function ProjectCalendar({
   date,
   onDateChange,
   onOpenPrintModal,
+  onOpenPostDelivery,
   onExportExcel,
   onImportExcel,
   onSelectProject,
@@ -97,7 +100,7 @@ export default function ProjectCalendar({
   // 1차: 부서(팀) 필터링
   const deptProjects = filterDepartment === 'ALL'
     ? projects
-    : projects.filter(p => p.department === filterDepartment);
+    : projects.filter(p => p.department === filterDepartment || visiblePostDeliveryTasks(p,filterDepartment).length);
 
   // 2차: 현재 조회 월(예: 9월)에 실제로 진행 중인 프로젝트만 필터링 (사용자 요구: 9월 실제 진행 15개 정합성 확보)
   const filteredProjects = useMemo(() => {
@@ -105,12 +108,13 @@ export default function ProjectCalendar({
 
     return deptProjects.filter((project) => {
       // 접수된 미배정 프로젝트는 기간이 과거/다음 달이어도 배정될 때까지 숨기지 않는다.
-      if (projectHasNoPM(project) || pendingIntake.some(item => item.code === project.code)) return true;
+      const includesMain=filterDepartment==='ALL'||project.department===filterDepartment;
+      if (includesMain&&(projectHasNoPM(project) || pendingIntake.some(item => item.code === project.code))) return true;
       // 1) 메인 일정이 당월과 겹치는지 여부
       const range=projectScheduleRange(project);
-      const hasMainOverlap = Boolean(range.start&&range.end) && !(range.end < monthStartStr || range.start > monthEndStr);
-      if(!project.startDate||!project.endDate)return true;
-      const hasFollowUp=(project.postDeliveryTasks||[]).some(task=>task.startDate<=monthEndStr&&task.endDate>=monthStartStr);
+      const hasMainOverlap = includesMain&&Boolean(range.start&&range.end) && !(range.end < monthStartStr || range.start > monthEndStr);
+      if(includesMain&&(!project.startDate||!project.endDate))return true;
+      const hasFollowUp=visiblePostDeliveryTasks(project,filterDepartment).some(task=>task.startDate<=monthEndStr&&task.endDate>=monthStartStr);
       if (!hasMainOverlap&&!hasFollowUp) return false;
 
       // 2) 이미 납품 완료된 프로젝트(100% 완료)는 9월 진행 중 목록에서 제외
@@ -121,7 +125,7 @@ export default function ProjectCalendar({
 
       return true;
     });
-  }, [deptProjects, onlyCurrentMonth, monthStartStr, monthEndStr, pendingIntake]);
+  }, [deptProjects, onlyCurrentMonth, monthStartStr, monthEndStr, pendingIntake, filterDepartment]);
 
   // 3차: 사용자 요청 핵심 반영 - "프로젝트하나에서 2갈래로 나뉘어져서 구조 마감팀 일정이 같이 보이게 통합"
   const groupedProjects = useMemo(() => {
@@ -147,6 +151,7 @@ export default function ProjectCalendar({
         actual?: number;
         status: string;
         postDeliveryTasks: PostDeliveryTask[];
+        postOnly: boolean;
       }[];
     }> = {};
 
@@ -166,27 +171,30 @@ export default function ProjectCalendar({
         };
       }
 
-      if (!groupMap[code].departments.includes(p.department)) {
-        groupMap[code].departments.push(p.department);
-      }
-
       const pmId = projectPMId(p);
       const pmPerson = personnel.find((pe) => pe.id === pmId);
-
+      const includesMain=filterDepartment==='ALL'||p.department===filterDepartment;
+      const followUps=visiblePostDeliveryTasks(p,filterDepartment).filter(task=>task.startDate<=monthEndStr&&task.endDate>=monthStartStr);
+      const departments=[...new Set([...(includesMain?[p.department]:[]),...followUps.map(task=>postDeliveryDepartment(p,task))])];
+      for(const department of departments){
+      const postOnly=department!==p.department;
+      if(!groupMap[code].departments.includes(department))groupMap[code].departments.push(department);
       groupMap[code].lanes.push({
         projectId: p.id,
-        department: p.department,
-        pmPerson,
-        pmId,
-        unassigned: projectHasNoPM(p),
-        startDate: projectScheduleRange(p).start,
-        endDate: projectScheduleRange(p).end,
+        department,
+        pmPerson:postOnly?undefined:pmPerson,
+        pmId:postOnly?'':pmId,
+        unassigned: !postOnly&&projectHasNoPM(p),
+        startDate:postOnly?'':projectScheduleRange(p).start,
+        endDate:postOnly?'':projectScheduleRange(p).end,
         progress: p.progress,
-        planned: projectProgress(p).planned,
-        actual: projectProgress(p).actual,
+        planned:postOnly?undefined:projectProgress(p).planned,
+        actual:postOnly?undefined:projectProgress(p).actual,
         status: p.status,
-        postDeliveryTasks:(p.postDeliveryTasks||[]).filter(task=>task.startDate<=monthEndStr&&task.endDate>=monthStartStr),
+        postDeliveryTasks:followUps.filter(task=>postDeliveryDepartment(p,task)===department),
+        postOnly,
       });
+      }
     });
 
     const deptOrder: Record<Department, number> = {
@@ -199,7 +207,7 @@ export default function ProjectCalendar({
       grp.lanes.sort((a, b) => (deptOrder[a.department] || 99) - (deptOrder[b.department] || 99));
       return grp;
     }).sort((a, b) => Number(b.lanes.some(lane => lane.unassigned)) - Number(a.lanes.some(lane => lane.unassigned)));
-  }, [filteredProjects, personnel, monthStartStr, monthEndStr]);
+  }, [filteredProjects, personnel, monthStartStr, monthEndStr, filterDepartment]);
 
   const waitingIntake = filterDepartment === 'ALL'
     ? pendingIntake.filter((item, index, all) => all.findIndex(other => other.code === item.code) === index && !groupedProjects.some(group => group.code === item.code))
@@ -334,6 +342,7 @@ export default function ProjectCalendar({
 
         {/* 상단 액션 버튼 그룹 */}
         <div className="flex items-center gap-2 flex-wrap">
+          {onOpenPostDelivery&&<button type="button" onClick={onOpenPostDelivery} className="flex items-center gap-1.5 rounded-lg bg-violet-700 px-3 py-2 text-xs font-bold text-white hover:bg-violet-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"><CalendarPlus size={15}/>프로젝트 보완 일정 등록</button>}
           {/* 당월 일정만 보기 토글 버튼 */}
           <button
             onClick={() => setOnlyCurrentMonth(!onlyCurrentMonth)}
@@ -612,15 +621,15 @@ export default function ProjectCalendar({
                           : 'bg-emerald-600';
 
                       return (
-                        <div key={lane.projectId} className="my-0.5">
+                        <div key={`${lane.projectId}-${lane.department}`} className="my-0.5">
                           <div className="flex items-center justify-between text-[10px] font-bold">
                             <span className="text-slate-600 dark:text-slate-300 font-semibold">{lane.department.slice(0, 2)}</span>
-                            <span className={`${colorText} font-black`}>실제 {percentLabel(lane.actual)}<br />계획 {percentLabel(lane.planned)}</span>
+                            <span className={`${colorText} font-black`}>{lane.postOnly?'보완 일정':<>실제 {percentLabel(lane.actual)}<br />계획 {percentLabel(lane.planned)}</>}</span>
                           </div>
                           <div className="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden mt-0.5">
                             <div
                               className={`h-full rounded-full ${colorBg}`}
-                              style={{ width: `${percentLabel(lane.actual)}` }}
+                              style={{ width: lane.postOnly?'0%':percentLabel(lane.actual) }}
                             />
                           </div>
                         </div>
@@ -643,12 +652,12 @@ export default function ProjectCalendar({
                           : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300';
 
                       return (
-                        <div key={lane.projectId} className="my-0.5 flex items-center justify-center gap-1">
+                        <div key={`${lane.projectId}-${lane.department}`} className="my-0.5 flex items-center justify-center gap-1">
                           <span className={`text-[9px] font-black px-1 rounded ${badgeColor}`}>
                             {lane.department.slice(0, 2)}
                           </span>
                           <span className="font-black text-slate-900 dark:text-white text-xs">
-                            {lane.pmPerson ? lane.pmPerson.name : '미배정'}
+                            {lane.postOnly?'보완':lane.pmPerson ? lane.pmPerson.name : '미배정'}
                           </span>
                         </div>
                       );
@@ -721,6 +730,8 @@ export default function ProjectCalendar({
                       return (
                         <div
                           key={lane.projectId}
+                          data-main-project-id={lane.projectId}
+                          data-main-department={lane.department}
                           onClick={(e) => {
                             e.stopPropagation();
                             handleRowClick();
@@ -748,7 +759,7 @@ export default function ProjectCalendar({
                     })}
                     {group.lanes.flatMap((lane,laneIdx)=>lane.postDeliveryTasks.map((task,index)=>{
                       const barStyle=getLaneBarStyle(task.startDate,task.endDate);
-                      return barStyle?<button key={task.id} type="button" onClick={handleRowClick} style={{...barStyle,top:`${laneOffsets[laneIdx]+35+index*22}px`,height:19}} title={`${lane.department} · 납품 후 ${task.kind}\n${task.startDate} ~ ${task.endDate}\n${task.memo}`} className="absolute z-20 overflow-hidden rounded border border-violet-300 bg-violet-700 text-white text-[10px] font-bold text-left px-1.5 truncate">{lane.department.slice(0,2)} · {task.kind}: {task.memo}</button>:null;
+                      return barStyle?<button key={`${lane.projectId}-${task.id}`} type="button" onClick={handleRowClick} data-post-delivery-id={task.id} data-post-delivery-department={lane.department} style={{...barStyle,top:`${laneOffsets[laneIdx]+35+index*22}px`,height:19}} title={`${group.name}\n${lane.department} · 보완 · 자동 보고 · ${task.kind}\n${task.startDate} ~ ${task.endDate}\n${task.memo}`} className="absolute z-20 overflow-hidden rounded border border-violet-300 bg-violet-700 text-white text-[10px] font-bold text-left px-1.5 truncate">{lane.department.slice(0,2)} · 보완: {task.memo}</button>:null;
                     }))}
                   </div>
                 </div>
@@ -771,6 +782,7 @@ export default function ProjectCalendar({
             <span className="w-3 h-2.5 rounded bg-emerald-600 border border-emerald-400"></span> 토목&조경팀 일정
           </span>
           <span className="text-slate-300 dark:text-slate-700">|</span>
+          <span className="flex items-center gap-1.5 font-semibold"><span className="h-2.5 w-3 rounded bg-violet-700"/>보완 · 자동 보고</span>
           <span className="text-slate-600 dark:text-slate-300 font-medium">
             💡 하나의 프로젝트 행 안에 마감팀(파란색), 구조팀(보라색), 토목&조경팀(초록색) 일정이 공종별 층으로 동시 표현됩니다.
           </span>

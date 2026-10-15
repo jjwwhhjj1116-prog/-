@@ -6,6 +6,7 @@ import { projectProgress, workDays, validDateRange, percentLabel,projectSchedule
 import * as XLSX from 'xlsx';
 import type { Project, Person, Department } from '../store/useProjectStore';
 import { projectPMId } from '../utils/pendingAssignment';
+import {visiblePostDeliveryTasks,postDeliveryDepartment} from '../utils/postDeliveryVisibility';
 
 /**
  * 프로젝트 일정표 엑셀 내보내기 (Export)
@@ -13,7 +14,8 @@ import { projectPMId } from '../utils/pendingAssignment';
 export const buildProjectsWorkbook = (
   projects: Project[],
   personnel: Person[],
-  targetDate: Date = new Date()
+  targetDate: Date = new Date(),
+  department: Department | 'ALL' = 'ALL'
 ) => {
   const personMap = new Map(personnel.map((p) => [p.id, p.name]));
   const year = targetDate.getFullYear();
@@ -62,17 +64,19 @@ export const buildProjectsWorkbook = (
   // 해당 월에 일정이 겹치는 프로젝트 선별
   const activeProjects = projects.filter(p => {
     const range = projectScheduleRange(p);
-    return (validDateRange(range.start,range.end)&&range.end>=monthStartStr&&range.start<=monthEndStr) ||
-      (p.postDeliveryTasks||[]).some(task=>task.startDate<=monthEndStr&&task.endDate>=monthStartStr) ||
-      (!range.start||!range.end)&&!projectPMId(p);
+    const main=department==='ALL'||p.department===department;
+    return (main&&validDateRange(range.start,range.end)&&range.end>=monthStartStr&&range.start<=monthEndStr) ||
+      visiblePostDeliveryTasks(p,department).some(task=>task.startDate<=monthEndStr&&task.endDate>=monthStartStr) ||
+      main&&(!range.start||!range.end)&&!projectPMId(p);
   });
 
   // 프로젝트 코드별 그룹핑 (마감/구조/토목 순차 행 배치)
   let rowNo = 1;
   activeProjects.forEach((p) => {
-    const pmId = projectPMId(p);
+    const main=department==='ALL'||p.department===department;
+    const pmId = main?projectPMId(p):'';
     const pm = personMap.get(pmId) || pmId || '-';
-    const range = projectScheduleRange(p);
+    const range = main?projectScheduleRange(p):{start:'',end:''};
     const cleanName =
       p.name.replace(/^\[.*?\]\s*/, '').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim() ||
       p.name;
@@ -83,17 +87,17 @@ export const buildProjectsWorkbook = (
       p.code || p.id,
       cleanName,
       client,
-      p.department,
+      department==='ALL'?p.department:department,
       pm,
       range.start,
       range.end,
-      percentLabel(projectProgress(p).actual),
+      main?percentLabel(projectProgress(p).actual):'',
     ];
 
     // 1일부터 말일까지 타임라인 셀 채우기
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const followUp=(p.postDeliveryTasks||[]).find(task=>dateStr>=task.startDate&&dateStr<=task.endDate);
+      const followUp=visiblePostDeliveryTasks(p,department).find(task=>dateStr>=task.startDate&&dateStr<=task.endDate);
       if (validDateRange(range.start,range.end)&&dateStr >= range.start && dateStr <= range.end) {
         // 간트 바 텍스트 표기
         const deptPrefix = p.department === '마감팀' ? '■마감' : p.department === '구조팀' ? '■구조' : '■토목';
@@ -127,6 +131,7 @@ export const buildProjectsWorkbook = (
   // 2. 부서별 통합 요약 시트
   const groupMap: Record<string, any> = {};
   activeProjects.forEach((p) => {
+    if(department!=='ALL'&&p.department!==department)return;
     const code = p.code || p.id;
     if (!groupMap[code]) {
       groupMap[code] = {
@@ -189,6 +194,7 @@ export const buildProjectsWorkbook = (
   // 3. 세부 공종별 일정 시트
   const subTaskRows: any[] = [];
   activeProjects.forEach((p) => {
+    if(department!=='ALL'&&p.department!==department)return;
     Object.entries({...p.roles, ...p.subTasks}).forEach(([roleName, task]) => {
      if (!task) return;
      const sub = task as Partial<Project['subTasks'][string]>;
@@ -225,13 +231,13 @@ export const buildProjectsWorkbook = (
   XLSX.utils.book_append_sheet(wb, wsTimeline, `${year}년${month}월_타임라인일정표`);
   XLSX.utils.book_append_sheet(wb, wsIntegrated, '프로젝트통합요약');
   XLSX.utils.book_append_sheet(wb, wsSubTasks, '세부공종일정');
-  const followUpRows=activeProjects.flatMap(p=>(p.postDeliveryTasks||[]).filter(task=>task.startDate<=monthEndStr&&task.endDate>=monthStartStr).map(task=>({
-    '프로젝트 코드':p.code,'프로젝트명':p.name,'담당부서':p.department,'구분':task.kind,'시작일':task.startDate,'종료일':task.endDate,
+  const followUpRows=activeProjects.flatMap(p=>visiblePostDeliveryTasks(p,department).filter(task=>task.startDate<=monthEndStr&&task.endDate>=monthStartStr).map(task=>({
+    '프로젝트 코드':p.code,'프로젝트명':p.name,'담당부서':postDeliveryDepartment(p,task),'구분':task.kind,'시작일':task.startDate,'종료일':task.endDate,
     '담당자':task.personIds.map(id=>personMap.get(id)||id).join(', '),'상태':task.status,'수정·검토 메모':task.memo,
   })));
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(followUpRows,{header:['프로젝트 코드','프로젝트명','담당부서','구분','시작일','종료일','담당자','상태','수정·검토 메모']}),'납품후검토수정');
 
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(activeProjects.map(p => ({
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(activeProjects.filter(p=>department==='ALL'||p.department===department).map(p => ({
     '프로젝트 코드': p.code, '부서': p.department, '계획 공정률(%)': projectProgress(p).planned ?? '미산정',
     '실제 공정률(%)': projectProgress(p).actual ?? '미산정', '기준': '한국 공휴일 확인 범위 2026~2027 / 오늘 기준 / PM 제외'
   }))), '계획실적');
@@ -245,10 +251,9 @@ export const buildProjectsWorkbook = (
 };
 
 export function buildProjectRangeWorkbook(projects: Project[], personnel: Person[], targetDate = new Date(), monthCount = 1, leaves: Leave[] = [], department: Department | 'ALL' = 'ALL') {
-  projects = department === 'ALL' ? projects : projects.filter(p=>p.department===department);
-  const wb = buildProjectsWorkbook(projects, personnel, targetDate);
+  const wb = buildProjectsWorkbook(projects, personnel, targetDate, department);
   for (let i=1; i<monthCount; i++) {
-    const next = buildProjectsWorkbook(projects, personnel, new Date(targetDate.getFullYear(), targetDate.getMonth()+i,1));
+    const next = buildProjectsWorkbook(projects, personnel, new Date(targetDate.getFullYear(), targetDate.getMonth()+i,1), department);
     XLSX.utils.book_append_sheet(wb, next.Sheets[next.SheetNames[0]], next.SheetNames[0]);
     for (const name of ['프로젝트통합요약','세부공종일정','납품후검토수정','계획실적',...(next.Sheets['일정검수']?['일정검수']:[])]) {
       const rows = [...(wb.Sheets[name]?XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[name]):[]), ...XLSX.utils.sheet_to_json<Record<string, unknown>>(next.Sheets[name])];

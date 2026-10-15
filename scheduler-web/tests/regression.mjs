@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {nativeSsrPackages} from './ssr-native-packages.mjs';
 import { createServer } from 'vite';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import {runInNewContext} from 'node:vm';
@@ -12,7 +13,7 @@ const output=process.argv.includes('--output')?process.argv[process.argv.indexOf
 const personalSource=process.argv.find(arg=>arg.startsWith('--personal-source='))?.slice('--personal-source='.length),onlyPersonalOverlap=process.argv.includes('--only-personal-overlap');
 const meetingSource=process.argv.find(arg=>arg.startsWith('--meeting-source='))?.slice('--meeting-source='.length),minutesSource=process.argv.find(arg=>arg.startsWith('--minutes-source='))?.slice('--minutes-source='.length),onlyMinutesOutput=process.argv.includes('--only-minutes-output');
 const qcSource=process.argv.find(arg=>arg.startsWith('--qc-source='))?.slice('--qc-source='.length),onlyQCLink=process.argv.includes('--only-qc-link');
-const server = await createServer({plugins:[{name:'protected-regression-source',enforce:'pre',load(id){if(meetingSource&&id.replaceAll('\\','/').endsWith('/src/services/meetingExcel.ts'))return readFileSync(meetingSource,'utf8');if(excelSource&&id.replaceAll('\\','/').endsWith('/src/services/excelService.ts'))return readFileSync(excelSource,'utf8');if(integratedSource&&id.replaceAll('\\','/').endsWith('/src/components/ProjectIntegratedModal.tsx'))return readFileSync(integratedSource,'utf8');if(id.replaceAll('\\','/').endsWith('/src/components/PersonalScheduleView.tsx')){
+const server = await createServer({ssr:{noExternal:[/^(react|react-dom|zustand|xlsx)(\/|$)/]},plugins:[nativeSsrPackages(),{name:'protected-regression-source',enforce:'pre',load(id){if(meetingSource&&id.replaceAll('\\','/').endsWith('/src/services/meetingExcel.ts'))return readFileSync(meetingSource,'utf8');if(excelSource&&id.replaceAll('\\','/').endsWith('/src/services/excelService.ts'))return readFileSync(excelSource,'utf8');if(integratedSource&&id.replaceAll('\\','/').endsWith('/src/components/ProjectIntegratedModal.tsx'))return readFileSync(integratedSource,'utf8');if(id.replaceAll('\\','/').endsWith('/src/components/PersonalScheduleView.tsx')){
  // SSR cannot click the tab. Only its initial tab is selected in memory; the product default and overlap calculation are unchanged.
  const source=readFileSync(personalSource||new URL('../src/components/PersonalScheduleView.tsx',import.meta.url),'utf8');return source.replace(/useState<'PERSONAL'\s*\|\s*'TEAM'>\('TEAM'\)/,"useState<'PERSONAL' | 'TEAM'>('PERSONAL')");
 }}}], server: { middlewareMode: true, hmr:false }, appType: 'custom' });
@@ -67,7 +68,13 @@ try {
     const result=projects.getState().projects[0];assert.equal(result.pmId,'');assert.equal(result.roles.PM,undefined);
   });
   await check('미배정자는 자동 업무 0건', () => assert.equal(logs.getState().generateItemsFromSchedule('QA 미배정','2026-09-23',[project]).length,0));
-  await check('0% 유지', () => assert.equal(logs.getState().generateItemsFromSchedule('qa-a','2026-09-23',[project])[0].progress,0));
+  await check('일정 기준 보고 진행률 85%와 원본 실제 진척률 0% 분리', () => {
+    const original=structuredClone(project),report=logs.getState().generateItemsFromSchedule('qa-a','2026-09-23',[project])[0];
+    assert.equal(report.progress,85,'보고 기본값은 해당 날짜까지의 일정 기준 진척률');
+    assert.equal(project.progress,0,'승인되지 않은 보고 기본값을 원본 실제 진척률에 반영하지 않음');
+    assert.ok(!report.manualFields.includes('progress'),'일정 기본값을 수기 실제 진척률로 표시하지 않음');
+    assert.deepEqual(project,original,'원본 프로젝트·배정·기간을 그대로 보존');
+  });
   await check('기간 밖 업무 제외', () => assert.equal(logs.getState().generateItemsFromSchedule('qa-a','2026-12-01',[project]).length,0));
   await check('원문에 없는 Rev와 결정사항 생성 금지', () => {
     const result = summarize('회의 일정은 아직 정하지 않았습니다.','QA');

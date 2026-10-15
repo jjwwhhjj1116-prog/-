@@ -67,6 +67,18 @@ function editor(options={}){
 
 const results=[],onlyProjectDates=process.argv.includes('--only-project-dates'),onlyVietFollowup=process.argv.includes('--only-viet-followup');
 function check(name,fn){if(onlyProjectDates&&!name.startsWith('프로젝트 원기간')||onlyVietFollowup&&!name.startsWith('VN 후속'))return;try{fn();results.push({name,status:'PASS'});}catch(error){results.push({name,status:'FAIL',reason:error.message});}}
+check('기존 모달은 신규 추가 입력을 숨기고 팀 일정표 자동 보고 등록으로 안내',()=>{
+ for(const seed of [project,{...structuredClone(project),postDeliveryTasks:[]}]){
+  const e=editor({project:seed});assert.ok(!e.all().some(node=>['input','select'].includes(node.type)));assert.ok(!e.all().some(node=>node.type==='button'&&node.props.children==='검토·수정 일정 추가'));
+  assert.ok(e.all().some(node=>typeof node.props.children==='string'&&node.props.children.includes('프로젝트 보완 일정 등록')));assert.equal(e.writes(),0);
+ }
+});
+check('legacy 편집 중 본인 보고 항목으로 바뀌면 관리자 저장을 차단하고 초안 보존',()=>{
+ const e=editor();e.open();e.change('수정·검토 메모','보존할 관리자 초안');e.remote({submissionStatus:'REPORTED',createdBy:'worker'});e.save();assert.equal(e.writes(),0);assert.equal(e.task().memo,task.memo);assert.equal(e.read('수정·검토 메모'),'보존할 관리자 초안');assert.match(e.message(),/보완 일정 등록/);
+});
+check('본인 보고·취소 항목은 기존 모달 편집을 제공하지 않음',()=>{
+ for(const submissionStatus of ['REPORTED','CANCELLED']){const seed=structuredClone(project);seed.postDeliveryTasks[0].submissionStatus=submissionStatus;const e=editor({project:seed});assert.ok(!e.all().some(node=>node.type==='button'&&node.props.children==='편집'));assert.equal(e.writes(),0);}
+});
 check('메모만 수정하면 최신 승인 실적·일자·변경된 상태를 보존',()=>{
  const e=editor();e.open();e.remote({progress:100,actualProgressDate:'2026-10-05',status:'완료'});e.change('수정·검토 메모','수정 메모');e.save();
  assert.equal(e.task().progress,100);assert.equal(e.task().actualProgressDate,'2026-10-05');assert.equal(e.task().status,'완료');assert.equal(e.task().memo,'수정 메모');assert.equal(e.project().progress,55);
