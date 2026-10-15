@@ -1,6 +1,6 @@
 import {validDay} from '../../scheduler-web/src/utils/personalWork.ts';
 import {canManageSchedule,isScheduleAdmin} from '../../scheduler-web/src/utils/schedulePermissions.ts';
-import {buildWeeklyReport} from './weeklyReports.ts';
+import {buildWeeklyReport,weeklyReportSourceSnapshot,weeklyReportSourceGuard} from './weeklyReports.ts';
 
 const departments=['마감팀','구조팀','토목&조경팀'];
 const parse=(value:any)=>{try{return JSON.parse(value||'{}');}catch{return {};}};
@@ -27,7 +27,7 @@ const submission=(row:any,receivers:any[],teams:any[])=>({id:row.id,weekStart:ro
 
 export async function weeklyApprovalRoute(request:Request,env:any,user:any,path:string):Promise<Response|null>{
  if(!['weekly-reports/submissions','weekly-reports/submit','weekly-reports/decision'].includes(path))return null;
- const db=env.DB,row=await currentAccount(db,user.id),actor=account(row);
+ const db=env.DB,sourceSnapshot=path==='weekly-reports/submit'&&request.method==='POST'?await weeklyReportSourceSnapshot(db):null,row=await currentAccount(db,user.id),actor=account(row);
  if(!actor)return json({error:'활성 계정으로 다시 로그인하세요.'},403);
  const allow=await eligible(db),recipientOptions=await options(db,allow.ids),managedDepartments=[...departments,'ALL'].filter(department=>canSubmit(actor,department));
  if(path==='weekly-reports/submissions'&&request.method==='GET'){
@@ -54,7 +54,7 @@ export async function weeklyApprovalRoute(request:Request,env:any,user:any,path:
   const weekStart=monday(week);
   if(await db.prepare("SELECT id FROM studio_weekly_submissions WHERE week_start=? AND department=? AND status='PENDING'").bind(weekStart,department).first())return json({error:'이미 결재 중인 주간 보고가 있습니다. 기존 결재 결과를 확인하세요.'},409);
   const report=await buildWeeklyReport(env,row,week),teams=report.teams.filter((team:any)=>department==='ALL'||team.department===department),id=crypto.randomUUID(),sentAt=new Date().toISOString(),chosen=recipientOptions.filter((person:any)=>recipientIds.includes(person.id));
-  const statements=[accountGuard(db,row),eligibilityGuard(db,allow.body),db.prepare("INSERT INTO studio_write_assertions SELECT 0 WHERE EXISTS(SELECT 1 FROM studio_weekly_submissions WHERE week_start=? AND department=? AND status='PENDING')").bind(weekStart,department)];
+  const statements=[weeklyReportSourceGuard(db,sourceSnapshot!),accountGuard(db,row),eligibilityGuard(db,allow.body),db.prepare("INSERT INTO studio_write_assertions SELECT 0 WHERE EXISTS(SELECT 1 FROM studio_weekly_submissions WHERE week_start=? AND department=? AND status='PENDING')").bind(weekStart,department)];
   for(const person of chosen)statements.push(db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1)').bind(person.id));
   statements.push(db.prepare("INSERT INTO studio_weekly_submissions (id,week_start,week_end,department,author_id,author_name,status,sent_at,body,revision,source) VALUES (?,?,?,?,?,?,?,?,?,1,'MANUAL')").bind(id,weekStart,report.weekEnd,department,actor.id,actor.name,'PENDING',sentAt,JSON.stringify({weekStart,weekEnd:report.weekEnd,teams})));
   for(const person of chosen){
@@ -89,11 +89,11 @@ export async function sendScheduledWeeklyApprovals(env:any,{now=new Date()}:{now
  if(new Date(day+'T12:00:00Z').getUTCDay()!==5||local.slice(11,16)<'17:10')return result;
  const db=env.DB;
  if(await db.prepare('SELECT week_start FROM studio_weekly_reports WHERE week_start=?').bind(weekStart).first())return {...result,status:'ALREADY_SENT'};
- const settingRow=await db.prepare('SELECT body FROM studio_reporting_settings WHERE id=?').bind('weekly-reporting').first(),configured=parse(settingRow?.body).recipientIds,allow=await eligible(db),people=await options(db,allow.ids),chosen=people.filter((person:any)=>Array.isArray(configured)&&configured.includes(person.id));
+ const sourceSnapshot=await weeklyReportSourceSnapshot(db),settingRow=await db.prepare('SELECT body FROM studio_reporting_settings WHERE id=?').bind('weekly-reporting').first(),configured=parse(settingRow?.body).recipientIds,allow=await eligible(db),people=await options(db,allow.ids),chosen=people.filter((person:any)=>Array.isArray(configured)&&configured.includes(person.id));
  if(!allow.body||!chosen.length)return {...result,status:'RECIPIENTS_REQUIRED'};
  if(await db.prepare("SELECT id FROM studio_weekly_submissions WHERE week_start=? AND department='ALL' AND status='PENDING'").bind(weekStart).first())return {...result,status:'PENDING_EXISTS'};
  const actor={id:'weekly-scheduler',profile:JSON.stringify({email:'yjw@con-cost.com',role:'ADMIN'})},report=await buildWeeklyReport(env,actor,day,now),id=crypto.randomUUID(),sentAt=now.toISOString(),ids=chosen.map((person:any)=>person.id),body=JSON.stringify({weekStart,weekEnd:report.weekEnd,teams:report.teams});
- const statements=[eligibilityGuard(db,allow.body),db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_reporting_settings WHERE id=? AND body=?)').bind('weekly-reporting',settingRow.body),db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE EXISTS(SELECT 1 FROM studio_weekly_reports WHERE week_start=?)').bind(weekStart),db.prepare("INSERT INTO studio_write_assertions SELECT 0 WHERE EXISTS(SELECT 1 FROM studio_weekly_submissions WHERE week_start=? AND department='ALL' AND status='PENDING')").bind(weekStart)];
+ const statements=[weeklyReportSourceGuard(db,sourceSnapshot),eligibilityGuard(db,allow.body),db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_reporting_settings WHERE id=? AND body=?)').bind('weekly-reporting',settingRow.body),db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE EXISTS(SELECT 1 FROM studio_weekly_reports WHERE week_start=?)').bind(weekStart),db.prepare("INSERT INTO studio_write_assertions SELECT 0 WHERE EXISTS(SELECT 1 FROM studio_weekly_submissions WHERE week_start=? AND department='ALL' AND status='PENDING')").bind(weekStart)];
  for(const person of chosen)statements.push(db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1)').bind(person.id));
  statements.push(db.prepare("INSERT INTO studio_weekly_submissions (id,week_start,week_end,department,author_id,author_name,status,sent_at,body,revision,source) VALUES (?,?,?,'ALL','weekly-scheduler','시스템 정기 보고','PENDING',?,?,1,'SCHEDULED')").bind(id,weekStart,report.weekEnd,sentAt,body),db.prepare('INSERT INTO studio_weekly_reports (week_start,week_end,sent_at,recipient_ids,body) VALUES (?,?,?,?,?)').bind(weekStart,report.weekEnd,sentAt,JSON.stringify(ids),body));
  for(const person of chosen){statements.push(db.prepare('INSERT INTO studio_weekly_submission_recipients (submission_id,recipient_id,recipient_name) VALUES (?,?,?)').bind(id,person.id,person.name),db.prepare('INSERT INTO studio_notifications (id,user_id,meeting_id,message,created_at) VALUES (?,?,?,?,?)').bind(`weekly-submission:${id}:${person.id}`,person.id,`weekly-report:${weekStart}`,`${weekStart} ~ ${report.weekEnd} 전체 팀의 주간 업무·승인 야근 정기 보고 결재가 상신되었습니다.`,sentAt));}

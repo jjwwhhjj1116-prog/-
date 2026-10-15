@@ -1,6 +1,7 @@
 import {projectProgress} from '../../scheduler-web/src/utils/scheduleProgress.ts';
 import {assignedTasks,validDay,assignmentAliases,assignmentPersonId,memberIds,nextDay} from '../../scheduler-web/src/utils/personalWork.ts';
 import {withAllocationBounds} from '../../scheduler-web/src/utils/scheduleAllocations.ts';
+import {scheduleExtensionDepartment} from '../../scheduler-web/src/utils/postDeliveryVisibility.ts';
 
 // Extension audit lives with its project. CAS and the notification writes commit together.
 export async function scheduleExtensionRoute(request:Request,env:any,user:any,route:string,canManage:(user:any,department:string)=>boolean):Promise<Response|null>{
@@ -16,9 +17,11 @@ export async function scheduleExtensionRoute(request:Request,env:any,user:any,ro
  const directory=directoryRows.map((row:any)=>{let profile:any={};try{profile=JSON.parse(row.profile);}catch{/* Unknown profiles only retain their canonical ID. */}const owner=profile?.id===row.id?profile:{};return {id:row.id,name:typeof owner.name==='string'?owner.name:undefined,no:owner.no,active:row.active===1};});
  const aliasesFor=(id:string)=>assignmentAliases({id},directory);
  const pmId=assignmentPersonId(project.pmId,directory);
- const manager=(person:any)=>canManage(person,project.department)||(project.department==='토목&조경팀'&&person.id==='u_8');
+ const pendingRequest=match[2]?requests.find((r:any)=>r.id===decodeURIComponent(match[2])):null;
+ const department=scheduleExtensionDepartment(project,pendingRequest||{taskId:input.taskId});
+ const manager=(person:any)=>canManage(person,department)||(department==='토목&조경팀'&&person.id==='u_8');
  const managers=directoryRows.filter((person:any)=>person.active===1&&manager(person));
- const chiefs=managers.filter((person:any)=>person.position==='실장'||person.id===(project.department==='마감팀'?'u_12':project.department==='구조팀'?'u_24':'u_8'));
+ const chiefs=managers.filter((person:any)=>person.position==='실장'||person.id===(department==='마감팀'?'u_12':department==='구조팀'?'u_24':'u_8'));
  const guards:any[]=[db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1 AND department=? AND position=?)').bind(user.id,user.department,user.position)];
  let changed:any,recipients:string[]=[],applied:any={};
  if(!match[2]){
@@ -41,10 +44,10 @@ export async function scheduleExtensionRoute(request:Request,env:any,user:any,ro
    guards.push(db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1)').bind(pmId));
   }else if(input.approverId!==undefined){
    const approver:any=typeof input.approverId==='string'?await db.prepare('SELECT id,department,position FROM studio_users WHERE id=? AND active=1').bind(input.approverId).first():null;
-   if(!approver||!(approver.id===pmId||canManage(approver,project.department)||(project.department==='토목&조경팀'&&approver.id==='u_8')))return fail('현재 프로젝트 PM 또는 해당 팀 결재 담당자를 선택하세요.',403);
+   if(!approver||!(approver.id===pmId||manager(approver)))return fail('현재 프로젝트 PM 또는 해당 팀 결재 담당자를 선택하세요.',403);
    recipients=[approver.id];
   }
-  changed={id:crypto.randomUUID(),taskId:task.id,...(task.allocationId?{allocationId:task.allocationId}:{}),userId:user.id,userName:user.name,roleName:task.roleName,previousEnd:task.endDate,requestedEnd:type==='DEADLINE'?input.requestedEnd:task.endDate,type,...(type==='OVERTIME'?{workDate:input.workDate,startTime:input.startTime,endTime:input.endTime,hours:duration/60}:{}),...(type==='DEADLINE'?{approvalStage:'PM',pmApproverId:pmId,approverId:pmId}:input.approverId?{approverId:input.approverId}:{}),reasonCategory:input.reasonCategory||'',reason:input.reason.trim(),createdAt:now,status:'PENDING'};
+  changed={id:crypto.randomUUID(),taskId:task.id,department,...(task.allocationId?{allocationId:task.allocationId}:{}),userId:user.id,userName:user.name,roleName:task.roleName,previousEnd:task.endDate,requestedEnd:type==='DEADLINE'?input.requestedEnd:task.endDate,type,...(type==='OVERTIME'?{workDate:input.workDate,startTime:input.startTime,endTime:input.endTime,hours:duration/60}:{}),...(type==='DEADLINE'?{approvalStage:'PM',pmApproverId:pmId,approverId:pmId}:input.approverId?{approverId:input.approverId}:{}),reasonCategory:input.reasonCategory||'',reason:input.reason.trim(),createdAt:now,status:'PENDING'};
   project.scheduleExtensions=[...requests,changed];
   if(!recipients.length)recipients=managers.map((person:any)=>person.id);
  }else{
@@ -52,7 +55,7 @@ export async function scheduleExtensionRoute(request:Request,env:any,user:any,ro
   if(!pending)return fail('연장 요청을 찾을 수 없습니다.',404);
   const isManager=manager(user);
   const designated=directoryRows.find((person:any)=>person.id===pending.approverId&&person.active===1);
-  const designatedValid=designated&&(designated.id===pmId||canManage(designated,project.department)||(project.department==='토목&조경팀'&&designated.id==='u_8'));
+  const designatedValid=designated&&(designated.id===pmId||manager(designated));
   const staged=!!pending.approvalStage;
   const pmValid=!!pmId&&pending.pmApproverId===pmId;
   const mayReview=staged?(pending.approvalStage==='PM'?user.id===pending.pmApproverId&&pmValid:isManager):pending.approverId?user.id===pending.approverId&&designatedValid:isManager;

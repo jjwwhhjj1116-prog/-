@@ -1,7 +1,7 @@
 import {usePersonalStore} from '../store/usePersonalStore';
 import {useLanguageStore} from '../store/useLanguageStore';
 import {assignedTasksForAliases,assignmentAliases,validDay} from '../utils/personalWork';
-import {postDeliveryDepartment} from '../utils/postDeliveryVisibility';
+import {scheduleExtensionDepartment} from '../utils/postDeliveryVisibility';
 import {scheduleExtensionPeriods} from '../utils/scheduleExtensionPeriods';
 import { compareStaff } from '../utils/staffOrder';
 import React, { useState, useMemo } from 'react';
@@ -115,8 +115,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
   const deptOvertime = useMemo(() => projects.flatMap(project => (project.scheduleExtensions || [])
     .filter(request => {
       if(request.type!=='OVERTIME'||request.status!=='APPROVED')return false;
-      const follow=project.postDeliveryTasks?.find(task=>`gen-${project.id}-followup-${task.id}`===(request.appliedTaskId||request.taskId));
-      return (follow?postDeliveryDepartment(project,follow):project.department)===department;
+      return scheduleExtensionDepartment(project,request)===department;
     }).map(request=>({...request,projectCode:project.code}))),[projects,department]);
   // 소속과 다른 팀의 PM/공종을 맡은 직원도 해당 배정팀에서 휴가를 확인할 수 있다.
   const monthAssignedUserIds = useMemo(() => new Set(users.filter(person =>

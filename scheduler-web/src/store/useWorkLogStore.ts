@@ -65,6 +65,7 @@ export const TEAM_APPROVAL_LINES: Record<
 };
 
 export interface DailyWorkLog {
+  supplementReports?: import('../utils/worklogSupplements').SupplementReportItem[];
   reportMode?:'DAILY'|'TASK';
   serverRevision?:number;
   id: string;

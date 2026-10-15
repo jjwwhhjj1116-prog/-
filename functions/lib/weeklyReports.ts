@@ -1,5 +1,7 @@
-import {validDay} from '../../scheduler-web/src/utils/personalWork.ts';
+import {validDay,assignmentAliases} from '../../scheduler-web/src/utils/personalWork.ts';
 import {canManageSchedule,isScheduleAdmin} from '../../scheduler-web/src/utils/schedulePermissions.ts';
+import {scheduleExtensionDepartment} from '../../scheduler-web/src/utils/postDeliveryVisibility.ts';
+import {separateSupplementReports} from '../../scheduler-web/src/utils/worklogSupplements.ts';
 
 const departments=['마감팀','구조팀','토목&조경팀'];
 const shift=(day:string,n:number)=>{const date=new Date(day+'T12:00:00Z');date.setUTCDate(date.getUTCDate()+n);return date.toISOString().slice(0,10);};
@@ -11,6 +13,9 @@ const settings=async(db:any)=>{const row=await db.prepare('SELECT body FROM stud
 const eligibleIds=async(db:any)=>{const row=await db.prepare('SELECT body FROM studio_reporting_settings WHERE id=?').bind('weekly-eligible-recipients').first();return Array.isArray(parse(row?.body).recipientIds)?parse(row.body).recipientIds:[];};
 const average=(values:number[])=>values.length?Math.round(values.reduce((sum,value)=>sum+value,0)/values.length*100)/100:undefined;
 const safeNumber=(value:any)=>typeof value==='number'&&Number.isFinite(value)?value:undefined;
+const sourceVersionSql="SELECT json_group_array(json_array(key,revision)) AS snapshot FROM (SELECT key,revision FROM studio_sync_versions WHERE key IN ('projects','personal','directory') ORDER BY key)";
+export async function weeklyReportSourceSnapshot(db:any):Promise<string>{return (await db.prepare(sourceVersionSql).first()).snapshot;}
+export const weeklyReportSourceGuard=(db:any,snapshot:string)=>db.prepare(`INSERT INTO studio_write_assertions SELECT 0 WHERE (${sourceVersionSql})<>?`).bind(snapshot);
 
 export async function buildWeeklyReport(env:any,user:any,week:string,now=new Date()){
  if(!validDay(week))throw new Error('주간 보고 날짜가 잘못되었습니다.');
@@ -24,7 +29,7 @@ export async function buildWeeklyReport(env:any,user:any,week:string,now=new Dat
   if(!canRead(id,department))return null;
   const team=teams.find(team=>team.department===department);if(!team)return null;
   let result=team.employees.find(person=>person.id===id);
-  if(!result){const person=people.find((person:any)=>person.id===id);result={id,name:name||person?.name||id,position:position||person?.position||'',days:Array.from({length:7},(_,index)=>({date:shift(weekStart,index),future:shift(weekStart,index)>today,logStatus:'NONE',reportSource:'',notes:'',items:[],overtime:[]})),reportCount:0,approvedReportCount:0,overtimeDays:0,overtimeHours:0};team.employees.push(result);}return result;
+  if(!result){const person=people.find((person:any)=>person.id===id);result={id,name:name||person?.name||id,position:position||person?.position||'',days:Array.from({length:7},(_,index)=>({date:shift(weekStart,index),future:shift(weekStart,index)>today,logStatus:'NONE',reportSource:'',notes:'',items:[],supplementReports:[],overtime:[]})),reportCount:0,approvedReportCount:0,overtimeDays:0,overtimeHours:0};team.employees.push(result);}return result;
  };
  for(const person of people.filter((person:any)=>person.active&&departments.includes(person.department)))employee(person.id,person.department);
  const logs=(await db.prepare('SELECT user_id,day,department,body FROM studio_worklogs WHERE removed=0 AND day>=? AND day<=? ORDER BY day').bind(weekStart,weekEnd).all()).results;
@@ -38,12 +43,24 @@ export async function buildWeeklyReport(env:any,user:any,week:string,now=new Dat
   owner.reportCount++;if(['APPROVED_FINAL','APPROVED'].includes(day.logStatus))owner.approvedReportCount++;
  }
  // Archived projects retain approved overtime history; only approved requests are counted.
- const projects=(await db.prepare('SELECT body FROM studio_projects').all()).results;
+ const projects=(await db.prepare('SELECT body,id IN (SELECT project_id FROM studio_project_archive) AS archived FROM studio_projects').all()).results;
+ const schedules=projects.filter((row:any)=>!row.archived).map((row:any)=>parse(row.body)),logByDay=new Map(logs.map((row:any)=>[`${row.user_id}:${row.day}`,parse(row.body)]));
+ const supplementUsers=[...new Set<string>(schedules.flatMap((project:any)=>(project.postDeliveryTasks||[]).filter((task:any)=>task.submissionStatus==='REPORTED').flatMap((task:any)=>task.personIds||[])))];
+ for(const id of supplementUsers){
+  const aliases=assignmentAliases({id},people);
+  for(let index=0;index<7;index++){
+   const date=shift(weekStart,index);if(date>today)continue;
+   for(const item of separateSupplementReports(id,date,schedules,logByDay.get(`${id}:${date}`) as any,aliases)){
+    const owner=employee(id,item.department);if(!owner)continue;
+    owner.days.find((day:any)=>day.date===date).supplementReports.push(item);
+   }
+  }
+ }
  const seen=new Set<string>();
  for(const row of projects){const project=parse(row.body);for(const request of project.scheduleExtensions||[]){
   if(request.type!=='OVERTIME'||request.status!=='APPROVED'||!validDay(request.workDate)||request.workDate<weekStart||request.workDate>weekEnd||!request.userId||typeof request.id!=='string')continue;
   const key=project.id+':'+request.id;if(seen.has(key))continue;seen.add(key);
-  const owner=employee(request.userId,project.department);if(!owner)continue;
+  const owner=employee(request.userId,scheduleExtensionDepartment(project,request));if(!owner)continue;
   const day=owner.days.find((day:any)=>day.date===request.workDate);if(!day)continue;
   const match=(value:string)=>/^([01]\d|2[0-3]):([0-5]\d)$/.exec(value||'');
   const start=match(request.startTime),end=match(request.endTime);if(!start||!end)continue;
@@ -79,12 +96,12 @@ export async function weeklyReportRoute(request:Request,env:any,user:any,path:st
 export async function sendWeeklyReports(env:any,{now=new Date()}:{now?:Date}={}){
  const local=localTime(now),day=local.slice(0,10),result={weekStart:monday(day),status:'NOT_DUE',recipients:0};
  if(new Date(day+'T12:00:00Z').getUTCDay()!==5||local.slice(11,16)<'17:10')return result;
- const db=env.DB,people=await directory(db),config=await settings(db),allowed=await eligibleIds(db),recipients=people.filter((person:any)=>person.active&&allowed.includes(person.id)&&config.recipientIds.includes(person.id));
+ const db=env.DB,sourceSnapshot=await weeklyReportSourceSnapshot(db),people=await directory(db),config=await settings(db),allowed=await eligibleIds(db),recipients=people.filter((person:any)=>person.active&&allowed.includes(person.id)&&config.recipientIds.includes(person.id));
  if(!recipients.length)return {...result,status:'RECIPIENTS_REQUIRED'};
  if(await db.prepare('SELECT week_start FROM studio_weekly_reports WHERE week_start=?').bind(result.weekStart).first())return {...result,status:'ALREADY_SENT'};
  const report=await buildWeeklyReport(env,{id:'weekly-scheduler',profile:JSON.stringify({email:'yjw@con-cost.com',role:'ADMIN'})},day,now);
  const sentAt=now.toISOString(),ids=recipients.map((person:any)=>person.id);
- const guards=[db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE EXISTS(SELECT 1 FROM studio_weekly_reports WHERE week_start=?)').bind(result.weekStart),db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_reporting_settings WHERE id=? AND body=?)').bind('weekly-reporting',JSON.stringify(config))];
+ const guards=[weeklyReportSourceGuard(db,sourceSnapshot),db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE EXISTS(SELECT 1 FROM studio_weekly_reports WHERE week_start=?)').bind(result.weekStart),db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_reporting_settings WHERE id=? AND body=?)').bind('weekly-reporting',JSON.stringify(config))];
  for(const id of ids)guards.push(db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1)').bind(id));
  const statements=[db.prepare('INSERT INTO studio_weekly_reports (week_start,week_end,sent_at,recipient_ids,body) VALUES (?,?,?,?,?)').bind(report.weekStart,report.weekEnd,sentAt,JSON.stringify(ids),JSON.stringify({weekStart:report.weekStart,weekEnd:report.weekEnd,teams:report.teams}))];
  for(const person of recipients)statements.push(db.prepare('INSERT INTO studio_notifications (id,user_id,meeting_id,message,created_at) VALUES (?,?,?,?,?)').bind(`weekly-report:${report.weekStart}:${person.id}`,person.id,`weekly-report:${report.weekStart}`,`${report.weekStart} ~ ${report.weekEnd} 팀별·개인별 주간 업무일지와 승인 야근 보고가 도착했습니다.`,sentAt));

@@ -4,6 +4,7 @@ import type {Project,ScheduleExtension} from '../store/useProjectStore';
 import {useAuthStore} from '../store/useAuthStore';
 import {type AssignedTask,sameWorkProject,workProjectOptions,nextDay,assignmentPersonId} from '../utils/personalWork';
 import {canManageSchedule} from '../utils/schedulePermissions';
+import {scheduleExtensionDepartment} from '../utils/postDeliveryVisibility';
 import {localDate} from '../utils/scheduleProgress';
 import {studioApi} from '../services/studioApi';
 import {refreshStudioMeetings} from '../store/useStudioStore';
@@ -26,21 +27,22 @@ export function ScheduleExtensionRequests({projects,projectId,tasks,selectedTask
  };
  const task=tasks.find(t=>t.id===taskId),project=rows.find(r=>r.project.id===task?.projectId)?.project||projects.find(p=>p.id===(task?.projectId||projectId));
  const canReview=(p:Project,r:ScheduleExtension,action:'approve'|'reject'='approve')=>{
-  const manager=canManageSchedule(user,p.department,false)||(p.department==='토목&조경팀'&&user?.id==='u_8');
+  const department=scheduleExtensionDepartment(p,r);
+  const manager=canManageSchedule(user,department,false)||(department==='토목&조경팀'&&user?.id==='u_8');
   if(r.approvalStage){const valid=!!r.pmApproverId&&r.pmApproverId===assignmentPersonId(p.pmId,users);return (r.approvalStage==='PM'?user?.id===r.pmApproverId&&valid:manager&&valid)||action==='reject'&&manager&&!valid;}
   if(!r.approverId)return manager;
   const designated=users.find(person=>person.id===r.approverId&&person.active!==false);
-  const valid=designated&&(designated.id===assignmentPersonId(p.pmId,users)||canManageSchedule(designated,p.department,false)||(p.department==='토목&조경팀'&&designated.id==='u_8'));
+  const valid=designated&&(designated.id===assignmentPersonId(p.pmId,users)||canManageSchedule(designated,department,false)||(department==='토목&조경팀'&&designated.id==='u_8'));
   return r.approverId===user?.id&&!!valid||action==='reject'&&!valid&&manager;
  };
- const allRequests=rows.filter(r=>projectId==='ALL'||sameWorkProject(projects,r.project.id,projectId)).flatMap(r=>(r.project.scheduleExtensions||[]).filter(req=>(req.type||'DEADLINE')===requestType&&(req.userId===user?.id||req.pmApproverId===user?.id||canManageSchedule(user,r.project.department,false)||(r.project.department==='토목&조경팀'&&user?.id==='u_8')||canReview(r.project,req)||canReview(r.project,req,'reject'))).map(req=>({req,...r}))).sort((a,b)=>b.req.createdAt.localeCompare(a.req.createdAt));
- const pmId=assignmentPersonId(project?.pmId,users);
- const approvers=users.filter(person=>person.active!==false&&project&&(person.id===pmId||canManageSchedule(person,project.department,false)||(project.department==='토목&조경팀'&&person.id==='u_8')));
- const teamApprovers=approvers.filter(person=>project&&(canManageSchedule(person,project.department,false)||(project.department==='토목&조경팀'&&person.id==='u_8')));
+ const allRequests=rows.filter(r=>projectId==='ALL'||sameWorkProject(projects,r.project.id,projectId)).flatMap(r=>(r.project.scheduleExtensions||[]).filter(req=>(req.type||'DEADLINE')===requestType&&(req.userId===user?.id||req.pmApproverId===user?.id||canManageSchedule(user,scheduleExtensionDepartment(r.project,req),false)||(scheduleExtensionDepartment(r.project,req)==='토목&조경팀'&&user?.id==='u_8')||canReview(r.project,req)||canReview(r.project,req,'reject'))).map(req=>({req,...r}))).sort((a,b)=>b.req.createdAt.localeCompare(a.req.createdAt));
+ const pmId=assignmentPersonId(project?.pmId,users),taskDepartment=task?.department||project?.department;
+ const approvers=users.filter(person=>person.active!==false&&project&&taskDepartment&&(person.id===pmId||canManageSchedule(person,taskDepartment,false)||(taskDepartment==='토목&조경팀'&&person.id==='u_8')));
+ const teamApprovers=approvers.filter(person=>taskDepartment&&(canManageSchedule(person,taskDepartment,false)||(taskDepartment==='토목&조경팀'&&person.id==='u_8')));
  useEffect(()=>{const lifecycle=mounted,requests=refreshId;lifecycle.current=true;setRows([]);setBusy(false);setNotice('');return()=>{lifecycle.current=false;requests.current++;};},[user]);
  useEffect(()=>{setTaskId(selectedTaskId);},[selectedTaskId]);
  useEffect(()=>{setWorkDate(suggestedDate||localDate(new Date()));},[suggestedDate]);
- useEffect(()=>{setApproverId('');},[task?.projectId]);
+ useEffect(()=>{setApproverId('');},[task?.projectId,taskDepartment]);
  const taskEnd=task?.endDate;
  useEffect(()=>{setRequestedEnd(taskEnd?nextDay(taskEnd):'');},[task?.id,taskEnd]);
  useEffect(()=>{void refreshRows();},[projects,user]);
