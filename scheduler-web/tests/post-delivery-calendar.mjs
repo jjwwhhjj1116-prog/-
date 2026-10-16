@@ -27,7 +27,8 @@ try{
  const reset=department=>{state(projectStore,{projects:source,personnel:users.map(user=>({id:user.id,name:user.name,region:'KOREA',team:user.department,avatar:''})),filterDepartment:department,selectedProjectId:null});state(auth,{users,currentUser:users[0],isAuthenticated:true});state(personal,{leaves:[],checks:[]});state(language,{lang:'ko'});};
  const nodes=node=>Array.isArray(node)?node.flatMap(nodes):node&&typeof node==='object'&&node.props?[node,...nodes(node.props.children)]:[];
  const hook=store=>Object.assign(selector=>typeof selector==='function'?selector(store.getState()):store.getState(),{getState:store.getState});
- const personalSource=readFileSync(new URL('../src/components/PersonalScheduleView.tsx',import.meta.url),'utf8');
+ const personalSourcePath=process.argv.find(arg=>arg.startsWith('--personal-source='))?.slice('--personal-source='.length);
+ const personalSource=readFileSync(personalSourcePath||new URL('../src/components/PersonalScheduleView.tsx',import.meta.url),'utf8');
  function personalCalendar(department,onOpenPostDelivery){
   let cursor=0,tree;const hooks=[];
   const mockReact={...React,useState(initial){const index=cursor++;if(!hooks[index])hooks[index]={value:index===1?date:typeof initial==='function'?initial():initial};return [hooks[index].value,value=>{hooks[index].value=typeof value==='function'?value(hooks[index].value):value;}];},useMemo:fn=>fn()};
@@ -68,14 +69,15 @@ try{
   const html=renderToStaticMarkup(createElement(ProjectCalendar,{date:new Date(2026,11,1)}));assert.ok(html.includes('data-project-weekend-day="2026-12-05"'));assert.ok(html.includes('data-weekend-department="구조팀"'));assert.ok(!html.includes('data-project-weekend-day="2026-12-06"'));assert.ok(!html.includes('data-project-weekend-day="2026-12-04"'));assert.ok(html.includes('09:00~17:00'));assert.ok(!html.includes('data-main-project-id="qa-finished"'));
   state(projectStore,{filterDepartment:'토목&조경팀'});assert.ok(!renderToStaticMarkup(createElement(ProjectCalendar,{date:new Date(2026,11,1)})).includes('data-project-weekend-day="2026-12-05"'));assert.equal(JSON.stringify(source),saved);
  });
- await check('개인 일정표는 직급순이며 같은 직급 명부순·퇴사자 제외·기존 일정 원문 보존',()=>{
+ await check('개인 일정표는 국내·VN 통합 직급순이며 같은 직급 명부순·퇴사자 제외·원문 보존',()=>{
   reset('마감팀');
   const positions=['프로','책임','실장','팀장','본부장','수석','실장','미정'];
   const ranked=positions.map((position,index)=>({...users[0],id:'rank-'+index,name:'직원 '+index,position}));
   const retired={...users[0],active:false};
-  state(auth,{users:[...ranked,retired],currentUser:ranked[0]});
+  const vietLead={...ranked[0],id:'rank-vn-lead',company:'VIETQS',position:'팀장',vietTeamId:'vt_in1'};
+  state(auth,{users:[...ranked,retired,vietLead],currentUser:ranked[0]});
   const before=JSON.stringify(projectStore.getState().projects),{tree}=personalCalendar('마감팀');
-  assert.deepEqual(nodes(tree).filter(node=>node.props['data-schedule-unit']).map(node=>node.props['data-schedule-unit']),['rank-4','rank-2','rank-6','rank-3','rank-5','rank-1','rank-0','rank-7']);
+  assert.deepEqual(nodes(tree).filter(node=>node.props['data-schedule-unit']).map(node=>node.props['data-schedule-unit']),['rank-4','rank-2','rank-6','rank-3','rank-vn-lead','rank-5','rank-1','rank-0','rank-7']);
   assert.equal(JSON.stringify(projectStore.getState().projects),before);
   assert.equal(JSON.stringify(source),saved);
  });

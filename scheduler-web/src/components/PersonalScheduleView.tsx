@@ -183,8 +183,12 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
       });
     }
 
+    if (vietView === 'INDIVIDUAL') units.sort((a, b) => compareStaff(
+      users.find(person => person.id === a.id) || {},
+      users.find(person => person.id === b.id) || {},
+    ));
     return units;
-  }, [koreaUsers, vietTeams, vietUsers, ungroupedVietUsers, vietView, regionFilter, department]);
+  }, [koreaUsers, vietTeams, vietUsers, ungroupedVietUsers, vietView, regionFilter, department, users]);
 
   // 프로젝트 이름 약칭 추출 함수 (발주처 태그용)
   const getProjectShortName = (name: string) => {
