@@ -4,6 +4,8 @@ import {assignedTasksForAliases,assignmentAliases,validDay,isWeekendDay} from '.
 import {scheduleExtensionDepartment} from '../utils/postDeliveryVisibility';
 import {scheduleExtensionPeriods} from '../utils/scheduleExtensionPeriods';
 import { compareStaff } from '../utils/staffOrder';
+import {workDayInfo,calendarHoliday} from '../utils/workCalendar';
+import {matchesScheduleProject,taskDisplayRanges} from '../utils/workCalendarDisplay';
 import React, { useState, useMemo } from 'react';
 import {
   format,
@@ -37,12 +39,12 @@ import { VietTeamModal } from './VietTeamModal';
 import ProjectCalendar from './ProjectCalendar';
 import { exportProjectsToExcel } from '../services/excelService';
 
-import { HOLIDAYS } from '../constants/holidays';
 
 interface PersonalScheduleViewProps {
   department: Department;
   onOpenPrintModal?: (date?: Date) => void;
   onOpenPostDelivery?: () => void;
+  onOpenWorkCalendar?: () => void;
 }
 
 interface AssignedTask {
@@ -60,6 +62,7 @@ interface AssignedTask {
   version?: string;
   lane?: number; // 겹침 방지 서브 레인 번호
   postDeliveryId?: string;
+  displayRanges?: {startDate:string;endDate:string}[];
 }
 
 // 캘린더에 표시할 행 유닛: 한국 본사 개인 또는 베트남 팀 유닛
@@ -73,11 +76,12 @@ interface ScheduleRowUnit {
   isVietnam: boolean;
 }
 
-export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ department, onOpenPrintModal, onOpenPostDelivery }) => {
+export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ department, onOpenPrintModal, onOpenPostDelivery, onOpenWorkCalendar }) => {
   const lang=useLanguageStore(state=>state.lang);
   const { projects, setSelectedProjectId, personnel } = useProjectStore();
   const { users } = useAuthStore();
   const leaves=usePersonalStore(s=>s.leaves);
+  const workCalendars=usePersonalStore(s=>s.workCalendars);
   const [viewMode, setViewMode] = useState<'PERSONAL' | 'TEAM'>('TEAM');
   // 실시간 오늘 기준일 (2026-09-21)
   const [currentDate, setCurrentDate] = useState(() => {
@@ -91,6 +95,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
 
   // 베트남 팀원 관리 모달 상태
   const [activeVietTeamModal, setActiveVietTeamModal] = useState<VietTeam | null>(null);
+  const [projectSearch,setProjectSearch]=useState('');
 
   // 달력 범위 계산 (선택된 월)
   const monthStart = startOfMonth(currentDate);
@@ -216,6 +221,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
     });
 
     projects.forEach((p) => {
+      if(!matchesScheduleProject(p,projectSearch))return;
       const shortName = getProjectShortName(p.name);
       const displayName = getProjectDisplayName(p.name);
 
@@ -235,28 +241,31 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
     const packedMap: Record<string, { tasks: (AssignedTask & { lane: number })[]; maxLane: number }> = {};
 
     scheduleRowUnits.forEach((u) => {
-      const tasks = rawMap[u.id] || [];
+      const memberIds=u.vietTeamData?.members.map(member=>member.id)||[u.id];
+      const tasks = (rawMap[u.id] || []).map(task=>{
+        const project=projects.find(project=>project.id===task.projectId);
+        const owners=u.vietTeamData?memberIds.filter(id=>assignedTasksForAliases(assignmentAliases(users.find(person=>person.id===id)||{id},users),project?[project]:[]).some(assigned=>assigned.id===task.id&&assigned.allocationId===task.allocationId)):memberIds;
+        return {...task,displayRanges:taskDisplayRanges(task,project,owners,u.isVietnam?'VIETQS':'컨코스트',workCalendars,monthStartStr,monthEndStr)};
+      }).filter(task=>task.displayRanges.length);
       const sorted = [...tasks].sort(
-        (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+        (a, b) => a.displayRanges[0].startDate.localeCompare(b.displayRanges[0].startDate)
       );
 
-      const lanes: { endDate: Date }[] = [];
+      const lanes: {startDate:string;endDate:string}[][] = [];
       const assignedTasks = sorted.map((task) => {
-        const start = new Date(task.startDate);
-        const end = new Date(task.endDate);
         let laneIndex = -1;
 
         for (let i = 0; i < lanes.length; i++) {
-          if (lanes[i].endDate < start) {
+          if (!lanes[i].some(occupied=>task.displayRanges.some(range=>occupied.startDate<=range.endDate&&range.startDate<=occupied.endDate))) {
             laneIndex = i;
-            lanes[i].endDate = end;
+            lanes[i].push(...task.displayRanges);
             break;
           }
         }
 
         if (laneIndex === -1) {
           laneIndex = lanes.length;
-          lanes.push({ endDate: end });
+          lanes.push([...task.displayRanges]);
         }
 
         return { ...task, lane: laneIndex };
@@ -269,10 +278,12 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
     });
 
     return packedMap;
-  }, [scheduleRowUnits, projects, users, department]);
+  }, [scheduleRowUnits, projects, users, department,projectSearch,workCalendars,monthStartStr,monthEndStr]);
+  const visibleScheduleUnits=projectSearch.trim()?scheduleRowUnits.filter(unit=>unitTasksMap[unit.id]?.tasks.length):scheduleRowUnits;
+  const matchedProjectCount=new Set(visibleScheduleUnits.flatMap(unit=>(unitTasksMap[unit.id]?.tasks||[]).map(task=>task.projectId))).size;
 
   // 간트 바 스타일 위치 계산
-  const getGanttBarStyle = (task: AssignedTask, lane: number) => {
+  const getGanttBarStyle = (task: {startDate:string;endDate:string}, lane: number) => {
     const start = new Date(task.startDate);
     const end = new Date(task.endDate);
 
@@ -340,6 +351,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
 
         <div className="flex flex-wrap items-center gap-3">
           {viewMode==='PERSONAL'&&onOpenPostDelivery && <button data-post-delivery-register type="button" onClick={onOpenPostDelivery} className="order-last ml-auto flex items-center gap-1.5 rounded-xl bg-orange-700 px-3.5 py-2 text-xs font-bold text-white hover:bg-orange-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600"><CalendarPlus size={16}/>프로젝트 보완 일정 등록</button>}
+          {viewMode==='PERSONAL'&&onOpenWorkCalendar&&<button type="button" onClick={onOpenWorkCalendar} className="order-last flex items-center gap-1.5 rounded-xl border border-teal-700 bg-teal-50 px-3.5 py-2 text-xs font-bold text-teal-900 hover:bg-teal-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"><CalendarPlus size={16}/>VIET QS 근무일 등록</button>}
           {/* 엑셀 다운로드 버튼 */}
           <button
             onClick={() => exportProjectsToExcel(projects, personnel, currentDate, 1, department)}
@@ -422,12 +434,17 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
       {/* 2. 메인 캘린더 렌더링 */}
       {viewMode === 'TEAM' ? (
         <div className="space-y-4">
-          <ProjectCalendar date={currentDate} onDateChange={setCurrentDate} onOpenPrintModal={onOpenPrintModal} onOpenPostDelivery={onOpenPostDelivery} />
+          <ProjectCalendar date={currentDate} onDateChange={setCurrentDate} onOpenPrintModal={onOpenPrintModal} onOpenPostDelivery={onOpenPostDelivery} onOpenWorkCalendar={onOpenWorkCalendar} />
         </div>
       ) : (
         <div className="corporate-card overflow-hidden">
           {/* 상단 퀵 필터 탭 (전체 / 한국 개인 / 베트남 팀 유닛) */}
           <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex w-full flex-wrap items-center gap-2">
+              <label className="flex min-w-0 flex-1 items-center gap-2 font-bold text-slate-700">프로젝트 찾기<input type="search" aria-label="개인 일정표 프로젝트 찾기" value={projectSearch} onChange={event=>setProjectSearch(event.target.value)} placeholder="프로젝트 번호 또는 이름" className="min-w-0 w-full max-w-sm rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal text-slate-900 placeholder:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-700"/></label>
+              {projectSearch&&<button type="button" onClick={()=>setProjectSearch('')} className="rounded-lg border border-slate-300 bg-white px-3 py-2 font-semibold text-slate-700 hover:bg-slate-100">검색 지우기</button>}
+              <span role="status" className="font-semibold text-slate-700">{projectSearch?'검색 결과':'현재 월'} {matchedProjectCount}개 프로젝트</span>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
                 <Users className="w-4 h-4 text-blue-600" />
@@ -515,15 +532,17 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                     const isSat = getDay(day) === 6;
                     const isSun = getDay(day) === 0;
                     const isCurrentToday = isSameDay(day, today);
-                    const holiday = HOLIDAYS[dateStr];
+                    const holiday = calendarHoliday(dateStr,workCalendars);
+                    const vnDay=workDayInfo(dateStr,{company:'VIETQS',calendars:workCalendars});
 
                     return (
                       <div
                         key={dateStr}
                         data-calendar-day={dateStr}
+                        title={[holiday?`${holiday.country} ${holiday.name}`:'',isSat?vnDay.name:''].filter(Boolean).join(' · ')||undefined}
                         style={{ flex: 1, minWidth: 0 }}
                         className={`text-center py-2 border-r border-slate-200 shrink-0 select-none flex flex-col justify-between ${
-                          isSun || isSat || holiday
+                          isSat&&vnDay.working?'bg-teal-50':isSun || isSat || holiday
                             ? 'bg-slate-50/70'
                             : isCurrentToday
                             ? 'bg-blue-50/60'
@@ -549,7 +568,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                           {format(day, 'd')}
                         </div>
                         <div className="h-3 flex items-center justify-center">
-                          {holiday && (
+                          {isSat?<span data-viet-saturday={vnDay.configured?vnDay.working?'WORK':'OFF':'UNCONFIGURED'} className={`text-[8px] font-bold ${vnDay.working?'text-teal-800':'text-red-700'}`}>{vnDay.configured?vnDay.working?'VN 근무':'VN 휴무':'VN 미등록'}</span>:holiday && (
                             <span className="text-[8px] font-black text-red-500 px-0.5">
                               {holiday.country}
                             </span>
@@ -563,13 +582,12 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
 
               {/* 타임라인 바디 (한국 개인 행 + 베트남 팀 유닛 행) */}
               <div className="divide-y divide-slate-200">
-                {scheduleRowUnits.map((unit) => {
+                {projectSearch.trim()&&!visibleScheduleUnits.length&&<p role="status" className="p-8 text-center text-sm text-slate-700">현재 월·팀에 일치하는 프로젝트가 없습니다. 번호나 이름을 다시 확인하세요.</p>}
+                {visibleScheduleUnits.map((unit) => {
                   const { tasks, maxLane } = unitTasksMap[unit.id] || { tasks: [], maxLane: 0 };
 
                   // 당월(조회 중인 월)에 실제 진행되는 작업만 필터링
-                  const monthTasks = tasks.filter(
-                    (t) => !(t.endDate < monthStartStr || t.startDate > monthEndStr)
-                  );
+                  const monthTasks = tasks;
 
                   // 당월 실제 일정 겹침(충돌) 계산: 두 작업의 날짜 구간이 겹치는 경우
                   const overlappingTasks = new Set<number>();
@@ -577,7 +595,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                     for (let j = i + 1; j < monthTasks.length; j++) {
                       const a = monthTasks[i];
                       const b = monthTasks[j];
-                      if (a.startDate <= b.endDate && b.startDate <= a.endDate) {
+                      if (a.displayRanges?.some(left=>b.displayRanges?.some(right=>left.startDate<=right.endDate&&right.startDate<=left.endDate))) {
                         overlappingTasks.add(i);
                         overlappingTasks.add(j);
                       }
@@ -593,7 +611,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                   const monthWeekendWork = deptWeekendWork.filter(request => leaveMemberIds.includes(request.userId)
                       && typeof request.workDate === 'string' && request.workDate >= monthStartStr && request.workDate <= monthEndStr);
                   const leaveLabel = (leave: typeof monthLeaves[number]) => `${unit.vietTeamData ? `${users.find(person => person.id === leave.user_id)?.name || leave.name || leave.user_id} · ` : ''}${leave.kind}`;
-                  const rowHeight = Math.max(52+monthLeaves.length*14, (maxLane + 1) * 32 + 12)+monthLeaves.length*24+(monthOvertime.length?24:0)+(monthWeekendWork.length?32:0);
+                  const rowHeight = Math.max(52+monthLeaves.length*14, (maxLane + 1) * 30 + 12+monthLeaves.length*24+(monthOvertime.length?24:0)+(monthWeekendWork.length?32:0));
 
                   return (
                     <div
@@ -693,10 +711,8 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                         {/* 일자별 배경 격자선 */}
                         {daysInMonth.map((day) => {
                           const dateStr = format(day, 'yyyy-MM-dd');
-                          const isSat = getDay(day) === 6;
-                          const isSun = getDay(day) === 0;
                           const isCurrentToday = isSameDay(day, today);
-                          const holiday = HOLIDAYS[dateStr];
+                          const workDay=workDayInfo(dateStr,{company:unit.isVietnam?'VIETQS':'컨코스트',calendars:workCalendars});
                           const dayLeaves = monthLeaves.filter(leave => leave.start_date <= dateStr && leave.end_date >= dateStr);
                           const dayLeaveLabel = dayLeaves.length ? `${unit.name} ${dateStr} · ${dayLeaves.map(leaveLabel).join(' / ')} · 본인 등록` : undefined;
                           const dayOvertime = monthOvertime.filter(request => request.workDate === dateStr);
@@ -708,6 +724,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                             <div
                               key={dateStr}
                               data-calendar-person-day={dateStr}
+                              data-work-day={workDay.working?'WORK':'OFF'}
                               data-leave-day={dayLeaves.length ? dateStr : undefined}
                               data-overtime-day={dayOvertime.length ? dateStr : undefined}
                               data-weekend-work-day={dayWeekendWork.length ? dateStr : undefined}
@@ -718,7 +735,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                                   ? 'bg-amber-50 dark:bg-amber-950/40'
                                   : isCurrentToday
                                   ? 'bg-blue-50/25'
-                                  : isSun || isSat || holiday
+                                  : !workDay.working
                                   ? 'bg-slate-50/50 striped-bg'
                                   : ''
                               }`}
@@ -744,16 +761,19 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                         )}
 
                         {/* 간트 타임라인 바 렌더링 */}
-                        {tasks.map((task) => {
-                          const style = getGanttBarStyle(task, task.lane);
+                        {tasks.flatMap((task) => (task.displayRanges||[]).map(range=>{
+                          const style = getGanttBarStyle(range, task.lane);
                           if (!style) return null;
-                          const visibleStart=task.startDate>monthStartStr?task.startDate:monthStartStr,visibleEnd=task.endDate<monthEndStr?task.endDate:monthEndStr;
+                          const visibleStart=range.startDate,visibleEnd=range.endDate;
                           const visibleDays=differenceInDays(parseISO(visibleEnd),parseISO(visibleStart))+1;
                           const extensions=scheduleExtensionPeriods(projects.find(project=>project.id===task.projectId),task).map(period=>({start:period.start>visibleStart?period.start:visibleStart,end:period.end<visibleEnd?period.end:visibleEnd})).filter(period=>period.start<=period.end);
 
                           return (
                             <div
-                              key={task.id}
+                              key={`${task.id}:${range.startDate}`}
+                              data-task-id={task.id}
+                              data-work-start={range.startDate}
+                              data-work-end={range.endDate}
                               data-allocation-id={task.allocationId}
                               data-post-delivery-id={task.postDeliveryId}
                               onClick={() => setSelectedProjectId(task.projectId)}
@@ -776,7 +796,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                               </span>
                             </div>
                           );
-                        })}
+                        }))}
                       </div>
                     </div>
                   );

@@ -1,12 +1,14 @@
 import {translateWorkbook,translatedAlert} from './translationService';
 import {useLanguageStore} from '../store/useLanguageStore';
 import {usePersonalStore} from '../store/usePersonalStore';
-import {assignmentSegments,type Leave} from '../utils/personalWork';
+import {assignmentSegments,assignmentAliases,taskAssignedTo,type Leave} from '../utils/personalWork';
 import { projectProgress, workDays, validDateRange, percentLabel,projectScheduleRange } from '../utils/scheduleProgress';
 import * as XLSX from 'xlsx';
 import type { Project, Person, Department } from '../store/useProjectStore';
 import { projectPMId } from '../utils/pendingAssignment';
 import {visiblePostDeliveryTasks,postDeliveryDepartment} from '../utils/postDeliveryVisibility';
+import {projectDisplayRanges,taskDisplayRanges} from '../utils/workCalendarDisplay';
+import {calendarHoliday,workDayInfo,workDateRanges,type CompanyWorkCalendar} from '../utils/workCalendar';
 
 /**
  * 프로젝트 일정표 엑셀 내보내기 (Export)
@@ -15,9 +17,11 @@ export const buildProjectsWorkbook = (
   projects: Project[],
   personnel: Person[],
   targetDate: Date = new Date(),
-  department: Department | 'ALL' = 'ALL'
+  department: Department | 'ALL' = 'ALL',
+  workCalendars:CompanyWorkCalendar[]=[]
 ) => {
   const personMap = new Map(personnel.map((p) => [p.id, p.name]));
+  const directory=personnel.map(person=>({...person,company:person.region==='VIETNAM'?'VIETQS':'컨코스트'}));
   const year = targetDate.getFullYear();
   const month = targetDate.getMonth() + 1;
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -57,7 +61,8 @@ export const buildProjectsWorkbook = (
   for (let d = 1; d <= daysInMonth; d++) {
     const dateObj = new Date(year, month - 1, d);
     const dayOfWeek = dayNames[dateObj.getDay()];
-    dayOfWeekRow.push(dayOfWeek);
+    const day=`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`,vietnam=workDayInfo(day,{company:'VIETQS',calendars:workCalendars}),holiday=calendarHoliday(day,workCalendars);
+    dayOfWeekRow.push(`${dayOfWeek}${dateObj.getDay()===6&&vietnam.configured?` · VN ${vietnam.working?'근무':'휴무'}`:holiday?` · ${holiday.country} 휴일`:''}`);
   }
   timelineAoa.push(dayOfWeekRow);
 
@@ -66,7 +71,8 @@ export const buildProjectsWorkbook = (
     const range = projectScheduleRange(p);
     const main=department==='ALL'||p.department===department;
     return (main&&validDateRange(range.start,range.end)&&range.end>=monthStartStr&&range.start<=monthEndStr) ||
-      visiblePostDeliveryTasks(p,department).some(task=>task.startDate<=monthEndStr&&task.endDate>=monthStartStr) ||
+      main&&projectDisplayRanges(p,p.department,monthStartStr,monthEndStr,directory,workCalendars).length>0 ||
+      visiblePostDeliveryTasks(p,department).some(task=>task.startDate<=monthEndStr&&task.endDate>=monthStartStr||projectDisplayRanges(p,postDeliveryDepartment(p,task),monthStartStr,monthEndStr,directory,workCalendars,task.id).length>0) ||
       main&&(!range.start||!range.end)&&!projectPMId(p);
   });
 
@@ -81,6 +87,8 @@ export const buildProjectsWorkbook = (
       p.name.replace(/^\[.*?\]\s*/, '').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim() ||
       p.name;
     const client = (p as any).client || '-';
+    const display=projectDisplayRanges(p,p.department,monthStartStr,monthEndStr,directory,workCalendars);
+    const follows=visiblePostDeliveryTasks(p,department).map(task=>({task,ranges:projectDisplayRanges(p,postDeliveryDepartment(p,task),monthStartStr,monthEndStr,directory,workCalendars,task.id)}));
 
     const row = [
       rowNo++,
@@ -97,11 +105,11 @@ export const buildProjectsWorkbook = (
     // 1일부터 말일까지 타임라인 셀 채우기
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const followUp=visiblePostDeliveryTasks(p,department).find(task=>dateStr>=task.startDate&&dateStr<=task.endDate);
-      if (validDateRange(range.start,range.end)&&dateStr >= range.start && dateStr <= range.end) {
+      const followUp=follows.find(({ranges})=>ranges.some(row=>dateStr>=row.startDate&&dateStr<=row.endDate))?.task;
+      if (main&&display.some(row=>dateStr>=row.startDate&&dateStr<=row.endDate)) {
         // 간트 바 텍스트 표기
         const deptPrefix = p.department === '마감팀' ? '■마감' : p.department === '구조팀' ? '■구조' : '■토목';
-        row.push(`${deptPrefix}(${percentLabel(projectProgress(p).actual)})${followUp?` ◆${followUp.kind}`:''}`);
+        row.push(`${dateStr>range.end?'주말 출근 ':''}${deptPrefix}(${percentLabel(projectProgress(p).actual)})${followUp?` ◆${followUp.kind}`:''}`);
       } else {
         row.push(followUp?`◆${followUp.kind}`:'');
       }
@@ -203,13 +211,17 @@ export const buildProjectsWorkbook = (
       return;
      }
      for(const segment of assignmentSegments(task, p.startDate, p.endDate)){
+      const taskId=`gen-${p.id}-${roleName}${segment.id&&segment.id!==sub.legacyAllocationId?'-'+segment.id:''}`;
+      const assignees=directory.filter(person=>taskAssignedTo({personIds:segment.personIds},person.id,assignmentAliases(person,directory)));
+      const ranges=assignees.flatMap(person=>taskDisplayRanges({id:taskId,allocationId:segment.id,startDate:segment.startDate,endDate:segment.endDate},p,[person.id],person.company,workCalendars,segment.startDate,segment.endDate));
+      const workingDays=assignees.length?workDateRanges(segment.startDate,segment.endDate,day=>ranges.some(row=>day>=row.startDate&&day<=row.endDate)).reduce((sum,row)=>sum+Math.round((Date.parse(row.endDate)-Date.parse(row.startDate))/86400000)+1,0):workDays(segment.startDate,segment.endDate);
       subTaskRows.push({
         '프로젝트 코드': p.code,
         '프로젝트명': p.name,
         '담당부서': p.department,
         '공종명': roleName,
         '담당자': segment.personIds.map(id => personMap.get(id) || id).join(', '),
-        '작업일': workDays(segment.startDate, segment.endDate) ?? '',
+        '작업일': workingDays ?? '',
         '실제 진척률(%)': sub?.progress ?? '',
         '내역 유형': sub?.subType || '',
         '공종 시작일': segment.startDate,
@@ -250,10 +262,10 @@ export const buildProjectsWorkbook = (
   return wb;
 };
 
-export function buildProjectRangeWorkbook(projects: Project[], personnel: Person[], targetDate = new Date(), monthCount = 1, leaves: Leave[] = [], department: Department | 'ALL' = 'ALL') {
-  const wb = buildProjectsWorkbook(projects, personnel, targetDate, department);
+export function buildProjectRangeWorkbook(projects: Project[], personnel: Person[], targetDate = new Date(), monthCount = 1, leaves: Leave[] = [], department: Department | 'ALL' = 'ALL',workCalendars:CompanyWorkCalendar[]=[]) {
+  const wb = buildProjectsWorkbook(projects, personnel, targetDate, department,workCalendars);
   for (let i=1; i<monthCount; i++) {
-    const next = buildProjectsWorkbook(projects, personnel, new Date(targetDate.getFullYear(), targetDate.getMonth()+i,1), department);
+    const next = buildProjectsWorkbook(projects, personnel, new Date(targetDate.getFullYear(), targetDate.getMonth()+i,1), department,workCalendars);
     XLSX.utils.book_append_sheet(wb, next.Sheets[next.SheetNames[0]], next.SheetNames[0]);
     for (const name of ['프로젝트통합요약','세부공종일정','납품후검토수정','계획실적',...(next.Sheets['일정검수']?['일정검수']:[])]) {
       const rows = [...(wb.Sheets[name]?XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[name]):[]), ...XLSX.utils.sheet_to_json<Record<string, unknown>>(next.Sheets[name])];
@@ -273,7 +285,8 @@ export function buildProjectRangeWorkbook(projects: Project[], personnel: Person
     const end = `${endDate.getFullYear()}-${String(endDate.getMonth()+1).padStart(2,'0')}-${endDate.getDate()}`;
     wb.Sheets['복원데이터'] = XLSX.utils.json_to_sheet(projects.filter(p=>{
       const range=projectScheduleRange(p);
-      return (validDateRange(range.start,range.end)&&range.start<=end&&range.end>=start)||(p.postDeliveryTasks||[]).some(task=>task.startDate<=end&&task.endDate>=start)||(!range.start||!range.end)&&!projectPMId(p);
+      const directory=personnel.map(person=>({...person,company:person.region==='VIETNAM'?'VIETQS':'컨코스트'}));
+      return (validDateRange(range.start,range.end)&&range.start<=end&&range.end>=start)||projectDisplayRanges(p,p.department,start,end,directory,workCalendars).length>0||(p.postDeliveryTasks||[]).some(task=>task.startDate<=end&&task.endDate>=start||projectDisplayRanges(p,postDeliveryDepartment(p,task),start,end,directory,workCalendars,task.id).length>0)||(!range.start||!range.end)&&!projectPMId(p);
     }).map(p=>({schema:'concost-project-v1',data:JSON.stringify(p)})));
   }
   const first=`${targetDate.getFullYear()}-${String(targetDate.getMonth()+1).padStart(2,'0')}-01`;
@@ -289,7 +302,7 @@ export async function exportProjectsToExcel(projects: Project[], personnel: Pers
   try {
     // Project identities stay Korean in both full detail and shortened timeline cells.
     const projectNames=projects.flatMap(project=>[project.name,project.name.replace(/^\[.*?\]\s*/, '').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim()]);
-    const workbook=await translateWorkbook(buildProjectRangeWorkbook(projects, personnel, targetDate, monthCount, usePersonalStore.getState().leaves, department),language,projectNames);
+    const workbook=await translateWorkbook(buildProjectRangeWorkbook(projects, personnel, targetDate, monthCount, usePersonalStore.getState().leaves, department,usePersonalStore.getState().workCalendars),language,projectNames);
     XLSX.writeFile(workbook, `CONCOST_${language==='vi'?'Lich_trinh':'일정표'}_${targetDate.getFullYear()}-${targetDate.getMonth()+1}_${monthCount}${language==='vi'?'thang':'개월'}.xlsx`);
     return true;
   }catch{void translatedAlert('엑셀 번역을 완료하지 못했습니다. 다시 시도하거나 한국어로 전환해 주세요.');return false;}

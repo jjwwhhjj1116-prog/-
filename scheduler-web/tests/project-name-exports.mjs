@@ -2,13 +2,17 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {createServer} from 'vite';
+import {nativeSsrPackages} from './ssr-native-packages.mjs';
+import {createRequire} from 'node:module';
 import ts from 'typescript';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 
 globalThis.localStorage={getItem:()=>null,setItem(){},removeItem(){}};
 const originalFetch=globalThis.fetch;
-const server=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom'});
+// Dynamic workbook dependencies use the same installed packages through Node on Windows SSR.
+const nativeExportPackages={name:'qa-native-export-packages',enforce:'pre',resolveId(id){if(['exceljs','jszip','saxes'].includes(id))return '\0qa-export:'+id;},load(id){if(!id.startsWith('\0qa-export:'))return;const name=id.slice('\0qa-export:'.length),require=createRequire(new URL('../package.json',import.meta.url)),names=Object.keys(require(name)).filter(key=>/^[A-Za-z_$][\w$]*$/.test(key)&&key!=='default');return `import {createRequire} from 'node:module';const original=createRequire(${JSON.stringify(String(new URL('../package.json',import.meta.url)))})(${JSON.stringify(name)});export default original;${names.map(key=>`export const ${key}=original.${key};`).join('')}`;}};
+const server=await createServer({configFile:false,ssr:{noExternal:[/^(react|react-dom|zustand|xlsx|exceljs|jszip|saxes)(\/|$)/]},plugins:[nativeSsrPackages(),nativeExportPackages],server:{middlewareMode:true,hmr:false},appType:'custom'});
 const fullName='[현대건설(주)] 아산병원 P동 주차장 증축공사 견적용역';
 const shortName=fullName.replace(/^\[.*?\]\s*/, '').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim();
 const checks=[];

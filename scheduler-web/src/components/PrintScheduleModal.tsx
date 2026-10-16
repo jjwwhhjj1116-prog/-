@@ -8,10 +8,11 @@ import {
 } from 'lucide-react';
 import type { Project, Person, Department, PostDeliveryTask } from '../store/useProjectStore';
 import { projectProgress, percentLabel,projectScheduleRange } from '../utils/scheduleProgress';
-import { HOLIDAYS } from '../constants/holidays';
+import {calendarHoliday,workDayInfo} from '../utils/workCalendar';
 import { exportProjectsToExcel } from '../services/excelService';
 import { projectPMId } from '../utils/pendingAssignment';
 import {visiblePostDeliveryTasks,postDeliveryDepartment} from '../utils/postDeliveryVisibility';
+import {projectDisplayRanges} from '../utils/workCalendarDisplay';
 
 interface Props {
   isOpen: boolean;
@@ -35,6 +36,8 @@ export const PrintScheduleModal: React.FC<Props> = ({
   targetDate = new Date(),
 }) => {
   const leaves=usePersonalStore(s=>s.leaves);
+  const workCalendars=usePersonalStore(s=>s.workCalendars);
+  const directory=useMemo(()=>personnel.map(person=>({...person,company:person.region==='VIETNAM'?'VIETQS':'컨코스트'})),[personnel]);
   const targetMonth = `${targetDate.getFullYear()}-${String(targetDate.getMonth()+1).padStart(2,'0')}`;
   const [baseMonth, setBaseMonth] = useState(`${targetDate.getFullYear()}-${String(targetDate.getMonth()+1).padStart(2,'0')}`);
   useEffect(() => { if (isOpen) setBaseMonth(targetMonth); }, [isOpen, targetMonth]);
@@ -51,6 +54,7 @@ export const PrintScheduleModal: React.FC<Props> = ({
 
   // 1. 프로젝트 코드 기준 통합 그룹핑 (메인 캘린더와 100% 동일한 통합 양식)
   const groupedProjects = useMemo(() => {
+    const [year,month]=baseMonth.split('-').map(Number),last=new Date(year,month+2,0),displayStart=baseMonth+'-01',displayEnd=`${last.getFullYear()}-${String(last.getMonth()+1).padStart(2,'0')}-${String(last.getDate()).padStart(2,'0')}`;
     const groupMap: Record<string, {
       code: string;
       name: string;
@@ -68,6 +72,8 @@ export const PrintScheduleModal: React.FC<Props> = ({
         planned: number | undefined;
         status: string;
         postDeliveryTasks:PostDeliveryTask[];
+        workRanges:{startDate:string;endDate:string}[];
+        followupRanges:Record<string,{startDate:string;endDate:string}[]>;
       }[];
     }> = {};
 
@@ -105,6 +111,8 @@ export const PrintScheduleModal: React.FC<Props> = ({
         planned: main?projectProgress(p).planned:undefined,
         status: p.status || '진행중',
         postDeliveryTasks:follows.filter(task=>postDeliveryDepartment(p,task)===department),
+        workRanges:main?projectDisplayRanges(p,department,displayStart,displayEnd,directory,workCalendars):[],
+        followupRanges:Object.fromEntries(follows.filter(task=>postDeliveryDepartment(p,task)===department).map(task=>[task.id,projectDisplayRanges(p,department,displayStart,displayEnd,directory,workCalendars,task.id)])),
       });
       }
     });
@@ -119,7 +127,7 @@ export const PrintScheduleModal: React.FC<Props> = ({
       grp.lanes.sort((a, b) => ((deptOrder[a.department] ?? 99) - (deptOrder[b.department] ?? 99)));
       return grp;
     });
-  }, [filteredProjects, personMap,departmentFilter]);
+  }, [filteredProjects, personMap,departmentFilter,directory,workCalendars,baseMonth]);
 
   const [baseYear, baseMonthNumber] = baseMonth.split('-').map(Number);
   const months = Array.from({length: 3}, (_, index) => {
@@ -128,10 +136,7 @@ export const PrintScheduleModal: React.FC<Props> = ({
     return {year, month, days: new Date(year,month,0).getDate(), label: `${year}년 ${month}월`};
   });
   // 한국 / 베트남 / 영국 휴일 정의 (공통 상수 동기화)
-  const holidays = Object.entries(HOLIDAYS).reduce((acc, [key, val]) => {
-    acc[key] = { label: val.country, country: val.country };
-    return acc;
-  }, {} as Record<string, { label: string; country: 'KR' | 'VN' | 'UK' }>);
+  const holidays=Object.fromEntries(months.flatMap(month=>Array.from({length:month.days},(_,i)=>`${month.year}-${String(month.month).padStart(2,'0')}-${String(i+1).padStart(2,'0')}`)).flatMap(day=>{const holiday=calendarHoliday(day,workCalendars);return holiday?[[day,{label:holiday.country,country:holiday.country}]]:[];})) as Record<string,{label:string;country:string}>;
 
   const handlePrint = async () => {
     document.body.classList.add('modal-printing');
@@ -293,8 +298,8 @@ export const PrintScheduleModal: React.FC<Props> = ({
           const mEndStr = `${m.year}-${String(m.month).padStart(2, '0')}-${String(m.days).padStart(2, '0')}`;
 
           // 해당 월에 일정이 겹치는 프로젝트만 선별 (중복 없는 통합 프로젝트 기준)
-          const monthProjects = groupedProjects.map(grp => ({...grp, lanes: grp.lanes.filter(l => (l.startDate && l.endDate && l.endDate >= mStartStr && l.startDate <= mEndStr)||l.postDeliveryTasks.some(task=>task.startDate<=mEndStr&&task.endDate>=mStartStr))})).filter(grp => grp.lanes.length > 0);
-          const followUps=monthProjects.flatMap(group=>group.lanes.flatMap(lane=>lane.postDeliveryTasks.filter(task=>task.startDate<=mEndStr&&task.endDate>=mStartStr).map(task=>({code:group.code,department:lane.department,task}))));
+          const monthProjects = groupedProjects.map(grp => ({...grp, lanes: grp.lanes.filter(l => l.workRanges.some(row=>row.startDate<=mEndStr&&row.endDate>=mStartStr)||Object.values(l.followupRanges).some(ranges=>ranges.some(row=>row.startDate<=mEndStr&&row.endDate>=mStartStr))||l.postDeliveryTasks.some(task=>task.startDate<=mEndStr&&task.endDate>=mStartStr))})).filter(grp => grp.lanes.length > 0);
+          const followUps=monthProjects.flatMap(group=>group.lanes.flatMap(lane=>lane.postDeliveryTasks.filter(task=>task.startDate<=mEndStr&&task.endDate>=mStartStr||lane.followupRanges[task.id]?.some(row=>row.startDate<=mEndStr&&row.endDate>=mStartStr)).map(task=>({code:group.code,department:lane.department,task}))));
 
           return (
             <div
@@ -378,6 +383,7 @@ export const PrintScheduleModal: React.FC<Props> = ({
                           const dayOfWeek = dateObj.getDay(); // 0=일, 6=토
                           const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
                           const holiday = holidays[dateKey];
+                          const vietnam=workDayInfo(dateKey,{company:'VIETQS',calendars:workCalendars});
 
                           return (
                             <th
@@ -391,7 +397,7 @@ export const PrintScheduleModal: React.FC<Props> = ({
                               }`}
                             >
                               <div>{day}</div>
-                              {holiday && (
+                              {dayOfWeek===6&&vietnam.configured?<div className={`text-[7px] font-bold ${vietnam.working?'text-teal-800':'text-red-700'}`}>VN {vietnam.working?'근무':'휴무'}</div>:holiday && (
                                 <div className="text-[7px] font-bold text-rose-500 scale-90">
                                   {holiday.label}
                                 </div>
@@ -473,10 +479,11 @@ export const PrintScheduleModal: React.FC<Props> = ({
                                 >
                                   <div className="flex flex-col gap-1 w-full justify-center">
                                     {group.lanes.map((lane, lIdx) => {
-                                      const isWithin = Boolean(lane.startDate && lane.endDate && cellDateStr >= lane.startDate && cellDateStr <= lane.endDate);
-                                      const isStartDay = cellDateStr === lane.startDate;
-                                      const isEndDay = cellDateStr === lane.endDate;
-                                      const followUp=lane.postDeliveryTasks.find(task=>cellDateStr>=task.startDate&&cellDateStr<=task.endDate);
+                                      const range=lane.workRanges.find(row=>cellDateStr>=row.startDate&&cellDateStr<=row.endDate);
+                                      const isWithin = !!range;
+                                      const isStartDay = cellDateStr === range?.startDate;
+                                      const isEndDay = cellDateStr === range?.endDate;
+                                      const followUp=lane.postDeliveryTasks.find(task=>lane.followupRanges[task.id]?.some(row=>cellDateStr>=row.startDate&&cellDateStr<=row.endDate));
 
                                       const barBg =
                                         lane.department === '마감팀'
@@ -488,8 +495,10 @@ export const PrintScheduleModal: React.FC<Props> = ({
                                       return (
                                         <div
                                           key={lane.projectId || lIdx}
+                                          data-schedule-date={isWithin||followUp?cellDateStr:undefined}
+                                          data-project-id={lane.projectId}
                                           className={`h-4 w-full flex items-center justify-center text-[7px] font-bold ${
-                                            isWithin ? barBg : followUp?'bg-violet-700 text-white':'bg-transparent'
+                                            isWithin ? cellDateStr>lane.endDate?'bg-teal-700 text-white':barBg : followUp?'bg-orange-700 text-white':'bg-transparent'
                                           } ${isStartDay ? 'rounded-l-xs' : ''} ${
                                             isEndDay ? 'rounded-r-xs' : ''
                                           }`}

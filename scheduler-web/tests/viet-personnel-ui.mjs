@@ -8,6 +8,8 @@ import ts from 'typescript';
 import * as work from '../src/utils/personalWork.ts';
 import * as extensions from '../src/utils/scheduleExtensionPeriods.ts';
 import * as postDelivery from '../src/utils/postDeliveryVisibility.ts';
+import * as workCalendar from '../src/utils/workCalendar.ts';
+import * as display from '../src/utils/workCalendarDisplay.ts';
 import * as progress from '../src/utils/scheduleProgress.ts';
 import * as projectScheduleDates from '../src/utils/projectScheduleDates.ts';
 import * as allocations from '../src/utils/scheduleAllocations.ts';
@@ -53,6 +55,7 @@ function mount(name,options={}){
  modules['../store/usePersonalStore']={usePersonalStore:selector=>selector(personal)};
  modules['../utils/projectScheduleDates']=projectScheduleDates;
  modules['../utils/postDeliveryVisibility']=postDelivery;
+ modules['../utils/workCalendar']=workCalendar;modules['../utils/workCalendarDisplay']=display;
  const exports={};runInNewContext(ts.transpileModule(sourceFor(name),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,{exports,Date:TestDate,Error,structuredClone,crypto:webcrypto,console,setTimeout:()=>1,window:{location:{search:'',hash:''}},require:path=>{assert.ok(path in modules,'Unexpected UI dependency '+path);return modules[path];}});
  const Component=exports.default||exports[name],props=options.props||({ProjectModal:{projectId:state.projects[0].id,onClose:()=>{}},VietTeamModal:{team:viet.resolveVietTeams(auth.users,'마감팀')[0],isOpen:true,onClose:()=>{}},PersonalScheduleView:{department:'마감팀'},SettingsView:{},ProjectCalendar:{date:new TestDate(2026,9,1)}}[name]);
  const render=()=>{for(let cycle=0;cycle<20;cycle++){cursor=0;pending=[];dirty=false;tree=Component(props);for(const effect of pending)effect();if(!dirty)return tree;}throw Error('UI fixture effects did not settle');};
@@ -73,8 +76,9 @@ try{
    p.scheduleExtensions=[request('first','2026-10-08','2026-10-12'),request('second','2026-10-12','2026-10-16'),request('pending','2026-10-16','2026-10-20','PENDING'),request('rejected','2026-10-16','2026-10-21','REJECTED'),request('overtime','2026-10-16','2026-10-22','APPROVED',{type:'OVERTIME'}),request('other','2026-10-16','2026-10-23','APPROVED',{taskId:'other-task'}),request('split','2026-10-16','2026-10-19','APPROVED',{appliedTaskId}),request('month-boundary','2026-10-29','2026-11-03')];
    const original=JSON.stringify(p),e=mount('PersonalScheduleView',{users:[person],props:{department},project:p});e.invoke(e.button('개인/팀별 캘린더'));
    const row=e.all().find(node=>node.props['data-schedule-unit']===person.id),red=nodes(row).filter(node=>node.props['data-extension-start']);
-   assert.deepEqual(red.map(node=>[node.props['data-extension-start'],node.props['data-extension-end']]),[['2026-10-09','2026-10-16'],['2026-10-30','2026-10-31']]);assert.ok(red.every(node=>node.props.className.includes('bg-red-700')));
-   assert.equal(parseFloat(red[0].props.style.left),3/26*100);assert.equal(parseFloat(red[0].props.style.width),8/26*100);
+   assert.deepEqual(red.map(node=>[node.props['data-extension-start'],node.props['data-extension-end']]),[['2026-10-12','2026-10-16'],['2026-10-30','2026-10-30']]);assert.ok(red.every(node=>node.props.className.includes('bg-red-700')));
+   // Approved intent remains unchanged; calendar bars and their overlays mask holidays/weekends.
+   assert.equal(parseFloat(red[0].props.style.left),0);assert.equal(parseFloat(red[0].props.style.width),100);assert.equal(parseFloat(red[1].props.style.left),80);assert.equal(parseFloat(red[1].props.style.width),20);
    assert.deepEqual(extensions.scheduleExtensionPeriods(p,{id:appliedTaskId,startDate:'2026-10-17',endDate:'2026-10-19'}),[{start:'2026-10-17',end:'2026-10-19'}]);
    assert.equal(JSON.stringify(p),original);assert.equal(e.writes.length,0);
   }
@@ -131,7 +135,7 @@ try{
   e.invoke(e.find('베트남 일정 팀별'));
   assert.deepEqual(days('vt_in1'),['2026-10-06','2026-10-07','2026-10-08']);
   const bars=nodes(row('vt_in1')).filter(node=>node.props['data-leave-id']);assert.equal(bars.length,2);assert.ok(bars.every(node=>node.props.title.includes(a.name)));assert.ok(!text(row('vt_in1')).includes('10-10'));
-  assert.equal(nodes(row('vt_in1')).filter(node=>node.props['data-allocation-id']).length,1);assert.deepEqual(e.read(),p);assert.equal(e.writes.length,0);
+  const taskBars=nodes(row('vt_in1')).filter(node=>node.props['data-allocation-id']);assert.equal(new Set(taskBars.map(node=>node.props['data-allocation-id'])).size,1,'Shared allocation remains one source assignment');assert.deepEqual(taskBars.map(node=>[node.props['data-work-start'],node.props['data-work-end']]),[['2026-10-06','2026-10-09'],['2026-10-12','2026-10-15']],'Weekend is masked without duplicating the shared allocation');assert.deepEqual(e.read(),p);assert.equal(e.writes.length,0);
  });
  await check('실제 3부서 캘린더: 소속 외 PM legacyalias·VN 직접 배정자 휴가 포함, 미배정·다음월 제외',()=>{
   for(const department of ['마감팀','구조팀','토목&조경팀']){

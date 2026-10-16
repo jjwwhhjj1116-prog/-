@@ -4,6 +4,7 @@ import { createServer } from 'vite';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import ts from 'typescript';
+import {isWorkDay} from '../src/utils/workCalendar.ts';
 
 const data = new Map();
 globalThis.localStorage = { getItem: k => data.get(k) ?? null, setItem: (k,v) => data.set(k,String(v)), removeItem: k => data.delete(k) };
@@ -364,10 +365,12 @@ try {
   await check('상세 캘린더 연도 경계와 일정 시작·종료일 포함, 기간 밖 막대 제외',async()=>{
     const {ProjectDetailPrint}=await server.ssrLoadModule('/src/components/ProjectDetailPrint.tsx');
     const {createElement}=await import('react');const {renderToStaticMarkup}=await import('react-dom/server');
-    const p={...project,startDate:'2026-12-30',endDate:'2027-01-02',roles:{},subTasks:{PM:{...sub,startDate:'2026-12-31',endDate:'2027-01-01',personIds:[]}}};
+    // Both assignment endpoints are working days; New Year's Day remains between them and must be masked.
+    const p={...project,startDate:'2026-12-30',endDate:'2027-01-05',roles:{},subTasks:{PM:{...sub,startDate:'2026-12-31',endDate:'2027-01-04',personIds:[]}}},original=structuredClone(p);
     const html=renderToStaticMarkup(createElement(ProjectDetailPrint,{project:p,people:[],leaves:[],onClose:()=>{}}));
     assert.deepEqual([...html.matchAll(/data-calendar-month="([^"]+)"/g)].map(m=>m[1]),['2026-12','2027-01']);
-    assert.deepEqual([...html.matchAll(/data-schedule-date="([^"]+)" data-trade="PM"/g)].map(m=>m[1]),['2026-12-31','2027-01-01']);
+    assert.deepEqual([...html.matchAll(/data-schedule-date="([^"]+)" data-trade="PM"/g)].map(m=>m[1]),['2026-12-31','2027-01-04']);
+    assert.ok(!html.includes('data-schedule-date="2027-01-01"'));assert.deepEqual(p,original);
     assert.ok(!html.includes('2027-01-32'));assert.ok(html.includes('공종별 일정 캘린더'));assert.ok(html.includes('KR 신정'));
     assert.ok(html.includes('일정 미입력'));
     assert.deepEqual([...html.matchAll(/data-trade="([^"]+)"/g)].map(m=>m[1]),['PM','PM']);
@@ -505,7 +508,8 @@ try {
   });
   const {PersonalScheduleView}=await server.ssrLoadModule('/src/components/PersonalScheduleView.tsx');
   const calendarOverlapHtml=intervals=>{
-    const now=new Date(),day=number=>`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(number).padStart(2,'0')}`,owner=modalUser('overlap-worker','합성 중복 검수 직원',88999),beforeAuth={...auth.getInitialState()},beforeProjects={...projects.getInitialState()};
+    // Fixture coordinates are working-day ordinals so weekend/holiday masking does not erase the intended overlap.
+    const now=new Date(),workingDays=Array.from({length:new Date(now.getFullYear(),now.getMonth()+1,0).getDate()},(_,index)=>`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(index+1).padStart(2,'0')}`).filter(value=>isWorkDay(value)),day=number=>{assert.ok(workingDays[number-1],'Overlap fixture requires the requested working day');return workingDays[number-1];},owner=modalUser('overlap-worker','합성 중복 검수 직원',88999),beforeAuth={...auth.getInitialState()},beforeProjects={...projects.getInitialState()};
     const fixtures=intervals.map(([start,end],index)=>({id:'overlap-'+index,code:'QA-OVERLAP-'+index,name:'합성 업무 '+index,department:'마감팀',pmId:'',startDate:day(start),endDate:day(end),status:'진행중',progress:0,roles:{},subTasks:{내부:{roleName:'내부',personId:owner.id,personIds:[owner.id],startDate:day(start),endDate:day(end),status:'진행중',memo:'원 배정 '+index}}}));
     const frozen=structuredClone(fixtures);try{Object.assign(auth.getInitialState(),{users:[owner]});Object.assign(projects.getInitialState(),{projects:fixtures,personnel:[]});const html=renderModal(modalElement(PersonalScheduleView,{department:'마감팀'}));assert.deepEqual(fixtures,frozen);return html;}finally{Object.assign(auth.getInitialState(),beforeAuth);Object.assign(projects.getInitialState(),beforeProjects);}
   };

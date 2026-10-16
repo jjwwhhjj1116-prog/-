@@ -12,6 +12,7 @@ import {ensureIntakeSchedules,pendingIntakeSchedules} from './intakeSchedule.ts'
 import {projectInquiryRoute} from './projectInquiries.ts';
 import {applyProjectDates} from '../../scheduler-web/src/utils/projectScheduleDates.ts';
 import {postDeliverySchedulesRoute,protectReportedPostDeliveryTasks} from './postDeliverySchedules.ts';
+import {workCalendarRoute} from './workCalendars.ts';
 // A small, versioned collaboration API. D1 is the shared source; cookies identify the actor.
 export type StudioUser = { id:string; name:string; department:string; position:string; profile:string; login?:string; salt?:string; password_hash?:string };
 type Environment = { DB: D1Database; CIVIL_APPROVER_ID?: string; GEMINI_API_KEY?: string; GEMINI_MODEL?: string };
@@ -166,6 +167,7 @@ export async function handleCollaboration(request:Request,env:Environment,archiv
    const result=await syncAutomaticWorklogs({...env,DB},administrator?{}:{onlyUserId:user.id});
    return result.conflicts?json({error:'동시 변경으로 일부 자동 보고를 보류했습니다. 다음 갱신에서 다시 확인합니다.',result},409):json(result);
   }
+  const calendar=await workCalendarRoute(request,env,user,route);if(calendar)return calendar;
   const supplements=await postDeliverySchedulesRoute(request,env,user,route);if(supplements)return supplements;
   const inquiry=await projectInquiryRoute(request,env,user,route);if(inquiry)return inquiry;
   const personal=await personalRoute(request,env,user,route);if(personal)return personal;

@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
-import {createServer} from 'vite';
+import {createServer as viteCreateServer} from 'vite';
+import {nativeSsrPackages} from './ssr-native-packages.mjs';
+const createServer=options=>viteCreateServer({...options,configFile:false,ssr:{...options.ssr,noExternal:[/^(react|react-dom|zustand|xlsx)(\/|$)/]},plugins:[nativeSsrPackages(),...(options.plugins||[])]});
 import {readFileSync,writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {runInNewContext} from 'node:vm';
 import ts from 'typescript';
+import * as supplements from '../src/utils/worklogSupplements.ts';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 const require=createRequire(import.meta.url),React=require('react');
@@ -45,6 +48,7 @@ try{
   const reactive=store=>{const hook=selector=>typeof selector==='function'?selector(store.getState()):store.getState();hook.getState=store.getState;return hook;};
   const mockReact={...React,useState:initial=>[typeof initial==='function'?initial():initial,()=>{}],useEffect:()=>{},useMemo:fn=>fn(),useCallback:fn=>fn,useRef:value=>({current:value})};
   const values={'react':mockReact,'../services/translationService':{translatedAlert:async()=>{}},'./RetainedRecords':{LegacyWorkLogArchive:()=>null},'../store/usePersonalStore':{usePersonalStore:reactive(personal)},'../utils/personalWork':work,'./WorkLogReporting':new Proxy({},{get:()=>()=>null}),'../utils/schedulePermissions':permissions,'../store/useAuthStore':{useAuthStore:reactive(auth)},'../store/useProjectStore':{useProjectStore:reactive(projects)},'../store/useWorkLogStore':{useWorkLogStore:reactive(logs),TEAM_APPROVAL_LINES},'lucide-react':require('lucide-react')};
+  values['../utils/worklogSupplements']=supplements;
   const exports={},compiled=ts.transpileModule(source('src/components/DailyWorkLogView.tsx'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React,esModuleInterop:true}}).outputText;
   runInNewContext(compiled,{exports,Date:globalThis.Date,structuredClone,console,require:path=>{assert.ok(path in values,'Unexpected UI dependency '+path);return values[path];}});
   const tree=exports.DailyWorkLogView(),nodes=node=>Array.isArray(node)?node.flatMap(nodes):node&&typeof node==='object'&&node.props?[node,...nodes(node.props.children)]:[];

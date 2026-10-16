@@ -3,7 +3,8 @@ import {studioApi} from '../services/studioApi';
 import {useAuthStore} from './useAuthStore';
 import {useWorkLogStore,type DailyWorkLog} from './useWorkLogStore';
 import type {Leave} from '../utils/personalWork';
-export const usePersonalStore=create<{leaves:Leave[];checks:{day:string;task_id:string;done:number}[];loaded:boolean;openDate:string|null;openTaskId?:string|null;openWorkLogId?:string|null;openExtension?:string|{projectId:string;type:'OVERTIME'|'WEEKEND';requestId:string}|null}>(()=>({leaves:[],checks:[],loaded:false,openDate:null,openWorkLogId:null,openExtension:null}));
+import type {CompanyWorkCalendar} from '../utils/workCalendar';
+export const usePersonalStore=create<{leaves:Leave[];workCalendars:CompanyWorkCalendar[];checks:{day:string;task_id:string;done:number}[];loaded:boolean;openDate:string|null;openTaskId?:string|null;openWorkLogId?:string|null;openExtension?:string|{projectId:string;type:'OVERTIME'|'WEEKEND';requestId:string}|null}>(()=>({leaves:[],workCalendars:[],checks:[],loaded:false,openDate:null,openWorkLogId:null,openExtension:null}));
 let refreshId=0;
 export async function refreshPersonal(){
  const actor=useAuthStore.getState().currentUser;if(!actor)return false;
@@ -12,7 +13,13 @@ export async function refreshPersonal(){
  let result;
  try{result=await studioApi('personal');}catch(error){if(actor===useAuthStore.getState().currentUser&&requestId===refreshId)throw error;return false;}finally{unsubscribe();}
  if(actor!==useAuthStore.getState().currentUser||requestId!==refreshId)return false;
- usePersonalStore.setState({leaves:result.leaves,checks:result.checks,loaded:true});
+ const calendars=(result.workCalendars||[]).map((calendar:CompanyWorkCalendar)=>{
+  const current=usePersonalStore.getState().workCalendars.find(row=>row.company===calendar.company&&row.year===calendar.year);
+  return current&&current.revision>calendar.revision?current:calendar;
+ });
+ // No delete API exists: a newly saved year absent from an older in-flight GET remains visible.
+ for(const current of usePersonalStore.getState().workCalendars)if(!calendars.some((row:CompanyWorkCalendar)=>row.company===current.company&&row.year===current.year))calendars.push(current);
+ usePersonalStore.setState({leaves:result.leaves,workCalendars:calendars,checks:result.checks,loaded:true});
  const previous=useWorkLogStore.getState().workLogs;
  const incoming=result.worklogs.filter((r:DailyWorkLog)=>!observedIds.has(r.id)||previous.some(p=>p.id===r.id)).map((r:DailyWorkLog)=>{
   const current=previous.find(p=>p.id===r.id);

@@ -1,4 +1,5 @@
-import {HOLIDAYS} from '../constants/holidays.ts';
+import {workDayInfo,type WorkCalendarContext} from './workCalendar.ts';
+export {workCalendarContext} from './workCalendar.ts';
 import {workDays} from './scheduleProgress.ts';
 import {isPostDeliveryConfirmed,postDeliveryDepartment} from './postDeliveryVisibility.ts';
 import {VIET_TEAMS_DATA} from '../data/vietTeams.ts';
@@ -9,7 +10,7 @@ export const validDay=(day:string)=>/^\d{4}-\d{2}-\d{2}$/.test(day)&&Number.isFi
 export const nextDay=(day:string)=>{const d=new Date(day+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+1);return d.toISOString().slice(0,10);};
 export const isWeekendDay=(day:string)=>validDay(day)&&[0,6].includes(new Date(day+'T12:00:00Z').getUTCDay());
 export const approvedWeekendWork=(projects:Project[],userId:string,day:string,task?:string|{id:string;allocationId?:string})=>isWeekendDay(day)&&projects.some(project=>(project.scheduleExtensions||[]).some(request=>request.type==='WEEKEND'&&request.status==='APPROVED'&&request.userId===userId&&request.workDate===day&&(!task||request.taskId===(typeof task==='string'?task:task.id)&&(typeof task==='string'||request.allocationId===undefined||request.allocationId===task.allocationId))));
-export function dayOff(day:string){const n=new Date(day+'T12:00:00Z').getUTCDay();return n===0||n===6?'주말':HOLIDAYS[day]?.country==='KR'?HOLIDAYS[day].name:'';}
+export function dayOff(day:string,context:WorkCalendarContext={}){const info=workDayInfo(day,context);return info.working?'':['SATURDAY_OFF','SUNDAY'].includes(info.kind)?'주말':info.name;}
 export const leavesFor=(leaves:Leave[],id:string,start:string,end=start)=>leaves.filter(l=>l.user_id===id&&l.start_date<=end&&l.end_date>=start);
 export type AssignedTask=WorkLogItem&{startDate:string;endDate:string;reportingMode:'DAILY'|'TASK';legacyAllocationId?:string;weekendWorkDate?:string};
 export type AssignmentPerson={id:string;name?:string;no?:string|number;active?:boolean};
@@ -83,11 +84,11 @@ export function assignedTasksForAliases(aliases:string[],projects:Project[]):Ass
  for(const id of new Set(aliases.filter(Boolean)))for(const task of assignedTasks(id,projects))if(!rows.has(task.id))rows.set(task.id,task);
  return [...rows.values()];
 }
-export function assignedItems(userId:string,day:string,projects:Project[],aliases:string[]=[userId]):AssignedTask[]{
+export function assignedItems(userId:string,day:string,projects:Project[],aliases:string[]=[userId],context:WorkCalendarContext={}):AssignedTask[]{
  if(!validDay(day))return [];
  const tasks=assignedTasks(userId,projects,aliases);
- if(dayOff(day))return isWeekendDay(day)?tasks.filter(task=>task.startDate<=day&&approvedWeekendWork(projects,userId,day,task)).map(task=>({...task,weekendWorkDate:day})):[];
- return tasks.filter(task=>task.startDate<=day&&task.endDate>=day);
+ if(dayOff(day,context))return isWeekendDay(day)?tasks.filter(task=>task.startDate<=day&&approvedWeekendWork(projects,userId,day,task)).map(task=>({...task,weekendWorkDate:day})):[];
+ return tasks.filter(task=>task.startDate<=day&&(task.endDate>=day||isWeekendDay(day)&&approvedWeekendWork(projects,userId,day,task))).map(task=>isWeekendDay(day)&&approvedWeekendWork(projects,userId,day,task)?{...task,weekendWorkDate:day}:task);
 }
 export function reconcileItems(previous:WorkLogItem[],assigned:WorkLogItem[]):WorkLogItem[]{
  const next=assigned.map(item=>{
@@ -114,11 +115,11 @@ export function legacyAllocationTask(item:WorkLogItem,tasks:AssignedTask[]):Assi
  return candidates.length===1?candidates[0]:undefined;
 }
 // An overdue task remains reportable without moving its planned deadline. Reassignment/archive revokes that link.
-export function reconcileWorkLogItems(previous:WorkLogItem[],userId:string,day:string,projects:Project[],aliases:string[]=[userId]):WorkLogItem[]{
- const assigned=assignedItems(userId,day,projects,aliases);
+export function reconcileWorkLogItems(previous:WorkLogItem[],userId:string,day:string,projects:Project[],aliases:string[]=[userId],context:WorkCalendarContext={}):WorkLogItem[]{
+ const assigned=assignedItems(userId,day,projects,aliases,context);
  const reportable=assignedTasks(userId,projects,aliases);
  const conflicts=new Set(previous.filter(item=>item.allocationId!==undefined&&reportable.some(task=>task.id===item.id&&task.allocationId!==item.allocationId)).map(item=>item.id));
- for(const task of reportable)if(!conflicts.has(task.id)&&validDay(day)&&(!dayOff(day)||isWeekendDay(day)&&approvedWeekendWork(projects,userId,day,task))&&task.startDate<=day&&task.reportingMode==='TASK'&&previous.some(item=>!conflicts.has(item.id)&&(item.id===task.id||item.allocationId!==undefined&&legacyAllocationTask(item,reportable)?.id===task.id))&&!assigned.some(item=>item.id===task.id))assigned.push(task);
+ for(const task of reportable)if(!conflicts.has(task.id)&&validDay(day)&&(!dayOff(day,context)||isWeekendDay(day)&&approvedWeekendWork(projects,userId,day,task))&&task.startDate<=day&&task.reportingMode==='TASK'&&previous.some(item=>!conflicts.has(item.id)&&(item.id===task.id||item.allocationId!==undefined&&legacyAllocationTask(item,reportable)?.id===task.id))&&!assigned.some(item=>item.id===task.id))assigned.push(task);
  const linked=assigned.filter(task=>!conflicts.has(task.id)).map(task=>{
   const legacyId=`gen-${task.projectId}-${task.roleName}`,legacy=previous.find(item=>item.id===legacyId);
   const canonical=previous.find(item=>item.id===task.id);
@@ -130,16 +131,16 @@ export function reconcileWorkLogItems(previous:WorkLogItem[],userId:string,day:s
    // Newly generated anchor drafts keep the live schedule merge; imported legacy bodies retain their original metadata.
    const generatedAnchor=legacy&&allocation&&(legacy as AssignedTask).legacyAllocationId===allocation.allocationId;
    return legacy&&allocation&&!generatedAnchor&&(legacy.allocationId===undefined||legacy.allocationId===allocation.allocationId)?{...legacy,allocationId:allocation.allocationId,reportBasis:allocation.reportBasis,reportingMode:allocation.reportingMode,scheduleRemoved:false}:item;
- }).map(item=>previous.some(old=>old.id===item.id&&old.autoScheduleDate)&&!item.scheduleRemoved?automaticWorkLogItems([item],day)[0]:item);
+ }).map(item=>previous.some(old=>old.id===item.id&&old.autoScheduleDate)&&!item.scheduleRemoved?automaticWorkLogItems([item],day,context)[0]:item);
 }
 export const reportsActualProgress=(item:WorkLogItem)=>item.manualFields===undefined||item.manualFields.includes('progress');
 
-export function automaticWorkLogItems(items:WorkLogItem[],day:string):WorkLogItem[]{
+export function automaticWorkLogItems(items:WorkLogItem[],day:string,context:WorkCalendarContext={}):WorkLogItem[]{
  return items.map(item=>{
   const weekend=(item as AssignedTask).weekendWorkDate===day&&isWeekendDay(day);
   if(item.scheduleRemoved||!item.startDate||!item.endDate||item.startDate>day||item.endDate<day&&!weekend||item.manualFields===undefined)return item;
   // Weekend approval adds a reportable day, without extending the original plan or its actual progress.
-  const planned=workDays(item.startDate,item.endDate),total=weekend&&planned===0?1:planned,elapsed=weekend&&planned===0?1:workDays(item.startDate,day>item.endDate?item.endDate:day);
+  const planned=workDays(item.startDate,item.endDate,undefined,context),total=weekend&&planned===0?1:planned,elapsed=weekend&&planned===0?1:workDays(item.startDate,day>item.endDate?item.endDate:day,undefined,context);
   if(!total||elapsed===undefined)return item;
   const fields=item.manualFields||[],progress=Math.round(elapsed/total*10000)/100;
   return {...item,autoScheduleDate:day,...(!fields.includes('progress')?{progress}:{}),...(!fields.includes('status')?{status:progress===100?'완료' as const:'진행중' as const}:{}),...(!fields.includes('todayTask')?{todayTask:`[일정 기준 자동 작성] ${item.roleName} · ${item.scheduleMemo||item.projectName}`}: {})};

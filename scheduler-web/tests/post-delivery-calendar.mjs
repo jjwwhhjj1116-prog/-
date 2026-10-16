@@ -16,6 +16,7 @@ try{
  const modules=await Promise.all(['/src/components/ProjectCalendar.tsx','/src/store/useProjectStore.ts','/src/store/useAuthStore.ts','/src/store/usePersonalStore.ts','/src/store/useLanguageStore.ts','/src/utils/personalWork.ts','/src/utils/postDeliveryVisibility.ts','/src/utils/scheduleProgress.ts','/src/utils/staffOrder.ts','/src/utils/vietPersonnel.ts','/src/constants/holidays.ts','/src/services/excelService.ts','/src/data/vietTeams.ts'].map(path=>server.ssrLoadModule(path)));
  const [{default:ProjectCalendar},{useProjectStore:projectStore},{useAuthStore:auth},{usePersonalStore:personal},{useLanguageStore:language},work,visibility,progress,staff,vietPersonnel,holidays,excel,vietTeams]=modules;
  const extensionPeriods=await server.ssrLoadModule('/src/utils/scheduleExtensionPeriods.ts');
+ const workCalendar=await server.ssrLoadModule('/src/utils/workCalendar.ts'),workCalendarDisplay=await server.ssrLoadModule('/src/utils/workCalendarDisplay.ts');
  const {PostDeliverySchedule}=await server.ssrLoadModule('/src/components/PostDeliverySchedule.tsx');
  const departments=['마감팀','구조팀','토목&조경팀'];
  const users=departments.map((department,index)=>({id:'qa-person-'+index,name:'합성 담당 '+index,company:'컨코스트',department,position:'프로',active:true,role:'MEMBER',no:90000+index,email:'qa'+index+'@example.invalid'}));
@@ -35,6 +36,7 @@ try{
   const dependencies={react:mockReact,'react/jsx-runtime':jsx,'date-fns':require('date-fns'),'date-fns/locale':require('date-fns/locale'),'lucide-react':require('lucide-react'),'../store/useProjectStore':{useProjectStore:hook(projectStore)},'../store/useAuthStore':{useAuthStore:hook(auth)},'../store/usePersonalStore':{usePersonalStore:hook(personal)},'../store/useLanguageStore':{useLanguageStore:hook(language)},'../utils/personalWork':work,'../utils/staffOrder':staff,'../utils/vietPersonnel':vietPersonnel,'../data/vietTeams':vietTeams,'../constants/holidays':holidays,'./VietTeamModal':{VietTeamModal:()=>null},'./ProjectCalendar':{default:ProjectCalendar},'../services/excelService':excel};
   dependencies['../utils/scheduleExtensionPeriods']=extensionPeriods;
   dependencies['../utils/postDeliveryVisibility']=visibility;
+  dependencies['../utils/workCalendar']=workCalendar;dependencies['../utils/workCalendarDisplay']=workCalendarDisplay;
   dependencies['./ProjectCalendar']={__esModule:true,default:ProjectCalendar};
   const exports={};runInNewContext(ts.transpileModule(personalSource,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,{exports,Date,console,require(id){assert.ok(id in dependencies,id);return dependencies[id];}});
   const render=()=>{cursor=0;tree=exports.PersonalScheduleView({department,onOpenPostDelivery});};render();

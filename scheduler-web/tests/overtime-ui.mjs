@@ -12,6 +12,8 @@ import * as periods from '../src/utils/scheduleExtensionPeriods.ts';
 import * as personnel from '../src/utils/vietPersonnel.ts';
 import * as staff from '../src/utils/staffOrder.ts';
 import * as holidays from '../src/constants/holidays.ts';
+import * as workCalendar from '../src/utils/workCalendar.ts';
+import * as display from '../src/utils/workCalendarDisplay.ts';
 
 const require=createRequire(import.meta.url),React=require('react'),jsx=require('react/jsx-runtime'),ts=require('typescript');
 const RealDate=Date;class TestDate extends RealDate{constructor(...args){super(...(args.length?args:['2026-10-14T03:00:00Z']));}static now(){return new RealDate('2026-10-14T03:00:00Z').valueOf();}}
@@ -48,6 +50,7 @@ function mount(name,{project:p,actor=worker,requestType='OVERTIME',suggestedDate
  const transport=async(path,method='GET',body)=>{const result=await api(currentActor,path,method,body);if(method!=='GET')writes.push({path,body:structuredClone(body),result});if(result.status!==200)throw Error(result.data.error);return result.data;};
  const projectHook=selector=>{const state={projects,personnel:[],setSelectedProjectId:()=>{}};return typeof selector==='function'?selector(state):state;};
  const modules={'react':{...React,useState,useRef,useEffect,useMemo:fn=>fn()},'react/jsx-runtime':jsx,'lucide-react':require('lucide-react'),'date-fns':require('date-fns'),'date-fns/locale':require('date-fns/locale'),'../store/useAuthStore':{useAuthStore:auth},'../store/useProjectStore':{useProjectStore:projectHook},'../store/usePersonalStore':{usePersonalStore:selector=>selector({leaves:[]})},'../store/useLanguageStore':{useLanguageStore:selector=>selector({lang:'ko'})},'../utils/personalWork':work,'../utils/scheduleProgress':progress,'../utils/postDeliveryVisibility':postDelivery,'../utils/schedulePermissions':permissions,'../utils/scheduleExtensionPeriods':periods,'../utils/vietPersonnel':personnel,'../utils/staffOrder':staff,'../data/vietTeams':{},'../constants/holidays':holidays,'../services/studioApi':{studioApi:transport},'../store/useStudioStore':{refreshStudioMeetings:async()=>{}},'./WorkLogReporting':{WorkLogSteps:()=>null},'./VietTeamModal':{VietTeamModal:()=>null},'./ProjectCalendar':{default:()=>null},'../services/excelService':{exportProjectsToExcel:()=>{}}};
+ modules['../utils/workCalendar']=workCalendar;modules['../utils/workCalendarDisplay']=display;
  const source=readFileSync(new URL('../src/components/'+name+'.tsx',import.meta.url),'utf8'),exports={};
  runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,{exports,Date:TestDate,Error,console,require:path=>{assert.ok(modules[path],path);return modules[path];}});
  const render=()=>{cursor=0;dirty=false;tree=name==='ScheduleExtensionRequests'?exports.ScheduleExtensionRequests({projects,projectId:p.id,tasks:work.assignedTasks(currentActor.id,projects),selectedTaskId:work.assignedTasks(currentActor.id,projects)[0]?.id||'',requestType,suggestedDate}):exports.PersonalScheduleView({department:p.department});};

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import {createServer} from 'vite';
+import {createServer as viteCreateServer} from 'vite';
+import {nativeSsrPackages} from './ssr-native-packages.mjs';
+const createServer=options=>viteCreateServer({...options,configFile:false,ssr:{...options.ssr,noExternal:[/^(react|react-dom|zustand|xlsx)(\/|$)/]},plugins:[nativeSsrPackages(),...(options.plugins||[])]});
 import {readFileSync,writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {runInNewContext} from 'node:vm';
@@ -44,7 +46,8 @@ try{
    const useState=initial=>{const i=cursor++;if(!(i in values))values[i]=initial;return [values[i],value=>values[i]=typeof value==='function'?value(values[i]):value];};
    const studio=Object.assign(()=>({ready:false,status:'합성',pending:0,conflict:null,notifications:[notice],unreadCount:1}),{setState:()=>{throw Error('예상 밖 회의 이동');}});
    const modules={'react':{useState,useEffect(){}},'react/jsx-runtime':jsx,'../services/studioApi':{studioApi},'../store/useStudioStore':{useStudioStore:studio,refreshStudioMeetings:async()=>{},publishLocalTeam:async()=>{},resolveScheduleConflict:async()=>{}},'../store/usePersonalStore':{usePersonalStore:personal,refreshPersonal},'../store/useAuthStore':{useAuthStore:Object.assign(selector=>selector(auth.getState()),{getState:auth.getState})},'../store/useProjectStore':{useProjectStore:selector=>selector({projects:[]})},'../utils/schedulePermissions':permissions,'../utils/pendingAssignment':pendingAssignment};
-   const exports={};runInNewContext(compiled,{exports,console,require:id=>{assert.ok(id in modules);return modules[id];}});
+   modules['lucide-react']=require('lucide-react');
+   const exports={};runInNewContext(compiled,{exports,console,require:id=>{assert.ok(id in modules,'Unexpected Studio dependency '+id);return modules[id];}});
    const render=()=>{cursor=0;tree=exports.StudioCollaboration({onOpenMeeting:()=>{throw Error('회의 이동 금지');},onOpenWorkLog:()=>opened++});return tree;};
    render();nodes(tree).find(n=>n.type==='button'&&n.props['aria-expanded']===false).props.onClick();render();
    return {click:()=>nodes(tree).find(n=>n.type==='button'&&n.props.className==='text-left').props.onClick(),inboxRead:()=>nodes(tree).find(n=>n.type==='button'&&n.props.children==='알림 읽음').props.onClick(),opened:()=>opened,error:()=>{render();return nodes(tree).filter(n=>n.props.role==='alert').map(n=>n.props.children).join(' ');}};

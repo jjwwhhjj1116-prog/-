@@ -1,4 +1,6 @@
-import {assignedItems,assignmentAliases,automaticWorkLogItems,dayOff,isWeekendDay,reconcileWorkLogItems} from '../../scheduler-web/src/utils/personalWork.ts';
+import {assignedItems,assignmentAliases,automaticWorkLogItems,isWeekendDay,reconcileWorkLogItems} from '../../scheduler-web/src/utils/personalWork.ts';
+import {isWorkDay,workCalendarContext} from '../../scheduler-web/src/utils/workCalendar.ts';
+import {readWorkCalendars} from './workCalendars.ts';
 
 // The scheduler writes once per user/day and never approves an employee's report.
 export async function syncAutomaticWorklogs(env:any,{now=new Date(),onlyUserId,submit=true}:{now?:Date;onlyUserId?:string;submit?:boolean}={}){
@@ -6,27 +8,30 @@ export async function syncAutomaticWorklogs(env:any,{now=new Date(),onlyUserId,s
  const day=local.slice(0,10),hour=Number(local.slice(11,13)),db=env.DB;
  const result={day,created:0,updated:0,submitted:0,skipped:0,conflicts:0};
  const weekend=isWeekendDay(day);
- if(hour<9||dayOff(day)&&!weekend)return result;
- // Empty weekend ticks do one project lookup, before loading users, leave records or work logs.
- const projectRows=(await (weekend?db.prepare("SELECT id,body,revision FROM studio_projects WHERE id NOT IN (SELECT project_id FROM studio_project_archive) AND EXISTS(SELECT 1 FROM json_each(studio_projects.body,'$.scheduleExtensions') AS extension WHERE json_extract(extension.value,'$.type')='WEEKEND' AND json_extract(extension.value,'$.status')='APPROVED' AND json_extract(extension.value,'$.workDate')=? AND (? IS NULL OR json_extract(extension.value,'$.userId')=?))").bind(day,onlyUserId??null,onlyUserId??null):db.prepare('SELECT id,body,revision FROM studio_projects WHERE id NOT IN (SELECT project_id FROM studio_project_archive)')).all()).results;
- if(weekend&&!projectRows.length)return result;
+ if(hour<9)return result;
+ const workCalendars=await readWorkCalendars(db);
+ const regularVietWeekend=weekend&&workCalendars.some(calendar=>calendar.year===Number(day.slice(0,4)))&&isWorkDay(day,{company:'VIETQS',calendars:workCalendars});
+ const restrictedWeekend=weekend&&!regularVietWeekend;
+ // Without a registered regular workday, weekends still require exact approved requests.
+ const projectRows=(await (restrictedWeekend?db.prepare("SELECT id,body,revision FROM studio_projects WHERE id NOT IN (SELECT project_id FROM studio_project_archive) AND EXISTS(SELECT 1 FROM json_each(studio_projects.body,'$.scheduleExtensions') AS extension WHERE json_extract(extension.value,'$.type')='WEEKEND' AND json_extract(extension.value,'$.status')='APPROVED' AND json_extract(extension.value,'$.workDate')=? AND (? IS NULL OR json_extract(extension.value,'$.userId')=?))").bind(day,onlyUserId??null,onlyUserId??null):db.prepare('SELECT id,body,revision FROM studio_projects WHERE id NOT IN (SELECT project_id FROM studio_project_archive)')).all()).results;
+ if(!projectRows.length)return result;
  const schedules=projectRows.map((row:any)=>JSON.parse(row.body));
  const weekendUsers:string[]=weekend?[...new Set<string>(schedules.flatMap((project:any)=>(project.scheduleExtensions||[]).filter((request:any)=>request.type==='WEEKEND'&&request.status==='APPROVED'&&request.workDate===day&&(!onlyUserId||request.userId===onlyUserId)).map((request:any)=>request.userId)))]:[];
- if(weekend&&!weekendUsers.length)return result;
+ if(restrictedWeekend&&!weekendUsers.length)return result;
  const directory=(await db.prepare('SELECT id,name,department,position,profile,active FROM studio_users').all()).results;
  const profiles=directory.map((row:any)=>{let profile:any={};try{profile=JSON.parse(row.profile);}catch{}return {...profile,id:row.id,name:row.name,department:row.department,position:row.position,active:row.active===1};});
  const leaves=(await db.prepare('SELECT user_id,start_date,end_date,kind FROM studio_leaves WHERE cancelled=0 AND start_date<=? AND end_date>=?').bind(day,day).all()).results;
- const logRows=(await (onlyUserId?db.prepare('SELECT * FROM studio_worklogs WHERE day=? AND user_id=? AND removed=0').bind(day,onlyUserId):weekend?db.prepare(`SELECT * FROM studio_worklogs WHERE day=? AND removed=0 AND user_id IN (${weekendUsers.map(()=>'?').join(',')})`).bind(day,...weekendUsers):db.prepare('SELECT * FROM studio_worklogs WHERE day=? AND removed=0').bind(day)).all()).results;
+ const logRows=(await (onlyUserId?db.prepare('SELECT * FROM studio_worklogs WHERE day=? AND user_id=? AND removed=0').bind(day,onlyUserId):restrictedWeekend?db.prepare(`SELECT * FROM studio_worklogs WHERE day=? AND removed=0 AND user_id IN (${weekendUsers.map(()=>'?').join(',')})`).bind(day,...weekendUsers):db.prepare('SELECT * FROM studio_worklogs WHERE day=? AND removed=0').bind(day)).all()).results;
  const byUser=new Map(logRows.map((row:any)=>[row.user_id,row]));
  const pending:{statements:any[];updated:boolean;submitted:boolean}[]=[];
- for(const user of profiles.filter((u:any)=>u.active&&(!onlyUserId||u.id===onlyUserId)&&(!weekend||weekendUsers.includes(u.id))&&['마감팀','구조팀','토목&조경팀'].includes(u.department))){
+ for(const user of profiles.filter((u:any)=>u.active&&(!onlyUserId||u.id===onlyUserId)&&(!restrictedWeekend||weekendUsers.includes(u.id))&&['마감팀','구조팀','토목&조경팀'].includes(u.department))){
   if(leaves.some((l:any)=>l.user_id===user.id&&!l.kind.includes('반차'))){result.skipped++;continue;}
-  const aliases=assignmentAliases(user,profiles),assigned=assignedItems(user.id,day,schedules,aliases);
+  const context=workCalendarContext(user,workCalendars),aliases=assignmentAliases(user,profiles),assigned=assignedItems(user.id,day,schedules,aliases,context);
   if(!assigned.length){result.skipped++;continue;}
   const row:any=byUser.get(user.id);
   const previous=row?JSON.parse(row.body):null;
   if(previous&&previous.approvalStatus!=='DRAFT'){result.skipped++;continue;}
-  const items=automaticWorkLogItems(reconcileWorkLogItems(previous?.items||assigned,user.id,day,schedules,aliases),day);
+  const items=automaticWorkLogItems(reconcileWorkLogItems(previous?.items||assigned,user.id,day,schedules,aliases,context),day,context);
   if(items.some(item=>!item.scheduleRemoved&&!item.autoScheduleDate&&item.manualFields?.length===0)){result.skipped++;continue;}
   const closing=submit&&hour>=17,leader=user.department==='마감팀'?'u_13':user.department==='구조팀'?'u_25':'u_8';
   if(closing&&!profiles.some((u:any)=>u.id===leader&&u.active)){result.skipped++;continue;}
@@ -36,7 +41,12 @@ export async function syncAutomaticWorklogs(env:any,{now=new Date(),onlyUserId,s
   if(previous&&JSON.stringify(body)===JSON.stringify(previous)){result.skipped++;continue;}
   const stamp=now.toISOString();(body as any).updatedAt=stamp;
   const guards=row?[db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_worklogs WHERE id=? AND revision=? AND removed=0)').bind(id,row.revision)]:[db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE EXISTS(SELECT 1 FROM studio_worklogs WHERE user_id=? AND day=? AND removed=0)').bind(user.id,day)];
-  guards.push(db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1 AND department=?)').bind(user.id,user.department));
+  guards.push(db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1 AND department=? AND profile=?)').bind(user.id,user.department,directory.find((row:any)=>row.id===user.id).profile));
+  if(user.company==='VIETQS'){
+   const years=new Set([day.slice(0,4)]);
+   for(const item of items)if(item.startDate&&item.endDate)for(let year=Number(item.startDate.slice(0,4));year<=Number(item.endDate.slice(0,4));year++)years.add(String(year));
+   for(const year of years){const calendar=workCalendars.find(row=>row.year===Number(year)),id=`work-calendar:VIETQS:${year}`;guards.push(calendar?db.prepare("INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_reporting_settings WHERE id=? AND json_extract(body,'$.revision')=?)").bind(id,calendar.revision):db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE EXISTS(SELECT 1 FROM studio_reporting_settings WHERE id=?)').bind(id));}
+  }
   guards.push(db.prepare("INSERT INTO studio_write_assertions SELECT 0 WHERE EXISTS(SELECT 1 FROM studio_leaves WHERE user_id=? AND cancelled=0 AND start_date<=? AND end_date>=? AND kind NOT LIKE '%반차%')").bind(user.id,day,day));
   for(const source of projectRows.filter((p:any)=>assigned.some(item=>item.projectId===p.id)))guards.push(db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_projects WHERE id=? AND revision=? AND id NOT IN (SELECT project_id FROM studio_project_archive))').bind(source.id,source.revision));
   if(closing)guards.push(db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1)').bind(leader));

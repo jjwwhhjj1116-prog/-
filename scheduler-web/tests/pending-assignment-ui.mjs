@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { createServer } from 'vite';
+import {createServer as viteCreateServer} from 'vite';
+import {nativeSsrPackages} from './ssr-native-packages.mjs';
+const createServer=options=>viteCreateServer({...options,configFile:false,ssr:{...options.ssr,noExternal:[/^(react|react-dom|zustand|xlsx|date-fns|lucide-react)(\/|$)/]},plugins:[nativeSsrPackages(),...(options.plugins||[])]});
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
@@ -94,6 +96,7 @@ try {
       '../store/useAuthStore': { useAuthStore: store(auth) }, '../store/useProjectStore': { useProjectStore: store(projectState) },
       '../utils/schedulePermissions': permissions, '../utils/pendingAssignment': pending,
     };
+    mocks['lucide-react']=require('lucide-react');
     runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText, { exports: module.exports, module, console, require(id) { assert.ok(id in mocks, id); return mocks[id]; } });
     const props = { onOpenMeeting:()=>trace.push({meetingId:studio.openMeetingId}), onOpenProject: (code, dept) => trace.push({ code, dept }), onOpenPendingProjects: code => trace.push({ code }) };
     const render = () => { for (let pass = 0; pass < 10; pass++) { dirty = false; cursor = 0; effects = []; tree = module.exports.StudioCollaboration(props); effects.forEach(effect => effect()); if (!dirty) return tree; } throw Error('알림 상태가 수렴하지 않습니다.'); };

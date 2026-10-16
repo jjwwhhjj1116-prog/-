@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import * as vietPersonnel from '../src/utils/vietPersonnel.ts';
+import {HOLIDAYS} from '../src/constants/holidays.ts';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { createElement } from 'react';
@@ -46,18 +47,20 @@ function calendarGeometry(html, date, length, fixedWidth) {
   const minimum = Number(grid.match(/min-width:(\d+)px/)?.[1]);
   assert.ok(minimum >= fixedWidth + length * 36, '좁은 창에서 날짜 칸의 최소 폭을 보존해야 합니다.');
   const bars = [...html.matchAll(/<(?:div|button)\b[^>]*title="[^\"]*합성 캘린더 (whole|last|left|right|outside)[^\"]*기간:[^\"]*"[^>]*>/g)];
-  const bounds = new Map(bars.map(match => {
+  const bounds = new Map(),dates=new Map();
+  for(const match of bars){
     const style = match[0].match(/style="([^"]*)"/)?.[1] || '';
     const left = Number(style.match(/left:calc\(([\d.]+)%/)?.[1]);
     const width = Number(style.match(/width:(?:max\(30px, )?calc\(([\d.]+)%/)?.[1]);
     assert.ok(Number.isFinite(left) && Number.isFinite(width), '바 위치와 길이는 월 너비의 비율이어야 합니다.');
     assert.ok(left >= 0 && width > 0 && left + width <= 100.000001, '바가 다음 월 영역을 침범하면 안 됩니다.');
-    return [match[1], { left, width }];
-  }));
-  assert.deepEqual([...bounds.keys()].sort(), ['last', 'left', 'right', 'whole'], '월 바깥 작업은 표시하지 않아야 합니다.');
-  near(bounds.get('whole').left, 0); near(bounds.get('whole').width, 100);
-  near(bounds.get('left').left, 0); near(bounds.get('left').width, 100 / length);
-  for (const id of ['last', 'right']) { near(bounds.get(id).left, (length - 1) / length * 100); near(bounds.get(id).width, 100 / length); }
+    const start=match[0].match(/data-work-start="([^"]+)"/)?.[1],end=match[0].match(/data-work-end="([^"]+)"/)?.[1];assert.ok(start&&end,'표시 막대에는 실제 근무 구간이 있어야 합니다.');
+    near(left,(Number(start.slice(-2))-1)/length*100);near(width,(Number(end.slice(-2))-Number(start.slice(-2))+1)/length*100);
+    const intervals=bounds.get(match[1])||[];intervals.push({left,width,start,end});bounds.set(match[1],intervals);
+    const included=dates.get(match[1])||[];for(let n=Number(start.slice(-2));n<=Number(end.slice(-2));n++)included.push(`${month}-${String(n).padStart(2,'0')}`);dates.set(match[1],included);
+  }
+  const working=Array.from({length},(_,i)=>`${month}-${String(i+1).padStart(2,'0')}`).filter(value=>{const weekday=new Date(value+'T12:00:00Z').getUTCDay();return weekday!==0&&weekday!==6&&HOLIDAYS[value]?.country!=='KR';});
+  for(const id of ['whole','left','last','right','outside']){const expected=id==='whole'?working:id==='left'?working.filter(value=>value.endsWith('-01')):['last','right'].includes(id)?working.filter(value=>Number(value.slice(-2))===length):[];assert.deepEqual(dates.get(id)||[],expected,`${id}: 월 경계와 휴무일을 모두 보존해야 합니다.`);}
   assert.ok(html.includes('schedule-calendar-scrollport') && html.includes('tabindex="0"'), '스크롤 영역은 키보드로 진입할 수 있어야 합니다.');
   return { month, headerDays: headers.length, first: headers[0], last: headers.at(-1), minimumWidth: minimum, clippedBars: Object.fromEntries(bounds), outsideBars: 0 };
 }
@@ -76,6 +79,7 @@ try {
   const postDeliveryVisibility = await server.ssrLoadModule('/src/utils/postDeliveryVisibility.ts');
   const staff = await server.ssrLoadModule('/src/utils/staffOrder.ts');
   const holidays = await server.ssrLoadModule('/src/constants/holidays.ts');
+  const workCalendar=await server.ssrLoadModule('/src/utils/workCalendar.ts'),workCalendarDisplay=await server.ssrLoadModule('/src/utils/workCalendarDisplay.ts');
   const { VIET_TEAMS_DATA } = await server.ssrLoadModule('/src/data/vietTeams.ts');
   const excel = await server.ssrLoadModule('/src/services/excelService.ts');
   const state = (store, value) => { Object.assign(store.getInitialState(), value); store.setState(value); };
@@ -88,6 +92,7 @@ try {
     const modules = { react: mockReact, 'react/jsx-runtime': jsx, 'date-fns': require('date-fns'), 'date-fns/locale': require('date-fns/locale'), 'lucide-react': require('lucide-react'), '../store/useProjectStore': { useProjectStore: hook(projects) }, '../store/useAuthStore': { useAuthStore: hook(auth) }, '../store/usePersonalStore': { usePersonalStore: hook(personal) }, '../store/useLanguageStore': { useLanguageStore: hook(language) }, '../utils/personalWork': work, '../utils/staffOrder': staff, '../utils/vietPersonnel': vietPersonnel, '../data/vietTeams': { VIET_TEAMS_DATA }, '../constants/holidays': holidays, './VietTeamModal': { VietTeamModal: () => null }, './ProjectCalendar': { default: ProjectCalendar }, '../services/excelService': excel };
     modules['../utils/scheduleExtensionPeriods'] = extensionPeriods;
     modules['../utils/postDeliveryVisibility'] = postDeliveryVisibility;
+    modules['../utils/workCalendar']=workCalendar;modules['../utils/workCalendarDisplay']=workCalendarDisplay;
     const exports = {};
     runInNewContext(ts.transpileModule(personalText, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText, { exports, Date, console, require(id) { assert.ok(id in modules, '예상하지 못한 개인 캘린더 의존성: ' + id); return modules[id]; } });
     const render = () => { cursor = 0; tree = exports.PersonalScheduleView({ department: '마감팀' }); };

@@ -1,5 +1,6 @@
 import {studioApi} from '../services/studioApi';
-import {automaticWorkLogItems,assignedItems,assignmentAliases} from '../utils/personalWork';
+import {automaticWorkLogItems,assignedItems,assignmentAliases,workCalendarContext} from '../utils/personalWork';
+import type {CompanyWorkCalendar} from '../utils/workCalendar';
 import { useAuthStore } from './useAuthStore';
 import { create } from 'zustand';
 import type { Department, Project } from './useProjectStore';
@@ -138,7 +139,7 @@ interface WorkLogState {
   approveByPm: (id: string, pmName: string) => Promise<void>;
   approveFinalByLeader: (id: string, leaderName: string) => Promise<void>;
   // 팀별 일정표에서 특정 인원의 오늘 업무 자동 추출 (정밀 연계)
-  generateItemsFromSchedule: (userName: string, _dateStr: string, projects: Project[]) => WorkLogItem[];
+  generateItemsFromSchedule: (userName: string, _dateStr: string, projects: Project[],calendars?:CompanyWorkCalendar[]) => WorkLogItem[];
 }
 
 async function saveServerLog(log:DailyWorkLog){
@@ -175,13 +176,14 @@ export const useWorkLogStore=create<WorkLogState>((set)=>({
  deleteWorkLog:async id=>{const w=useWorkLogStore.getState().workLogs.find(w=>w.id===id);await studioApi(`worklogs/${encodeURIComponent(id)}`,'DELETE',{revision:w?.serverRevision});set(s=>({workLogs:s.workLogs.filter(w=>w.id!==id),selectedWorkLogId:null}));},
  submitApprovalToLeader:id=>logAction(id,'submit'),submitApprovalToPm:id=>logAction(id,'submit'),
  approveByPm:id=>logAction(id,'review'),approveFinalByChief:id=>logAction(id,'approve'),approveFinalByLeader:id=>logAction(id,'approve'),
- generateItemsFromSchedule:(identifier,date,projects)=>{
+ generateItemsFromSchedule:(identifier,date,projects,calendars=[])=>{
   const users=useAuthStore.getState().users;
   const canonical=users.find(u=>u.id===identifier);
   const matches=canonical?[canonical]:users.filter(u=>u.active!==false&&assignmentAliases(u,users).includes(identifier));
   if(!canonical&&matches.length!==1&&users.some(u=>u.name===identifier||String(u.no)===identifier))return [];
   const user=canonical||matches[0],userId=user?.id||identifier;
-  return automaticWorkLogItems(assignedItems(userId,date,projects,assignmentAliases(user||{id:userId},users)),date);
+  const context=workCalendarContext(user,calendars);
+  return automaticWorkLogItems(assignedItems(userId,date,projects,assignmentAliases(user||{id:userId},users),context),date,context);
  }
 }));
 

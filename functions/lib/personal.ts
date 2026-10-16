@@ -2,6 +2,8 @@ import {validDay,assignedItems,assignedTasks,reconcileWorkLogItems,reportsActual
 import {sanitizeReportHtml,reportHtmlMatchesText} from '../../scheduler-web/src/utils/reportContent.ts';
 import {projectProgress} from '../../scheduler-web/src/utils/scheduleProgress.ts';
 import {separateSupplementReports} from '../../scheduler-web/src/utils/worklogSupplements.ts';
+import {workCalendarContext} from '../../scheduler-web/src/utils/workCalendar.ts';
+import {readWorkCalendars} from './workCalendars.ts';
 function reportTask(item:any,day:string,tasks:ReturnType<typeof assignedTasks>){
  const exact=tasks.find(task=>task.id===item.id&&task.projectId===item.projectId&&task.roleName===item.roleName);
  if(exact)return exact.startDate<=day&&(item.allocationId===undefined||item.allocationId===exact.allocationId)?exact:undefined;
@@ -13,7 +15,9 @@ export async function personalRoute(request:Request,env:any,user:any,route:strin
  const json=(data:any,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}}),fail=(error:string,status=400)=>json({error},status);
  const method=request.method,db=env.DB;
  const directoryRows=['personal','task-checks','worklogs'].includes(route.split('/')[0])?(await db.prepare('SELECT id,name,profile,active FROM studio_users').all()).results:[];
- const directory=directoryRows.map((row:any)=>{let profile:any={};try{profile=JSON.parse(row.profile);}catch{/* Unknown profiles only retain their canonical ID. */}const owner=profile?.id===row.id?profile:{};return {id:row.id,name:typeof owner.name==='string'?owner.name:undefined,no:owner.no,active:row.active===1};});
+ const directory=directoryRows.map((row:any)=>{let profile:any={};try{profile=JSON.parse(row.profile);}catch{/* Unknown profiles only retain their canonical ID. */}const owner=profile?.id===row.id?profile:{};return {id:row.id,name:typeof owner.name==='string'?owner.name:undefined,no:owner.no,company:typeof owner.company==='string'?owner.company:undefined,active:row.active===1};});
+ const workCalendars=directoryRows.length?await readWorkCalendars(db):[];
+ const calendarFor=(id:string)=>workCalendarContext(directory.find(person=>person.id===id),workCalendars);
  const aliasesFor=(id:string)=>assignmentAliases({id},directory);
  const lead=(dept:string)=>dept==='마감팀'?'u_13':dept==='구조팀'?'u_25':'u_8';
  const chief=(dept:string)=>dept==='마감팀'?'u_12':dept==='구조팀'?'u_24':'u_8';
@@ -34,7 +38,7 @@ export async function personalRoute(request:Request,env:any,user:any,route:strin
   const checks=await db.prepare('SELECT day,task_id,done FROM studio_task_checks WHERE user_id=?').bind(user.id).all();
   const rows=await db.prepare('SELECT * FROM studio_worklogs WHERE removed=0').all();
   const schedules=await activeSchedules();
-  return json({leaves:leaves.results,checks:checks.results,worklogs:rows.results.filter(canRead).map((r:any)=>{const log=JSON.parse(r.body);return {...log,items:log.approvalStatus==='DRAFT'?reconcileWorkLogItems(log.items,r.user_id,r.day,schedules,aliasesFor(r.user_id)):log.items,supplementReports:log.approvalStatus==='DRAFT'?[]:separateSupplementReports(r.user_id,r.day,schedules,log,aliasesFor(r.user_id)),serverRevision:r.revision};})});
+  return json({leaves:leaves.results,workCalendars,directory,checks:checks.results,worklogs:rows.results.filter(canRead).map((r:any)=>{const log=JSON.parse(r.body);return {...log,items:log.approvalStatus==='DRAFT'?reconcileWorkLogItems(log.items,r.user_id,r.day,schedules,aliasesFor(r.user_id),calendarFor(r.user_id)):log.items,supplementReports:log.approvalStatus==='DRAFT'?[]:separateSupplementReports(r.user_id,r.day,schedules,log,aliasesFor(r.user_id),calendarFor(r.user_id)),serverRevision:r.revision};})});
  }
  if(route==='leaves'&&method==='POST'){
   const b:any=await request.json();
@@ -51,7 +55,7 @@ export async function personalRoute(request:Request,env:any,user:any,route:strin
  if(route==='task-checks'&&method==='POST'){
   const {day,taskId,done}:any=await request.json();if(!validDay(day)||typeof done!=='boolean')return fail('날짜와 완료 상태를 확인하세요.');
   const projects=await db.prepare('SELECT body FROM studio_projects WHERE id NOT IN (SELECT project_id FROM studio_project_archive)').all();
-  if(!assignedItems(user.id,day,projects.results.map((r:any)=>JSON.parse(r.body)),aliasesFor(user.id)).some(i=>i.id===taskId))return fail('해당 날짜에 본인에게 배정된 업무만 체크할 수 있습니다.',403);
+  if(!assignedItems(user.id,day,projects.results.map((r:any)=>JSON.parse(r.body)),aliasesFor(user.id),calendarFor(user.id)).some(i=>i.id===taskId))return fail('해당 날짜에 본인에게 배정된 업무만 체크할 수 있습니다.',403);
   await db.prepare('INSERT INTO studio_task_checks VALUES (?,?,?,?) ON CONFLICT(user_id,day,task_id) DO UPDATE SET done=excluded.done').bind(user.id,day,taskId,done?1:0).run();return json({ok:true});
  }
  const match=route.match(/^worklogs\/([^/]+)(?:\/(submit|review|approve|read))?$/);if(!match)return fail('지원하지 않는 요청입니다.',404);
@@ -87,7 +91,7 @@ export async function personalRoute(request:Request,env:any,user:any,route:strin
   if(log.items.some((i:any)=>['dailyGoal','plannedDetails','planMemo','planStartedAt'].some(key=>i[key]!==undefined&&(typeof i[key]!=='string'||i[key].length>5000))||!['대기','진행중','지연','완료'].includes(i.status)||(i.attachments!==undefined&&(!Array.isArray(i.attachments)||i.attachments.length>50||i.attachments.some((f:any)=>!f||typeof f.name!=='string'||f.name.length>500||typeof f.url!=='string'||f.url.length>2000||!(/^https:\/\//.test(f.url)||/^\/api\/drive\/files\/download\?id=[a-zA-Z0-9_%.-]+$/.test(f.url)))))))return fail('업무 계획·상태·첨부 링크를 확인하세요.');
   if(log.items.some((i:any)=>i.reportHtml!==undefined&&(typeof i.reportHtml!=='string'||i.reportHtml.length>20000||!reportHtmlMatchesText(i.reportHtml,i.todayTask))))return fail('완료 업무의 서식과 본문을 확인하세요.');
   const submittedItems=log.items.map((i:any)=>i.reportHtml===undefined?i:{...i,reportHtml:sanitizeReportHtml(i.reportHtml)});
-  const items=reconcileWorkLogItems(submittedItems,user.id,log.date,schedules,aliasesFor(user.id));
+  const items=reconcileWorkLogItems(submittedItems,user.id,log.date,schedules,aliasesFor(user.id),calendarFor(user.id));
   const saved={...log,items,userId:user.id,userName:user.name,userPosition:user.position,department:user.department,approvalStatus:'DRAFT',authorSignature:{signed:false,name:user.name},leaderReview:{approved:false,name:''},chiefApproval:{approved:false,name:''},updatedAt:now};delete saved.serverRevision;delete saved.supplementReports;delete saved.autoGeneratedDay;delete saved.autoReportedAt;if(row){const original=JSON.parse(row.body);if(original.autoGeneratedDay)saved.autoGeneratedDay=original.autoGeneratedDay;}
   const result=row?await db.prepare('UPDATE studio_worklogs SET body=?,revision=revision+1 WHERE id=? AND revision=?').bind(JSON.stringify(saved),id,input.revision).run():await db.prepare('INSERT OR IGNORE INTO studio_worklogs (id,user_id,day,department,body) VALUES (?,?,?,?,?)').bind(id,user.id,log.date,user.department,JSON.stringify(saved)).run();
   return result.meta.changes?json({log:{...saved,serverRevision:(row?.revision||0)+1}}):fail('동시 저장 충돌입니다.',409);
@@ -99,7 +103,7 @@ export async function personalRoute(request:Request,env:any,user:any,route:strin
  if(method!=='POST')return fail('지원하지 않는 요청입니다.',405);
  if(action==='submit'){
   if(row.user_id!==user.id||log.approvalStatus!=='DRAFT')return fail('본인의 작성 중 일지만 상신할 수 있습니다.',403);
-   log.items=reconcileWorkLogItems(log.items,row.user_id,row.day,await activeSchedules(),aliasesFor(row.user_id));
+   log.items=reconcileWorkLogItems(log.items,row.user_id,row.day,await activeSchedules(),aliasesFor(row.user_id),calendarFor(row.user_id));
   if(log.reportMode&&!log.items.some((item:any)=>item.todayTask.trim()&&(item.manualFields===undefined||item.manualFields.includes('todayTask'))))return fail('실제 수행한 업무를 한 건 이상 입력하세요. 배정 메모만으로 상신할 수 없습니다.');
   if(log.reportMode&&log.items.some((item:any)=>reportsActualProgress(item)&&!item.todayTask.trim()))return fail('진척률을 보고하는 업무의 실제 수행 내용을 입력하세요.');
   log.approvalStatus='SUBMITTED_LEADER';log.authorSignature={signed:true,name:user.name,signedAt:now};

@@ -52,6 +52,7 @@ import * as XLSX from 'xlsx';
 import {useLanguageStore} from './store/useLanguageStore';
 import {ProjectInquiries} from './components/ProjectInquiries';
 import {SupplementScheduleView} from './components/SupplementScheduleView';
+import {VietWorkCalendarDialog} from './components/VietWorkCalendarDialog';
 
 // 좌측 카테고리 정의 (최상단에 '프로젝트 접수목록' 추가, 회의록 하위 2단 카테고리 추가)
 export type NavCategory =
@@ -101,12 +102,14 @@ export default function App() {
   const [weeklyReportWeek,setWeeklyReportWeek]=useState<string|undefined>();
   const [weeklyReportKind,setWeeklyReportKind]=useState<'WEEKEND_ADDITIONAL'|undefined>();
   const [supplementContext,setSupplementContext]=useState<{department?:Department;projectId?:string;taskId?:string}|null>(null);
+  const [workCalendarOpen,setWorkCalendarOpen]=useState(false);
   const openSupplement=(department?:Department,projectId?:string,taskId?:string)=>setSupplementContext({department,projectId,taskId});
   const openSupplementReport=(projectId:string,taskId:string)=>{
     const project=projects.find(item=>item.id===projectId),task=project?.postDeliveryTasks?.find(item=>item.id===taskId);
     openSupplement(task?.department||project?.department,projectId,taskId);
   };
   useEffect(()=>setSupplementContext(null),[actorId]);
+  useEffect(()=>setWorkCalendarOpen(false),[actorId]);
   const openWeeklyReport=(week:string,reportKind?:'WEEKEND_ADDITIONAL')=>{setWeeklyReportWeek(week);setWeeklyReportKind(reportKind);setActiveMenu('주간 업무·야근 보고');};
   const [minutesMenuOpen,setMinutesMenuOpen]=useState(true);
   const [todoMenuOpen,setTodoMenuOpen]=useState(true);
@@ -1042,6 +1045,7 @@ export default function App() {
 
               {/* 메인 캘린더 컴포넌트 */}
               <ProjectCalendar
+                onOpenWorkCalendar={()=>setWorkCalendarOpen(true)}
                 onOpenPostDelivery={()=>openSupplement(filterDepartment==='ALL'?undefined:filterDepartment)}
                 onOpenPrintModal={(date) => { setPrintDate(date || new Date()); setIsPrintModalOpen(true); }}
                 onExportExcel={handleExportExcel}
@@ -1058,6 +1062,7 @@ export default function App() {
           {activeMenu === '마감팀 일정표' && (
             <PersonalScheduleView
               department="마감팀"
+              onOpenWorkCalendar={()=>setWorkCalendarOpen(true)}
               onOpenPostDelivery={()=>openSupplement('마감팀')}
               onOpenPrintModal={(date) => { setPrintDate(date || new Date()); setIsPrintModalOpen(true); }}
             />
@@ -1067,6 +1072,7 @@ export default function App() {
           {activeMenu === '구조팀 일정표' && (
             <PersonalScheduleView
               department="구조팀"
+              onOpenWorkCalendar={()=>setWorkCalendarOpen(true)}
               onOpenPostDelivery={()=>openSupplement('구조팀')}
               onOpenPrintModal={(date) => { setPrintDate(date || new Date()); setIsPrintModalOpen(true); }}
             />
@@ -1076,6 +1082,7 @@ export default function App() {
           {activeMenu === '토목&조경팀 일정표' && (
             <PersonalScheduleView
               department="토목&조경팀"
+              onOpenWorkCalendar={()=>setWorkCalendarOpen(true)}
               onOpenPostDelivery={()=>openSupplement('토목&조경팀')}
               onOpenPrintModal={(date) => { setPrintDate(date || new Date()); setIsPrintModalOpen(true); }}
             />
@@ -1190,6 +1197,7 @@ export default function App() {
 
       {/* 사내 로그인 모달 */}
       {supplementContext&&<div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/50 p-3"><SupplementScheduleView department={supplementContext.department} initialProjectId={supplementContext.projectId} initialTaskId={supplementContext.taskId} onClose={()=>setSupplementContext(null)}/></div>}
+      {workCalendarOpen&&<VietWorkCalendarDialog onClose={()=>setWorkCalendarOpen(false)}/>}
       <LoginModal
         isOpen={isLoginModalOpen}
         onClose={() => setIsLoginModalOpen(false)}

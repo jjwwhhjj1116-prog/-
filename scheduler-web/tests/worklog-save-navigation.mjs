@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import {createServer} from 'vite';
+import {createServer as viteCreateServer} from 'vite';
+import {nativeSsrPackages} from './ssr-native-packages.mjs';
+const createServer=options=>viteCreateServer({...options,configFile:false,ssr:{...options.ssr,noExternal:[/^(react|react-dom|zustand|xlsx)(\/|$)/]},plugins:[nativeSsrPackages(),...(options.plugins||[])]});
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';

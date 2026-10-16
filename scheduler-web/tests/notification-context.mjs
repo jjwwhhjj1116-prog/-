@@ -27,8 +27,8 @@ export async function runDailyHarness(sourceText=readFileSync(sourcePath,'utf8')
   const ownTask='gen-context-P2-PM',authorTask='gen-context-P1-내부';
   const authorItem={...work.assignedTasks(author.id,[p1],work.assignmentAliases(author,[author,manager]))[0],todayTask:'알림의 원 작성자 수행 본문',progress:55,manualFields:['todayTask','progress']};
   const originalLog={id:'context-worklog',userId:author.id,userName:author.name,department:'마감팀',date:'2026-10-07',items:[authorItem],overallNotes:'원 작성자의 종합 본문',approvalStatus:'SUBMITTED_LEADER',serverRevision:3,leaderReview:{approved:false},chiefApproval:{approved:false}};
-  function screen({loaded=true,extension=null,worklog=null,includeLog=false,actor=manager,logs,projects=[p2,p1],visible=true,onRead=async()=>true}={}){
-   const auth={currentUser:actor,users:[manager,author]},projectState={projects},logState={workLogs:logs|| (includeLog?[structuredClone(originalLog)]:[]),selectedWorkLogId:null},personal={leaves:[],loaded,openDate:null,openExtension:extension,openWorkLogId:worklog},props={visible};
+  function screen({loaded=true,extension=null,worklog=null,includeLog=false,actor=manager,logs,projects=[p2,p1],visible=true,onRead=async()=>true,people=[manager,author],workCalendars=[]}={}){
+   const auth={currentUser:actor,users:people},projectState={projects},logState={workLogs:logs|| (includeLog?[structuredClone(originalLog)]:[]),selectedWorkLogId:null},personal={leaves:[],workCalendars,loaded,openDate:null,openExtension:extension,openWorkLogId:worklog},props={visible};
    const hooks=[],trace=[],effects=[],reads=[];let cursor=0,dirty=false,tree,currentEffects=[];
    const memo=(factory,deps)=>{const index=cursor++,previous=hooks[index];if(!previous||!equalDeps(previous.deps,deps))hooks[index]={kind:'memo',value:factory(),deps};return hooks[index].value;};
    const useState=initial=>{const index=cursor++;if(!hooks[index]){const slot={kind:'state',value:typeof initial==='function'?initial():initial};slot.setter=value=>{const next=typeof value==='function'?value(slot.value):value;if(!Object.is(next,slot.value)){slot.value=next;dirty=true;}};hooks[index]=slot;}return [hooks[index].value,hooks[index].setter];};
@@ -37,7 +37,7 @@ export async function runDailyHarness(sourceText=readFileSync(sourcePath,'utf8')
    const makeStore=state=>{const hook=selector=>typeof selector==='function'?selector(state):state;hook.getState=()=>state;hook.setState=patch=>{Object.assign(state,typeof patch==='function'?patch(state):patch);dirty=true;};return hook;};
    const authHook=makeStore(auth),projectHook=makeStore(projectState),logHook=makeStore(logState),personalHook=makeStore(personal);
    logState.setSelectedWorkLogId=id=>{if(logState.selectedWorkLogId!==id){logState.selectedWorkLogId=id;dirty=true;}};
-   logState.generateItemsFromSchedule=(id,date,projects)=>work.assignedItems(id,date,projects,work.assignmentAliases({id},auth.users));
+   logState.generateItemsFromSchedule=(id,date,projects,calendars=[])=>work.assignedItems(id,date,projects,work.assignmentAliases({id},auth.users),work.workCalendarContext(auth.users.find(person=>person.id===id),calendars));
    for(const name of ['saveWorkLog','submitApprovalToLeader','approveFinalByChief'])logState[name]=async()=>{throw Error('Unexpected write in notification harness');};
    logState.readWorkLog=(id,revision)=>{reads.push({id,revision,actor:auth.currentUser.id,screen:snapshot(),body:note()?.value});return onRead(id,revision);};
    const extensionComponent=()=>null,reporting={ScheduleExtensionRequests:extensionComponent};for(const name of ['WorkLogHistory','TaskReportFields','WorkLogProjectSummary','DailyPlanFields','WorkLogTaskInfo','WorkLogSteps'])reporting[name]=()=>null;

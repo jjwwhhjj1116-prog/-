@@ -3,6 +3,8 @@ import {compareStaff} from '../../scheduler-web/src/utils/staffOrder.ts';
 import {canManageSchedule,isScheduleAdmin} from '../../scheduler-web/src/utils/schedulePermissions.ts';
 import {scheduleExtensionDepartment} from '../../scheduler-web/src/utils/postDeliveryVisibility.ts';
 import {separateSupplementReports} from '../../scheduler-web/src/utils/worklogSupplements.ts';
+import {workCalendarContext} from '../../scheduler-web/src/utils/workCalendar.ts';
+import {readWorkCalendars} from './workCalendars.ts';
 
 const departments=['마감팀','구조팀','토목&조경팀'];
 const shift=(day:string,n:number)=>{const date=new Date(day+'T12:00:00Z');date.setUTCDate(date.getUTCDate()+n);return date.toISOString().slice(0,10);};
@@ -20,7 +22,7 @@ export const weeklyReportSourceGuard=(db:any,snapshot:string)=>db.prepare(`INSER
 
 export async function buildWeeklyReport(env:any,user:any,week:string,now=new Date()){
  if(!validDay(week))throw new Error('주간 보고 날짜가 잘못되었습니다.');
- const weekStart=monday(week),weekEnd=shift(weekStart,6),db=env.DB,people=await directory(db),config=await settings(db);
+ const weekStart=monday(week),weekEnd=shift(weekStart,6),db=env.DB,people=await directory(db),config=await settings(db),workCalendars=await readWorkCalendars(db);
  const actor={...parse(user.profile||'{}'),...user,active:true};
  const allowed=await eligibleIds(db),recipients=people.filter((person:any)=>person.active&&allowed.includes(person.id)&&config.recipientIds.includes(person.id));
  const canConfigure=isScheduleAdmin(actor),allTeams=canConfigure||recipients.some((person:any)=>person.id===actor.id),today=localTime(now).slice(0,10);
@@ -51,7 +53,7 @@ export async function buildWeeklyReport(env:any,user:any,week:string,now=new Dat
   const aliases=assignmentAliases({id},people);
   for(let index=0;index<7;index++){
    const date=shift(weekStart,index);if(date>today)continue;
-   for(const item of separateSupplementReports(id,date,schedules,logByDay.get(`${id}:${date}`) as any,aliases)){
+   for(const item of separateSupplementReports(id,date,schedules,logByDay.get(`${id}:${date}`) as any,aliases,workCalendarContext(people.find((person:any)=>person.id===id),workCalendars))){
     const owner=employee(id,item.department);if(!owner)continue;
     owner.days.find((day:any)=>day.date===date).supplementReports.push(item);
    }

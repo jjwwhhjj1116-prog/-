@@ -3,6 +3,7 @@ import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {registerHooks} from 'node:module';
 import {dirname} from 'node:path';
 import {createServer} from 'vite';
+import {nativeSsrPackages} from './ssr-native-packages.mjs';
 import {database} from './d1.mjs';
 
 const before=process.argv.includes('--before'),output=process.argv.find(arg=>arg.startsWith('--output='))?.slice(9)||'test-results/schedule-admin.json';
@@ -63,7 +64,7 @@ await check('관리자 첫 연결은 과거 PC 일정 자동 이관 없이 중�
  cache.set('studio-legacy-project-backup-v1',JSON.stringify([project('마감팀','old-local-admin')]));
  globalThis.localStorage={getItem:key=>cache.get(key)||null,setItem:(key,value)=>cache.set(key,String(value)),removeItem:key=>cache.delete(key)};globalThis.window={localStorage:globalThis.localStorage};
  globalThis.fetch=async(url,options={})=>{const route=String(url).split('/').at(-1);if(route==='projects'&&options.method==='POST'){outgoing.push(JSON.parse(options.body));return Response.json({project:outgoing.at(-1).project,revision:2});}const data={session:{user:admin},changes:{versions:{projects:1,meetings:1,inbox:1,directory:1,personal:1}},projects:{projects:[{project:remote,revision:1}],archived:[]},directory:{users:[admin,staff]},meetings:{meetings:[]},notifications:{notifications:[],unreadCount:0},personal:{leaves:[],checks:[],worklogs:[]}}[route];assert.ok(data,route);return Response.json(data);};
- const server=await createServer({server:{middlewareMode:true,hmr:false,ws:false},ssr:{external:['react','zustand']},appType:'custom'});let stop;
+ const server=await createServer({configFile:false,plugins:[nativeSsrPackages()],server:{middlewareMode:true,hmr:false,ws:false},ssr:{noExternal:[/^(react|react-dom|zustand)(\/|$)/]},appType:'custom'});let stop;
  const until=async predicate=>{for(let i=0;i<100;i++){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,1));}assert.ok(predicate(),'Sync did not settle');};
  try{
   const {useAuthStore}=await server.ssrLoadModule('/src/store/useAuthStore.ts'),{useProjectStore}=await server.ssrLoadModule('/src/store/useProjectStore.ts'),{startStudioSync,useStudioStore}=await server.ssrLoadModule('/src/store/useStudioStore.ts');

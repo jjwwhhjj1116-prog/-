@@ -109,7 +109,7 @@ export function startStudioSync(userId:string) {
    });
  void tick();
  timer=setInterval(()=>void tick(),2000);
- const stop=()=>{usePersonalStore.setState({leaves:[],checks:[],loaded:false,openDate:null,openTaskId:null,openWorkLogId:null,openExtension:null});useWorkLogStore.setState({workLogs:[],selectedWorkLogId:null});stopped=true;refreshCurrent=async()=>{};flushCurrent=async()=>{};clearInterval(timer);unsubscribe();useStudioStore.setState({pendingIntake:[],archivedProjects:[],actorId:null,ready:false,hasLoaded:false,conflict:false,pending:0,status:'중앙 서버 연결 확인 중',unreadCount:0,notifications:[],meetings:[],openMeetingId:null});};stopCurrent=stop;return stop;
+ const stop=()=>{usePersonalStore.setState({leaves:[],workCalendars:[],checks:[],loaded:false,openDate:null,openTaskId:null,openWorkLogId:null,openExtension:null});useWorkLogStore.setState({workLogs:[],selectedWorkLogId:null});stopped=true;refreshCurrent=async()=>{};flushCurrent=async()=>{};clearInterval(timer);unsubscribe();useStudioStore.setState({pendingIntake:[],archivedProjects:[],actorId:null,ready:false,hasLoaded:false,conflict:false,pending:0,status:'중앙 서버 연결 확인 중',unreadCount:0,notifications:[],meetings:[],openMeetingId:null});};stopCurrent=stop;return stop;
 }
 export async function refreshStudioProjects(){
  const actor=useAuthStore.getState().currentUser?.id,session=refreshCurrent;

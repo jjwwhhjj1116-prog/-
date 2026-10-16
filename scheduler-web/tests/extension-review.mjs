@@ -3,6 +3,7 @@ import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {registerHooks,createRequire} from 'node:module';
 import {runInNewContext} from 'node:vm';
 import {database} from './d1.mjs';
+import * as postDelivery from '../src/utils/postDeliveryVisibility.ts';
 
 const before=process.argv.includes('--before');
 const startShiftBefore=process.argv.includes('--before-start-shift'),onlyStartShift=process.argv.includes('--only-start-shift');
@@ -74,6 +75,7 @@ function clientScreen(p,actor=worker){
  const api=async(route,method='GET',body)=>{const captured=currentActor;assert.ok(captured,'Anonymous transport forbidden');const r=await request(captured,route,method,body);assert.equal(r.status,200,JSON.stringify(r.data));const ticket=tickets.find(t=>!t.used&&(t.method||'GET')===method&&(t.route||'projects')===route);if(ticket){ticket.used=true;ticket.readyResolve(r.data);await ticket.done;if(ticket.error)throw Error(ticket.error);if(method==='POST')postsHeld++;}return r.data;};
  const auth=Object.assign(selector=>selector({currentUser:currentActor,users:directory}),{getState:()=>({currentUser:currentActor,users:directory})}),exports={};
  runInNewContext(compiledClient,{exports,Error,capture:(r,s)=>{run=r;submit=s;},require:name=>{
+  if(name==='../utils/postDeliveryVisibility')return postDelivery;
   if(name==='react')return {useState,useRef,useEffect};if(name==='react/jsx-runtime')return jsx;if(name==='lucide-react')return new Proxy({},{get:()=>()=>null});if(name==='../store/useAuthStore')return {useAuthStore:auth};if(name==='../utils/personalWork')return personal;if(name==='../utils/scheduleProgress')return {localDate};if(name==='../utils/schedulePermissions')return {canManageSchedule};if(name==='../services/studioApi')return {studioApi:api};if(name==='../store/useStudioStore')return {refreshStudioMeetings:async()=>{await Promise.all([api('meetings'),api('notifications')]);}};if(name==='./WorkLogReporting')return {WorkLogSteps:()=>null};throw Error('Unexpected extension dependency '+name);
  }});
  const nodes=node=>Array.isArray(node)?node.flatMap(nodes):node&&typeof node==='object'&&node.props?[node,...nodes(node.props.children)]:[];

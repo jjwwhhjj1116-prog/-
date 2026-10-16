@@ -2,7 +2,7 @@ import {translatedAlert} from '../services/translationService';
 import {LegacyWorkLogArchive} from './RetainedRecords';
 import {usePersonalStore} from '../store/usePersonalStore';
 import {separateSupplementReports} from '../utils/worklogSupplements';
-import {automaticWorkLogItems,sameWorkProject,workProjectOptions,assignedItems,assignedTasks,assignmentAliases,reconcileWorkLogItems,leavesFor,legacyAllocationTask,approvedTaskProgress,nextDay,validDay} from '../utils/personalWork';
+import {workCalendarContext,automaticWorkLogItems,sameWorkProject,workProjectOptions,assignedItems,assignedTasks,assignmentAliases,reconcileWorkLogItems,leavesFor,legacyAllocationTask,approvedTaskProgress,nextDay,validDay} from '../utils/personalWork';
 
 import {WorkLogHistory,TaskReportFields,WorkLogProjectSummary,DailyPlanFields,ScheduleExtensionRequests,WorkLogTaskInfo,WorkLogSteps} from './WorkLogReporting';
 
@@ -25,6 +25,8 @@ import {
   CalendarDays, History, Hourglass, Sun, Clock, CheckCircle2, FileText,
 } from 'lucide-react';
 
+import type {CompanyWorkCalendar} from '../utils/workCalendar';
+const EMPTY_WORK_CALENDARS:CompanyWorkCalendar[]=[];
 const describeDraft=(items:WorkLogItem[],notes:string)=>items.map((item,index)=>
   `${index+1}. ${item.projectName} / ${item.roleName}\n`+[
     ['보고 방식',item.reportBasis==='TASK'?'Task':'일자'],['주요 목표',item.dailyGoal],['세부 작업 내용',item.plannedDetails],['계획 메모',item.planMemo],
@@ -37,7 +39,7 @@ const describeDraft=(items:WorkLogItem[],notes:string)=>items.map((item,index)=>
 export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}) => {
   const { currentUser, users } = useAuthStore();
   const { projects } = useProjectStore();
-  const {leaves,openDate,openTaskId,loaded,openExtension,openWorkLogId}=usePersonalStore();
+  const {leaves,workCalendars=EMPTY_WORK_CALENDARS,openDate,openTaskId,loaded,openExtension,openWorkLogId}=usePersonalStore();
   const {
     workLogs,
     selectedWorkLogId,
@@ -106,14 +108,16 @@ export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}
   const editorSource=useRef<{key:string;logId?:string;items:WorkLogItem[];notes:string}|undefined>(undefined);
   const rememberDraft=useCallback(()=>{if(canEdit)localDrafts.current.set(draftKey,{items:structuredClone(items),notes:overallNotes,revision:formRevision});},[canEdit,draftKey,items,overallNotes,formRevision]);
   const reportUserId=activeLog?.userId||currentUser?.id||'';
+  const reportCalendar=useMemo(()=>workCalendarContext(users.find(user=>user.id===reportUserId),workCalendars),[reportUserId,users,workCalendars]);
+  const ownCalendar=useMemo(()=>workCalendarContext(currentUser,workCalendars),[currentUser,workCalendars]);
   const reportAliases=useMemo(()=>assignmentAliases({id:reportUserId},users),[reportUserId,users]);
   const ownAliases=useMemo(()=>assignmentAliases(currentUser,users),[currentUser,users]);
   const allTasks=useMemo(()=>assignedTasks(reportUserId,projects,reportAliases),[reportUserId,projects,reportAliases]);
-  const dayTasks=useMemo(()=>assignedItems(reportUserId,selectedDate,projects,reportAliases),[reportUserId,selectedDate,projects,reportAliases]);
-  const tomorrowTasks=useMemo(()=>validDay(selectedDate)?assignedItems(reportUserId,nextDay(selectedDate),projects,reportAliases):[],[reportUserId,selectedDate,projects,reportAliases]);
+  const dayTasks=useMemo(()=>assignedItems(reportUserId,selectedDate,projects,reportAliases,reportCalendar),[reportUserId,selectedDate,projects,reportAliases,reportCalendar]);
+  const tomorrowTasks=useMemo(()=>validDay(selectedDate)?assignedItems(reportUserId,nextDay(selectedDate),projects,reportAliases,reportCalendar):[],[reportUserId,selectedDate,projects,reportAliases,reportCalendar]);
   const selectedProject=projects.find(project=>project.id===projectFilter);
   const selectedItem=items.find(item=>item.id===selectedTaskId);
-  const supplementReports=activeLog&&activeLog.approvalStatus!=='DRAFT'?separateSupplementReports(reportUserId,selectedDate,projects,activeLog,reportAliases):[];
+  const supplementReports=activeLog&&activeLog.approvalStatus!=='DRAFT'?separateSupplementReports(reportUserId,selectedDate,projects,activeLog,reportAliases,reportCalendar):[];
   const visibleSupplementReports=supplementReports.filter(item=>projectFilter==='ALL'||sameWorkProject(projects,item.projectId,projectFilter));
   const selectedSupplementReport=visibleSupplementReports.find(item=>item.id===selectedTaskId);
 
@@ -137,13 +141,13 @@ export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}
     };
     const draft=localDrafts.current.get(draftKey);
     if(draft&&(!activeLog||activeLog.approvalStatus==='DRAFT')&&(!activeLog||activeLog.userId===currentUser?.id)){
-      loadEditor(reconcileWorkLogItems(draft.items,reportUserId,selectedDate,projects,reportAliases),draft.notes,draft.revision??initialRevision);return;
+      loadEditor(reconcileWorkLogItems(draft.items,reportUserId,selectedDate,projects,reportAliases,reportCalendar),draft.notes,draft.revision??initialRevision);return;
     }
     if (activeLog) {
       loadEditor(activeLog.items,activeLog.overallNotes,activeLog.serverRevision);
       setSelectedDate(activeLog.date);
       setReportMode(activeLog.items.find(item=>item.id===selectedTaskId)?.reportBasis||activeLog.reportMode||'DAILY');
-    } else { loadEditor(generateItemsFromSchedule(currentUser?.id||'',selectedDate,projects),''); }
+    } else { loadEditor(generateItemsFromSchedule(currentUser?.id||'',selectedDate,projects,workCalendars),''); }
     // Same-record polling must not replace unsaved typing; revision conflicts are shown explicitly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeLog?.id,selectedDate,currentUser?.id]);
@@ -186,23 +190,23 @@ export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}
     if(workDate&&validDay(workDate)){setSelectedDate(workDate);setSelectedWorkLogId(null);initialProjectChosen.current=true;}
     usePersonalStore.setState({openExtension:null});
   },[openExtension,rememberDraft,projects,currentUser?.id,setSelectedWorkLogId]);
-  useEffect(()=>{if(openDate&&loaded){const target=openTaskId?assignedItems(currentUser?.id||'',openDate,projects,ownAliases).find(task=>task.id===openTaskId):undefined;rememberDraft();setSelectedDate(openDate);setSelectedWorkLogId(null);setSelectedTaskId(target?.id||openTaskId||'');setProjectFilter(target?.projectId||'ALL');setRoleFilter(target?.roleName||'');initialProjectChosen.current=!!openTaskId;setNotice(openTaskId&&!target?'선택한 업무의 배정이 변경되었습니다. 현재 배정 목록을 확인하세요.':'');setViewTab('REPORT');usePersonalStore.setState({openDate:null,openTaskId:null});}},[openDate,openTaskId,loaded,currentUser?.id,projects,ownAliases,setSelectedWorkLogId,rememberDraft]);
+  useEffect(()=>{if(openDate&&loaded){const target=openTaskId?assignedItems(currentUser?.id||'',openDate,projects,ownAliases,ownCalendar).find(task=>task.id===openTaskId):undefined;rememberDraft();setSelectedDate(openDate);setSelectedWorkLogId(null);setSelectedTaskId(target?.id||openTaskId||'');setProjectFilter(target?.projectId||'ALL');setRoleFilter(target?.roleName||'');initialProjectChosen.current=!!openTaskId;setNotice(openTaskId&&!target?'선택한 업무의 배정이 변경되었습니다. 현재 배정 목록을 확인하세요.':'');setViewTab('REPORT');usePersonalStore.setState({openDate:null,openTaskId:null});}},[openDate,openTaskId,loaded,currentUser?.id,projects,ownAliases,ownCalendar,setSelectedWorkLogId,rememberDraft]);
   useEffect(()=>{
     if(activeLog?.approvalStatus&&activeLog.approvalStatus!=='DRAFT')return;
     if(activeLog?.userId&&activeLog.userId!==currentUser?.id)return;
     setItems(previous=>{
-      const reconciled=reconcileWorkLogItems(previous,reportUserId,selectedDate,projects,reportAliases);const next=canEdit?automaticWorkLogItems(reconciled,selectedDate):reconciled;
+      const reconciled=reconcileWorkLogItems(previous,reportUserId,selectedDate,projects,reportAliases,reportCalendar);const next=canEdit?automaticWorkLogItems(reconciled,selectedDate,reportCalendar):reconciled;
       const source=editorSource.current;
       if(source?.key===draftKey&&JSON.stringify(previous)===JSON.stringify(source.items))editorSource.current={...source,items:structuredClone(next)};
       return next;
     });
-  },[projects,selectedDate,currentUser?.id,activeLog?.approvalStatus,activeLog?.userId,generateItemsFromSchedule,draftKey,reportUserId,reportAliases,canEdit]);
+  },[projects,selectedDate,currentUser?.id,activeLog?.approvalStatus,activeLog?.userId,generateItemsFromSchedule,draftKey,reportUserId,reportAliases,reportCalendar,canEdit]);
 
   // 팀별 일정표에서 오늘 배정 업무 정밀 자동 연계
   const handleAutoLoadFromSchedule = () => {
     if(!canEdit)return;
-    const autoItems = generateItemsFromSchedule(currentUser?.id||'', selectedDate, projects);
-    setItems(previous=>reconcileWorkLogItems(previous,reportUserId,selectedDate,projects,reportAliases));
+    const autoItems = generateItemsFromSchedule(currentUser?.id||'', selectedDate, projects,workCalendars);
+    setItems(previous=>reconcileWorkLogItems(previous,reportUserId,selectedDate,projects,reportAliases,reportCalendar));
     void translatedAlert(
       `[프로젝트 일정표 정밀 연동] ${selectedUserName} 님의 ${selectedDate} 배정 공종(${autoItems.length}건)이 일정표에서 정확히 불러와졌습니다.`
     );
@@ -361,7 +365,7 @@ export const DailyWorkLogView: React.FC<{visible?:boolean}> = ({visible=true}={}
     if(context){setProjectFilter(context.projectId);setRoleFilter(context.roleName);}
     if(task&&canEdit)setReportMode(task.reportingMode);else{const saved=items.find(item=>item.id===id);if(saved)setReportMode(saved.reportBasis||'DAILY');}
     if(!task||!canEdit||task.startDate>selectedDate||(task.reportingMode==='DAILY'&&task.endDate<selectedDate))return;
-    setItems(previous=>{const old=previous.find(item=>item.id===id);const changed=automaticWorkLogItems([{...(old||task),reportBasis:task.reportingMode}],selectedDate)[0];return old?previous.map(item=>item.id===id?changed:item):[...previous,changed];});
+    setItems(previous=>{const old=previous.find(item=>item.id===id);const changed=automaticWorkLogItems([{...(old||task),reportBasis:task.reportingMode}],selectedDate,reportCalendar)[0];return old?previous.map(item=>item.id===id?changed:item):[...previous,changed];});
   };
   const projectItems=items.filter(item=>projectFilter==='ALL'||sameWorkProject(projects,item.projectId,projectFilter));
   const projectTasks=allTasks.filter(task=>projectFilter==='ALL'||sameWorkProject(projects,task.projectId,projectFilter));
