@@ -3,6 +3,7 @@ import {CalendarDays,ChevronLeft,ChevronRight,RefreshCw,Save,Users} from 'lucide
 import {studioApi} from '../services/studioApi';
 import {useAuthStore} from '../store/useAuthStore';
 import {localDate} from '../utils/scheduleProgress';
+import {compareStaff} from '../utils/staffOrder';
 import {WeeklyReportApproval} from './WeeklyReportApproval';
 
 type WeeklyItem={projectCode:string;projectName:string;roleName:string;progress:number;status:string;todayTask:string;autoScheduleDate?:string;manualFields?:string[]};
@@ -59,7 +60,7 @@ export function WeeklyWorkReports({initialWeek,initialReportKind}:{initialWeek?:
  }
  if(!actor)return null;
  const current=report?.weekStart===week&&reportActor.current===actor?report:null,dates=Array.from({length:7},(_,index)=>shiftDay(week,index));
- const teams=current?.teams.filter(team=>department==='ALL'||team.department===department)||[];
+ const teams=current?.teams.filter(team=>department==='ALL'||team.department===department).map(team=>({...team,employees:[...team.employees].sort(compareStaff)}))||[];
  const employees=teams.flatMap(team=>team.employees),reportCount=employees.reduce((sum,employee)=>sum+employee.reportCount,0),overtimeHours=employees.reduce((sum,employee)=>sum+employee.overtimeHours,0),weekendHours=employees.reduce((sum,employee)=>sum+(employee.weekendHours||0),0);
  return <section className="space-y-5 text-slate-900 dark:text-slate-100">
   <header className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="flex items-center gap-2 text-2xl font-bold"><CalendarDays/>팀별 주간 업무일지·야근 기록</h2><p className="mt-2 text-sm text-slate-600 dark:text-slate-300">개인별 업무 보고와 승인된 야근·주말 출근을 한 주 단위로 확인합니다.</p></div><div className="flex flex-wrap items-center gap-2"><button className={button} aria-label="이전 주" onClick={()=>setWeek(shiftDay(week,-7))}><ChevronLeft size={17}/></button><label className="text-sm">조회 주 <input aria-label="주간 보고 조회 날짜" type="date" value={week} className={field+' ml-2'} onChange={event=>{if(event.target.value)setWeek(weekOf(event.target.value));}}/></label><button className={button} aria-label="다음 주" onClick={()=>setWeek(shiftDay(week,7))}><ChevronRight size={17}/></button><button className={button} onClick={()=>setWeek(weekOf(localDate()))}>이번 주</button><button className={button} disabled={busy} onClick={()=>setReload(value=>value+1)}><RefreshCw size={16}/>새로고침</button></div></header>

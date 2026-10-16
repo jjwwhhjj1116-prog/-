@@ -68,6 +68,17 @@ try{
   const html=renderToStaticMarkup(createElement(ProjectCalendar,{date:new Date(2026,11,1)}));assert.ok(html.includes('data-project-weekend-day="2026-12-05"'));assert.ok(html.includes('data-weekend-department="구조팀"'));assert.ok(!html.includes('data-project-weekend-day="2026-12-06"'));assert.ok(!html.includes('data-project-weekend-day="2026-12-04"'));assert.ok(html.includes('09:00~17:00'));assert.ok(!html.includes('data-main-project-id="qa-finished"'));
   state(projectStore,{filterDepartment:'토목&조경팀'});assert.ok(!renderToStaticMarkup(createElement(ProjectCalendar,{date:new Date(2026,11,1)})).includes('data-project-weekend-day="2026-12-05"'));assert.equal(JSON.stringify(source),saved);
  });
+ await check('개인 일정표는 직급순이며 같은 직급 명부순·퇴사자 제외·기존 일정 원문 보존',()=>{
+  reset('마감팀');
+  const positions=['프로','책임','실장','팀장','본부장','수석','실장','미정'];
+  const ranked=positions.map((position,index)=>({...users[0],id:'rank-'+index,name:'직원 '+index,position}));
+  const retired={...users[0],active:false};
+  state(auth,{users:[...ranked,retired],currentUser:ranked[0]});
+  const before=JSON.stringify(projectStore.getState().projects),{tree}=personalCalendar('마감팀');
+  assert.deepEqual(nodes(tree).filter(node=>node.props['data-schedule-unit']).map(node=>node.props['data-schedule-unit']),['rank-4','rank-2','rank-6','rank-3','rank-5','rank-1','rank-0','rank-7']);
+  assert.equal(JSON.stringify(projectStore.getState().projects),before);
+  assert.equal(JSON.stringify(source),saved);
+ });
  assert.equal(requests,0);assert.equal(JSON.stringify(source),saved);
 }finally{globalThis.fetch=originalFetch;await server.close();}
 const report={kind:'POST_DELIVERY_CALENDAR_ACTUAL_COMPONENT_SYNTHETIC',requests,productWrites:0,results};

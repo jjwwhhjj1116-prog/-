@@ -7,6 +7,7 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import ts from 'typescript';
 import * as work from '../src/utils/personalWork.ts';
 import * as extensions from '../src/utils/scheduleExtensionPeriods.ts';
+import * as postDelivery from '../src/utils/postDeliveryVisibility.ts';
 import * as progress from '../src/utils/scheduleProgress.ts';
 import * as projectScheduleDates from '../src/utils/projectScheduleDates.ts';
 import * as allocations from '../src/utils/scheduleAllocations.ts';
@@ -51,6 +52,7 @@ function mount(name,options={}){
  const modules={'react':react,'react/jsx-runtime':jsx,'lucide-react':require('lucide-react'),'date-fns':require('date-fns'),'date-fns/locale':require('date-fns/locale'),'../store/useProjectStore':{useProjectStore:projectHook,TEAM_ROLES},'../store/useAuthStore':{useAuthStore:authHook,isUserAdmin},'../store/useStudioStore':{useStudioStore:()=>shared},'../store/usePersonalStore':{usePersonalStore:selector=>selector({leaves:[]})},'../store/useLanguageStore':{useLanguageStore:selector=>selector({lang:'ko'})},'../utils/personalWork':work,'../utils/scheduleExtensionPeriods':extensions,'../utils/scheduleProgress':progress,'../utils/schedulePermissions':permissions,'../utils/pendingAssignment':pendingAssignment,'../utils/scheduleAllocations':allocations,'../utils/rebaseProject':rebase,'../utils/vietPersonnel':viet,'../utils/staffOrder':staff,'../data/vietTeams':{VIET_TEAMS_DATA},'../constants/holidays':holidays,'../services/excelService':{exportProjectsToExcel:()=>{},importProjectsFromExcel:()=>{}},'../services/translationService':{printTranslated:()=>{},translatedAlert:()=>{}},'./ProjectDetailPrint':{ProjectDetailPrint:()=>null},'./PostDeliverySchedule':{PostDeliverySchedule:()=>null},'./VietTeamModal':{VietTeamModal:()=>null},'./ProjectCalendar':{default:()=>null}};
  modules['../store/usePersonalStore']={usePersonalStore:selector=>selector(personal)};
  modules['../utils/projectScheduleDates']=projectScheduleDates;
+ modules['../utils/postDeliveryVisibility']=postDelivery;
  const exports={};runInNewContext(ts.transpileModule(sourceFor(name),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,{exports,Date:TestDate,Error,structuredClone,crypto:webcrypto,console,setTimeout:()=>1,window:{location:{search:'',hash:''}},require:path=>{assert.ok(path in modules,'Unexpected UI dependency '+path);return modules[path];}});
  const Component=exports.default||exports[name],props=options.props||({ProjectModal:{projectId:state.projects[0].id,onClose:()=>{}},VietTeamModal:{team:viet.resolveVietTeams(auth.users,'마감팀')[0],isOpen:true,onClose:()=>{}},PersonalScheduleView:{department:'마감팀'},SettingsView:{},ProjectCalendar:{date:new TestDate(2026,9,1)}}[name]);
  const render=()=>{for(let cycle=0;cycle<20;cycle++){cursor=0;pending=[];dirty=false;tree=Component(props);for(const effect of pending)effect();if(!dirty)return tree;}throw Error('UI fixture effects did not settle');};

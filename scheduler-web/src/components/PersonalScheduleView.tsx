@@ -132,9 +132,8 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
   const koreaUsers = useMemo(() => {
     return users.filter((u) => {
       const isKorea = u.company === '컨코스트';
-      if (!isKorea) return false;
+      if (!isKorea || u.active === false) return false;
       if (monthAssignedUserIds.has(u.id)) return true;
-      if (u.active === false) return false;
       if (department === '마감팀') return u.department.includes('마감');
       if (department === '구조팀') return u.department.includes('구조');
       if (department === '토목&조경팀') return u.department.includes('토목') || u.department.includes('조경');

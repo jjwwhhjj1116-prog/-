@@ -44,7 +44,7 @@ await check('이전 배정은 실제 API 저장·재조회 후에도 유지',asy
  const saved=(await request('author','projects')).data.projects.find(row=>row.project.id===original.id).project;
  assert.equal(saved.pmId,'chief');assert.deepEqual(saved.roles.창호,original.roles.창호);
 });
-await check('직급 전체 순서 및 동직급 명부순 유지',()=>{const ranks=['프로','수석','파트장','책임','실장','선임','팀장','수석'];assert.deepEqual(ranks.map((position,i)=>({position,i})).sort(compareStaff).map(x=>x.i),[4,6,2,1,7,3,5,0]);});
+await check('직급 전체 순서 및 동직급·미지정 직급 명부순 유지',()=>{const ranks=['프로','수석','파트장','책임','실장','선임','팀장','수석','본부장','부팀장','사원',''];assert.deepEqual(ranks.map((position,i)=>({position,i})).sort(compareStaff).map(x=>x.i),[8,4,6,1,7,3,0,2,5,9,10,11]);assert.equal(compareStaff({position:' 실장 '},{position:'실장'}),0);assert.equal(compareStaff({},{position:null}),0);});
 await check('구형 미보고 공종을 포함한 서버 저장은 기존 전체 실적 유지',async()=>{
  const original={...structuredClone(project),id:'legacy-weight-project',code:'QA-LEGACY-WEIGHT',startDate:'2026-10-06',endDate:'2026-10-08',progress:73,subTasks:{조적:{...task,personId:'author',personIds:['author'],startDate:'2026-10-06',endDate:'2026-10-08',progress:40}},roles:{창호:{personId:'author',startDate:'2026-10-06',endDate:'2026-10-08'}}};
  assert.equal((await request('chief','projects','POST',{project:original})).status,200);

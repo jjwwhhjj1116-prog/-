@@ -3,8 +3,9 @@ import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {runInNewContext} from 'node:vm';
 import {localDate} from '../src/utils/scheduleProgress.ts';
+import {compareStaff} from '../src/utils/staffOrder.ts';
 
-const require=createRequire(import.meta.url),React=require('react'),jsx=require('react/jsx-runtime'),ts=require('typescript');
+const require=createRequire(import.meta.url),React=require('react'),jsx=require('react/jsx-runtime'),ts=require('typescript'),{renderToStaticMarkup}=require('react-dom/server');
 const source=readFileSync(new URL('../src/components/WeeklyWorkReports.tsx',import.meta.url),'utf8');
 const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
 const nodes=node=>Array.isArray(node)?node.flatMap(nodes):node&&typeof node==='object'&&node.props?[node,...nodes(node.props.children)]:[];
@@ -27,15 +28,20 @@ function mount({actor=admin,transport=async path=>response(path.includes('?week=
  const useEffect=(fn,deps)=>{const index=cursor++,old=effects[index];if(!old||deps.some((value,i)=>!Object.is(value,old.deps?.[i])))queue.push(()=>{old?.cleanup?.();effects[index]={deps,cleanup:fn()};});};
  const auth=Object.assign(selector=>selector({currentUser:currentActor}),{getState:()=>({currentUser:currentActor})});
  const FixedDate=class extends Date{constructor(...args){super(...(args.length?args:['2026-10-14T03:00:00Z']));}};
- const modules={'react':{...React,useState,useRef,useEffect},'react/jsx-runtime':jsx,'lucide-react':require('lucide-react'),'../services/studioApi':{studioApi:async(path,method='GET',body)=>{calls.push({path,method,body});return pending?pending(path,method,body):transport(path,method,body);}},'../store/useAuthStore':{useAuthStore:auth},'../utils/scheduleProgress':{localDate:()=>localDate(new FixedDate())},'./WeeklyReportApproval':{WeeklyReportApproval:()=>null}};
+ const modules={'react':{...React,useState,useRef,useEffect},'react/jsx-runtime':jsx,'lucide-react':require('lucide-react'),'../services/studioApi':{studioApi:async(path,method='GET',body)=>{calls.push({path,method,body});return pending?pending(path,method,body):transport(path,method,body);}},'../store/useAuthStore':{useAuthStore:auth},'../utils/scheduleProgress':{localDate:()=>localDate(new FixedDate())},'../utils/staffOrder':{compareStaff},'./WeeklyReportApproval':{WeeklyReportApproval:()=>null}};
  const exports={};runInNewContext(compiled,{exports,Date:FixedDate,Error,console,setInterval:fn=>{const timer={fn,active:true};timers.push(timer);return timer;},clearInterval:timer=>{timer.active=false;},require:path=>{assert.ok(modules[path],path);return modules[path];}});
  const render=()=>{cursor=0;dirty=false;tree=exports.WeeklyWorkReports(props);};
  const settle=async()=>{for(let i=0;i<15;i++){if(dirty)render();while(queue.length)queue.shift()();await new Promise(resolve=>setImmediate(resolve));}if(dirty)render();};
  const find=label=>nodes(tree).find(node=>node.props['aria-label']===label),button=label=>nodes(tree).find(node=>node.type==='button'&&text(node)===label);
  const click=async label=>{const node=button(label)||find(label);assert.ok(node,label);assert.notEqual(node.props.disabled,true,label+' enabled');node.props.onClick();await settle();};
- return {settle,find,button,click,all:()=>nodes(tree),content:()=>text(tree),calls,openWeek:async next=>{props.initialWeek=next;dirty=true;await settle();},actor:async next=>{currentActor=next;dirty=true;render();return settle();},poll:async()=>{timers.filter(timer=>timer.active).forEach(timer=>timer.fn());await settle();},close:()=>effects.forEach(effect=>effect?.cleanup?.())};
+ return {settle,find,button,click,all:()=>nodes(tree),content:()=>text(tree),html:()=>renderToStaticMarkup(tree),calls,openWeek:async next=>{props.initialWeek=next;dirty=true;await settle();},actor:async next=>{currentActor=next;dirty=true;render();return settle();},poll:async()=>{timers.filter(timer=>timer.active).forEach(timer=>timer.fn());await settle();},close:()=>effects.forEach(effect=>effect?.cleanup?.())};
 }
 const results=[];async function check(name,fn){try{await fn();results.push({name,status:'PASS'});console.log('PASS',name);}catch(error){results.push({name,status:'FAIL',reason:error.stack});console.error('FAIL',name,error.message);}}
+await check('주간 공유표 SSR HTML: 직급순·동직급/미지정 기존순 유지, API 원본 배열 불변',async()=>{
+ const data=response(),base=data.teams[0].employees[0],positions=[['pro','프로'],['unknown-a','부팀장'],['chief-z','실장'],['director','본부장'],['principal-z','수석'],['leader','팀장'],['chief-a','실장'],['principal-a','수석'],['responsible','책임'],['unknown-b','사원'],['blank',''],['missing',undefined]];
+ data.teams=[{department:'마감팀',employees:positions.map(([id,position])=>({...base,id,name:id,position}))}];const before=JSON.stringify(data);Object.freeze(data.teams[0].employees);
+ const screen=mount({transport:async()=>data});await screen.settle();assert.deepEqual([...screen.html().matchAll(/data-weekly-employee="([^"]+)"/g)].map(match=>match[1]),['director','chief-z','chief-a','leader','principal-z','principal-a','responsible','pro','unknown-a','unknown-b','blank','missing']);assert.equal(JSON.stringify(data),before);assert.ok(screen.calls.every(call=>call.method==='GET'));screen.close();
+});
 await check('팀·개인 ID 분리, 요일별 보고 상태·계획/보고 진행률·공종·한국어 프로젝트명',async()=>{
  const screen=mount();await screen.settle();assert.equal(screen.calls[0].path,'weekly-reports?week=2026-10-12');assert.equal(screen.all().filter(node=>node.props['data-weekly-employee']).length,2);assert.equal(screen.all().filter(node=>node.props['data-weekly-day']).length,14);assert.match(screen.content(),/일정 기준 자동 보고/);assert.match(screen.content(),/직원 작성 보고/);assert.match(screen.content(),/팀장 검토 대기/);assert.match(screen.content(),/최종 승인/);assert.match(screen.content(),/계획 45%/);assert.match(screen.content(),/보고 70%/);assert.equal(screen.all().filter(node=>node.props['data-no-translate']&&text(node)==='한국어 프로젝트명').length,4);screen.close();
 });

@@ -1,4 +1,5 @@
 import {validDay,assignmentAliases} from '../../scheduler-web/src/utils/personalWork.ts';
+import {compareStaff} from '../../scheduler-web/src/utils/staffOrder.ts';
 import {canManageSchedule,isScheduleAdmin} from '../../scheduler-web/src/utils/schedulePermissions.ts';
 import {scheduleExtensionDepartment} from '../../scheduler-web/src/utils/postDeliveryVisibility.ts';
 import {separateSupplementReports} from '../../scheduler-web/src/utils/worklogSupplements.ts';
@@ -68,7 +69,7 @@ export async function buildWeeklyReport(env:any,user:any,week:string,now=new Dat
   const minutes=(Number(end[1])*60+Number(end[2]))-(Number(start[1])*60+Number(start[2]));if(minutes<=0)continue;
   day[request.type==='WEEKEND'?'weekendWork':'overtime'].push({projectCode:project.code||'',projectName:project.name||'',roleName:request.roleName||'',startTime:request.startTime,endTime:request.endTime,hours:minutes/60,status:'APPROVED',reason:typeof request.reason==='string'?request.reason:''});
  }}
- for(const team of teams){for(const owner of team.employees){for(const [field,days,hours] of [['overtime','overtimeDays','overtimeHours'],['weekendWork','weekendDays','weekendHours']]){owner[days]=owner.days.filter((day:any)=>day[field].length).length;owner[hours]=Math.round(owner.days.flatMap((day:any)=>day[field]).reduce((total:number,entry:any)=>total+entry.hours,0)*100)/100;}}team.employees.sort((a:any,b:any)=>a.name.localeCompare(b.name,'ko'));}
+ for(const team of teams){for(const owner of team.employees){for(const [field,days,hours] of [['overtime','overtimeDays','overtimeHours'],['weekendWork','weekendDays','weekendHours']]){owner[days]=owner.days.filter((day:any)=>day[field].length).length;owner[hours]=Math.round(owner.days.flatMap((day:any)=>day[field]).reduce((total:number,entry:any)=>total+entry.hours,0)*100)/100;}}team.employees.sort((a:any,b:any)=>a.name.localeCompare(b.name,'ko')).sort(compareStaff);}
  const delivered=await db.prepare('SELECT sent_at,recipient_ids FROM studio_weekly_reports WHERE week_start=?').bind(weekStart).first();
  const sentRecipients=delivered?parse(delivered.recipient_ids):[];
  return {weekStart,weekEnd,teams:teams.filter(team=>team.employees.length),delivery:{status:delivered?'SENT':recipients.length?'NOT_SENT':'RECIPIENTS_REQUIRED',...(delivered?{sentAt:delivered.sent_at}:{}),recipients:(delivered?people.filter((person:any)=>sentRecipients.includes(person.id)):recipients).map((person:any)=>({id:person.id,name:person.name}))},canConfigure,config:{recipientIds:canConfigure?config.recipientIds:[]},...(canConfigure?{directory:people.filter((person:any)=>person.active&&allowed.includes(person.id)).map(({id,name,department,position}:any)=>({id,name,department,position}))}:{})};

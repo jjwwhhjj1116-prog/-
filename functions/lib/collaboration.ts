@@ -201,9 +201,11 @@ export async function handleCollaboration(request:Request,env:Environment,archiv
    const {action,id,record,password,resetMode,extension}=await request.json() as any;
    const target=id?await env.DB.prepare('SELECT * FROM studio_users WHERE id=?').bind(id).first<any>():null;
    if(action!=='create'&&!target)return fail('계정을 찾을 수 없습니다.',404);
-   if(action==='deactivate'){
-    if(id===user.id)return fail('현재 로그인한 관리자 계정은 비활성화할 수 없습니다.',409);
-    await env.DB.batch([env.DB.prepare('UPDATE studio_users SET active=0 WHERE id=?').bind(id),env.DB.prepare('DELETE FROM studio_sessions WHERE user_id=?').bind(id)]);return json({ok:true});
+   if(action==='deactivate'||action==='activate'){
+    if(action==='deactivate'&&id===user.id)return fail('현재 로그인한 관리자 계정은 퇴사 처리할 수 없습니다.',409);
+    const placement=JSON.parse(target.profile);
+    if(action==='activate'&&placement.company==='VIETQS'&&!VIET_ASSIGNMENT_GROUPS.some(group=>group.id===placement.vietTeamId&&group.department===placement.department))return fail('재입사 처리 전에 직원정보 수정에서 베트남 직원의 담당 부서와 소속 팀을 지정하세요.');
+    await env.DB.batch([env.DB.prepare('UPDATE studio_users SET active=? WHERE id=?').bind(action==='activate'?1:0,id),env.DB.prepare('DELETE FROM studio_sessions WHERE user_id=?').bind(id)]);return json({ok:true});
    }
    if(action==='reset'){
     if(resetMode!==undefined&&!['extension','temporary'].includes(resetMode))return fail('비밀번호 리셋 방식을 확인하세요.');
@@ -216,12 +218,15 @@ export async function handleCollaboration(request:Request,env:Environment,archiv
     const sessionRevoked=target.id===user.id;
     return json({ok:true,sessionRevoked},200,sessionRevoked?{'Set-Cookie':'studio_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'}:{});
    }
-   if(!['create','update'].includes(action)||!record)return fail('잘못된 계정 관리 요청입니다.');
+   if(!['create','update'].includes(action)||!record||typeof record!=='object'||Array.isArray(record))return fail('잘못된 계정 관리 요청입니다.');
    const previous=target?JSON.parse(target.profile):{};
    const next={...previous,...record,id:target?.id||crypto.randomUUID()};delete next.password;delete next.active;
    if(![next.idPrefix,next.name,next.email,next.department,next.position].every(v=>typeof v==='string'&&v.trim()))return fail('이름·로그인 ID·이메일·부서·직급을 입력하세요.');
    if(next.employeeNo!==undefined&&(typeof next.employeeNo!=='string'||!next.employeeNo.trim()))return fail('사번을 확인하세요.');
    if(next.vietTeamId===''||next.vietTeamId===null)delete next.vietTeamId;
+   if(next.company==='컨코스트')delete next.vietTeamId;
+   const placementChanged=action==='create'||['company','department'].some(field=>!eq(next[field],previous[field]))||(next.vietTeamId||'')!==(previous.vietTeamId||'');
+   if(next.company==='VIETQS'&&placementChanged&&!VIET_ASSIGNMENT_GROUPS.some(group=>group.id===next.vietTeamId&&group.department===next.department))return fail('베트남 직원은 담당 부서와 해당 부서의 소속 팀을 반드시 선택하세요.');
    if(next.vietTeamId!==undefined&&(next.company!=='VIETQS'||!VIET_ASSIGNMENT_GROUPS.some(group=>group.id===next.vietTeamId&&group.department===next.department)))return fail('해당 부서의 베트남 팀을 선택하세요.');
    next.role=['yjw@con-cost.com','yjpark@con-cost.com'].includes(next.email.toLowerCase())?'ADMIN':'MEMBER';
    const duplicate=await env.DB.prepare('SELECT id FROM studio_users WHERE (lower(login)=? OR lower(email)=?) AND id<>?').bind(next.idPrefix.toLowerCase(),next.email.toLowerCase(),next.id).first();
@@ -232,7 +237,8 @@ export async function handleCollaboration(request:Request,env:Environment,archiv
    }else{
     await env.DB.batch([env.DB.prepare('UPDATE studio_users SET login=?,email=?,name=?,department=?,position=?,profile=? WHERE id=?').bind(next.idPrefix,next.email,next.name,next.department,next.position,JSON.stringify(next),id),env.DB.prepare('DELETE FROM studio_sessions WHERE user_id=?').bind(id)]);
    }
-   return json({ok:true});
+   const sessionRevoked=action==='update'&&id===user.id;
+   return json({ok:true,...(sessionRevoked?{sessionRevoked}: {})},200,sessionRevoked?{'Set-Cookie':'studio_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'}:{});
   }
   if(route==='projects'&&method==='GET') {
    const {items}=await ensureIntakeSchedules(env.DB);

@@ -11,17 +11,19 @@ import {
   Search,
   Lock,
   RefreshCw,
-  Trash2,
   Copy,
   ChevronDown,
   ChevronUp,
   ExternalLink,
   X,
 } from 'lucide-react';
-import { useAuthStore, isUserAdmin } from '../store/useAuthStore';
+import { useAuthStore, isUserAdmin, type ConcostUser } from '../store/useAuthStore';
 import { VIET_ASSIGNMENT_GROUPS } from '../utils/vietPersonnel';
 
 type SettingsTab = 'GDRIVE' | 'MEMBERS' | 'MY_PROFILE';
+const memberDepartments = ['마감팀', '구조팀', '토목&조경팀', '개발 TF', '기술본부 총괄', '경영지원', '경영진'];
+const vietnamDepartments = [...new Set(VIET_ASSIGNMENT_GROUPS.map(group=>group.department))];
+type EmployeeEdit = Pick<ConcostUser,'id'|'name'|'company'|'department'|'position'|'vietTeamId'>;
 
 export const SettingsView: React.FC = () => {
   const {
@@ -36,6 +38,7 @@ export const SettingsView: React.FC = () => {
     adminAddUser,
     adminUpdateUser,
     adminDeleteUser,
+    adminReactivateUser,
   } = useAuthStore();
 
   // 관리자 권한 여부 판별 (오직 yjw@con-cost.com, yjpark@con-cost.com 2개 계정만 관리자)
@@ -64,15 +67,17 @@ export const SettingsView: React.FC = () => {
   // 3. 관리자 회원 관리 상태
   const [searchMember, setSearchMember] = useState('');
   const [memberDeptFilter, setMemberDeptFilter] = useState('전체');
+  const [memberStatusFilter, setMemberStatusFilter] = useState<'ACTIVE'|'INACTIVE'|'ALL'>('ACTIVE');
+  const [employeeEdit, setEmployeeEdit] = useState<EmployeeEdit|null>(null);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
 
   // 신규 회원 등록 폼 상태
   const [newUserName, setNewUserName] = useState('');
   const [newUserDept, setNewUserDept] = useState('마감팀');
-  const [newUserPos, setNewUserPos] = useState('사원');
+  const [newUserPos, setNewUserPos] = useState('프로');
   const [newUserId, setNewUserId] = useState('');
   const [newUserPw, setNewUserPw] = useState('');
-  const [accountAction, setAccountAction] = useState<{id:string;name:string;company?:string;extension?:string;action:'reset'|'deactivate'}|null>(null);
+  const [accountAction, setAccountAction] = useState<{id:string;name:string;company?:string;extension?:string;action:'reset'|'deactivate'|'activate'}|null>(null);
   const [resetPassword, setResetPassword] = useState('');
   const [resetMode, setResetMode] = useState<'extension'|'temporary'>('extension');
   const [resetExtension, setResetExtension] = useState('');
@@ -124,8 +129,11 @@ export const SettingsView: React.FC = () => {
   // 신규 회원 등록
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUserName.trim() || !newUserId.trim()) return;
+    if (accountBusy || !newUserName.trim() || !newUserId.trim()) return;
+    if(newUserCompany==='VIETQS'&&!VIET_ASSIGNMENT_GROUPS.some(group=>group.id===newUserVietTeamId&&group.department===newUserDept)){setDriveToast('베트남 직원의 담당 부서와 소속 팀을 선택하세요.');return;}
 
+    setAccountBusy(true);clearError();
+    try{
     const saved=await adminAddUser({
       no: users.length + 1,
       name: newUserName.trim(),
@@ -138,7 +146,7 @@ export const SettingsView: React.FC = () => {
       email: `${newUserId.trim()}@con-cost.com`,
       idPrefix: newUserId.trim().toLowerCase(),
       password: newUserPw.trim(),
-      role: newUserPos.includes('실장') || newUserPos.includes('본부장') ? 'ADMIN' : 'MEMBER',
+      role: 'MEMBER',
       ...(newUserCompany === 'VIETQS' ? {vietTeamId: newUserVietTeamId} : {}),
     });
 
@@ -148,10 +156,12 @@ export const SettingsView: React.FC = () => {
     setNewUserId('');
     setNewUserPw('');
     setNewUserVietTeamId('');
+    setDriveToast('직원을 등록했습니다. 일정 배정과 개인·팀 캘린더에 자동 반영됩니다.');
+    }finally{setAccountBusy(false);}
   };
 
   const filteredMembers = users.filter((u) => {
-    if(u.active===false)return false;
+    if(memberStatusFilter==='ACTIVE'&&u.active===false||memberStatusFilter==='INACTIVE'&&u.active!==false)return false;
     const matchDept = memberDeptFilter === '전체' || u.department.includes(memberDeptFilter);
     const matchSearch =
       u.name.includes(searchMember) ||
@@ -159,6 +169,14 @@ export const SettingsView: React.FC = () => {
       u.position.includes(searchMember);
     return matchDept && matchSearch;
   });
+  const editedEmployee=employeeEdit&&users.find(person=>person.id===employeeEdit.id);
+  const editPlacementChanged=!!employeeEdit&&(employeeEdit.company!==editedEmployee?.company||employeeEdit.department!==editedEmployee?.department||(employeeEdit.vietTeamId||'')!==(editedEmployee?.vietTeamId||''));
+  const saveEmployee=async(event:React.FormEvent)=>{
+    event.preventDefault();if(!employeeEdit||accountBusy)return;
+    if(employeeEdit.company==='VIETQS'&&editPlacementChanged&&!VIET_ASSIGNMENT_GROUPS.some(group=>group.id===employeeEdit.vietTeamId&&group.department===employeeEdit.department)){setDriveToast('베트남 직원의 담당 부서와 소속 팀을 선택하세요.');return;}
+    setAccountBusy(true);clearError();
+    try{if(await adminUpdateUser(employeeEdit.id,{company:employeeEdit.company,department:employeeEdit.department,position:employeeEdit.position.trim(),...(employeeEdit.department!==editedEmployee?.department?{originalDept:employeeEdit.department}:{}),vietTeamId:employeeEdit.company==='VIETQS'?employeeEdit.vietTeamId||'':''})){setDriveToast(`${employeeEdit.name} 직원 정보를 저장했습니다. 기존 일정·보고 이력은 유지됩니다.`);setEmployeeEdit(null);}}finally{setAccountBusy(false);}
+  };
 
   return (
     <div data-no-field-translate className="space-y-6 animate-fadeIn">
@@ -545,10 +563,10 @@ export const SettingsView: React.FC = () => {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-200 pb-4">
             <div>
               <h3 className="text-base font-bold text-slate-900">
-                기술본부 회원 및 권한 통합 관리
+                직원 관리
               </h3>
               <p className="text-xs text-slate-500">
-                총 {users.length}명의 기술본부 등록 회원을 조회, 수정, 비밀번호 초기화 및 신규 등록합니다.
+                재직 {users.filter(person=>person.active!==false).length}명 · 퇴사 {users.filter(person=>person.active===false).length}명. 입사·부서 배치·퇴사 상태가 일정과 보고에 연동됩니다.
               </p>
             </div>
 
@@ -562,9 +580,9 @@ export const SettingsView: React.FC = () => {
           </div>
 
           {/* 검색 및 부서 필터 */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-1">
-              {['전체', '마감팀', '구조팀', '토목&조경팀', '개발 TF', '기술본부 총괄'].map((dept) => (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-1">
+              {['전체', ...memberDepartments].map((dept) => (
                 <button
                   key={dept}
                   onClick={() => setMemberDeptFilter(dept)}
@@ -579,6 +597,7 @@ export const SettingsView: React.FC = () => {
               ))}
             </div>
 
+            <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">재직 상태<select aria-label="직원 재직 상태" value={memberStatusFilter} onChange={event=>setMemberStatusFilter(event.target.value as 'ACTIVE'|'INACTIVE'|'ALL')} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-blue-600"><option value="ACTIVE">재직자</option><option value="INACTIVE">퇴사자</option><option value="ALL">전체 직원</option></select></label>
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -591,6 +610,19 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
 
+          {employeeEdit&&<form aria-label="직원정보 수정" onSubmit={saveEmployee} className="space-y-4 rounded-xl border border-slate-300 bg-slate-50 p-4 text-sm text-slate-900">
+            <div><h4 className="font-bold">{employeeEdit.name} · 직원정보 수정</h4><p className="mt-1 text-xs text-slate-600">소속과 직급을 바꾸어도 기존 업무·승인 기록은 보존됩니다. 변경된 직원은 다시 로그인해야 합니다.</p></div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="font-semibold">소속 회사<select aria-label="직원 수정 회사" disabled={accountBusy} value={employeeEdit.company} onChange={event=>setEmployeeEdit({...employeeEdit,company:event.target.value,...(event.target.value==='VIETQS'&&!vietnamDepartments.includes(employeeEdit.department as typeof vietnamDepartments[number])?{department:vietnamDepartments[0]}:{}),vietTeamId:undefined})} className="mt-2 block w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal"><option value="컨코스트">컨코스트 (한국 본사)</option><option value="VIETQS">VIETQS (베트남 법인)</option>{!['컨코스트','VIETQS'].includes(employeeEdit.company)&&<option value={employeeEdit.company}>{employeeEdit.company}</option>}</select></label>
+              <label className="font-semibold">담당 부서<select aria-label="직원 수정 부서" disabled={accountBusy} value={employeeEdit.department} onChange={event=>setEmployeeEdit({...employeeEdit,department:event.target.value,vietTeamId:undefined})} className="mt-2 block w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal">{[...new Set([employeeEdit.department,...(employeeEdit.company==='VIETQS'?vietnamDepartments:memberDepartments)])].map(department=><option key={department} value={department}>{department}</option>)}</select></label>
+              <label className="font-semibold">직급<input aria-label="직원 수정 직급" required disabled={accountBusy} value={employeeEdit.position} list="employee-position-options" onChange={event=>setEmployeeEdit({...employeeEdit,position:event.target.value})} className="mt-2 block w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal"/></label>
+              {employeeEdit.company==='VIETQS'&&<label className="font-semibold">베트남 소속 팀<select aria-label="직원 수정 베트남 팀" required={editPlacementChanged} disabled={accountBusy} value={employeeEdit.vietTeamId||''} onChange={event=>setEmployeeEdit({...employeeEdit,vietTeamId:event.target.value||undefined})} className="mt-2 block w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal"><option value="" disabled>소속 팀을 선택하세요</option>{VIET_ASSIGNMENT_GROUPS.filter(group=>group.department===employeeEdit.department).map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</select></label>}
+            </div>
+            {loginError&&<p role="alert" className="text-rose-800">{loginError}</p>}
+            <div className="flex flex-wrap justify-end gap-2"><button type="button" disabled={accountBusy} onClick={()=>setEmployeeEdit(null)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold disabled:opacity-50">취소</button><button disabled={accountBusy} type="submit" className="rounded-lg bg-blue-700 px-4 py-2 font-semibold text-white hover:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50">{accountBusy?'저장 중…':'직원정보 저장'}</button></div>
+          </form>}
+          <datalist id="employee-position-options">{['본부장','실장','팀장','수석','책임','프로','부팀장','사원'].map(position=><option key={position} value={position}/>)}</datalist>
+
           {/* 회원 테이블 */}
           <div className="overflow-x-auto border border-slate-200 rounded-xl">
             <table className="w-full text-left border-collapse text-xs">
@@ -601,6 +633,7 @@ export const SettingsView: React.FC = () => {
                   <th className="py-2.5 px-3">소속 회사</th>
                   <th className="py-2.5 px-3">부서</th>
                   <th className="py-2.5 px-3">직급</th>
+                  <th className="py-2.5 px-3">재직 상태</th>
                   <th className="py-2.5 px-3">로그인 ID</th>
                   <th className="py-2.5 px-3">권한</th>
                   <th className="py-2.5 px-3 text-right">관리 작업</th>
@@ -632,12 +665,13 @@ export const SettingsView: React.FC = () => {
                     <td className="py-2.5 px-3 font-medium text-slate-700">{member.department}
                       {member.company === 'VIETQS' && <select aria-label={`${member.name} 베트남 소속 그룹`} value={member.vietTeamId || ''} disabled={!!vietTeamBusy} onChange={async event=>{
                         const groupId=event.target.value;
-                        if(groupId&&!VIET_ASSIGNMENT_GROUPS.some(group=>group.id===groupId&&group.department===member.department)){setDriveToast('같은 부서의 소속 그룹을 선택하세요.');return;}
+                        if(!VIET_ASSIGNMENT_GROUPS.some(group=>group.id===groupId&&group.department===member.department)){setDriveToast('같은 부서의 소속 그룹을 선택하세요.');return;}
                         setVietTeamBusy(member.id);clearError();
                         try{if(await adminUpdateUser(member.id,{vietTeamId:groupId}))setDriveToast(`${member.name} 소속 그룹을 변경했습니다.`);}finally{setVietTeamBusy('');}
-                      }} className="mt-1 block w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 disabled:bg-slate-100"><option value="">그룹 미지정</option>{VIET_ASSIGNMENT_GROUPS.filter(group=>group.department===member.department).map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</select>}
+                      }} className="mt-1 block w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 disabled:bg-slate-100"><option value="" disabled>그룹 미지정 · 배치 필요</option>{VIET_ASSIGNMENT_GROUPS.filter(group=>group.department===member.department).map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</select>}
                     </td>
                     <td className="py-2.5 px-3 text-slate-600">{member.position}</td>
+                    <td className="py-2.5 px-3 font-semibold text-slate-700">{member.active===false?'퇴사':'재직'}</td>
                     <td className="py-2.5 px-3 font-mono text-slate-500">{member.idPrefix}</td>
                     <td className="py-2.5 px-3">
                       <span
@@ -651,7 +685,8 @@ export const SettingsView: React.FC = () => {
                       </span>
                     </td>
                     <td className="py-2.5 px-3 text-right">
-                      <div className="inline-flex items-center gap-1">
+                      <div className="inline-flex flex-wrap items-center justify-end gap-2">
+                        <button type="button" disabled={accountBusy} onClick={()=>{clearError();setEmployeeEdit({id:member.id,name:member.name,company:member.company,department:member.department,position:member.position,vietTeamId:member.vietTeamId});}} className="rounded bg-blue-50 px-2 py-1 font-semibold text-blue-800 hover:bg-blue-100 focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-50">직원정보 수정</button>
                         <button
                           onClick={() => {clearError();setResetPassword('');setResetMode(member.company==='VIETQS'?'temporary':'extension');setResetExtension(member.extension||'');setResetIssued(false);setShowResetPassword(false);setAccountAction({id:member.id,name:member.name,company:member.company,extension:member.extension,action:'reset'});}}
                           title="비밀번호 초기화"
@@ -659,19 +694,14 @@ export const SettingsView: React.FC = () => {
                         >
                           비번리셋
                         </button>
-                        <button
-                          onClick={() => {clearError();setAccountAction({id:member.id,name:member.name,action:'deactivate'});}}
-                          title="계정 비활성화"
-                          className="p-1 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded transition"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <button type="button" disabled={accountBusy||member.id===currentUser?.id} onClick={() => {clearError();setResetIssued(false);setAccountAction({id:member.id,name:member.name,action:member.active===false?'activate':'deactivate'});}} className={`rounded px-2 py-1 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50 ${member.active===false?'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 focus-visible:outline-emerald-600':'bg-rose-50 text-rose-800 hover:bg-rose-100 focus-visible:outline-rose-600'}`}>{member.active===false?'재입사 처리':'퇴사 처리'}</button>
                       </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {!filteredMembers.length&&<p role="status" className="p-6 text-center text-sm text-slate-600">조건에 맞는 직원이 없습니다. 재직 상태나 부서를 변경해 확인하세요.</p>}
           </div>
         </div>
       )}
@@ -819,6 +849,7 @@ export const SettingsView: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">이름</label>
                 <input
                   type="text"
+                  aria-label="신규 직원 이름"
                   value={newUserName}
                   onChange={(e) => setNewUserName(e.target.value)}
                   placeholder="예: 홍길동"
@@ -831,24 +862,24 @@ export const SettingsView: React.FC = () => {
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">부서</label>
                   <select
+                    aria-label="신규 직원 부서"
                     value={newUserDept}
                     onChange={(e) => {setNewUserDept(e.target.value);setNewUserVietTeamId('');}}
                     className="w-full text-xs p-2.5 border border-slate-300 rounded-lg bg-white"
                   >
-                    <option value="마감팀">마감팀</option>
-                    <option value="구조팀">구조팀</option>
-                    <option value="토목&조경팀">토목&조경팀</option>
-                    <option value="개발 TF">개발 TF</option>
-                    <option value="기술본부 총괄">기술본부 총괄</option>
+                    {(newUserCompany==='VIETQS'?vietnamDepartments:memberDepartments).map(department=><option key={department} value={department}>{department}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">직급</label>
                   <input
                     type="text"
+                    aria-label="신규 직원 직급"
+                    list="employee-position-options"
                     value={newUserPos}
                     onChange={(e) => setNewUserPos(e.target.value)}
-                    placeholder="선임 / 책임 등"
+                    placeholder="본부장 / 실장 / 팀장 / 수석 / 책임 / 프로"
+                    required
                     className="w-full text-xs p-2.5 border border-slate-300 rounded-lg"
                   />
                 </div>
@@ -861,6 +892,7 @@ export const SettingsView: React.FC = () => {
                   </label>
                   <input
                     type="text"
+                    aria-label="신규 직원 로그인 ID"
                     value={newUserId}
                     onChange={(e) => setNewUserId(e.target.value)}
                     placeholder="예: gd_hong"
@@ -874,6 +906,7 @@ export const SettingsView: React.FC = () => {
                   </label>
                   <input
                     type="password"
+                    aria-label="신규 직원 초기 비밀번호"
                     value={newUserPw}
                     minLength={newUserCompany==='VIETQS'?4:8}
                     pattern={newUserCompany==='VIETQS'?'(?:[0-9]{4}|.{8,256})':undefined}
@@ -889,15 +922,17 @@ export const SettingsView: React.FC = () => {
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">소속 회사</label>
                 <select
+                  aria-label="신규 직원 회사"
                   value={newUserCompany}
-                  onChange={(e) => {setNewUserCompany(e.target.value);setNewUserVietTeamId('');}}
+                  onChange={(e) => {setNewUserCompany(e.target.value);if(e.target.value==='VIETQS'&&!vietnamDepartments.includes(newUserDept as typeof vietnamDepartments[number]))setNewUserDept(vietnamDepartments[0]);setNewUserVietTeamId('');}}
                   className="w-full text-xs p-2.5 border border-slate-300 rounded-lg bg-white"
                 >
                   <option value="컨코스트">컨코스트 (한국 본사)</option>
                   <option value="VIETQS">VIETQS (베트남 법인)</option>
                 </select>
               </div>
-              {newUserCompany === 'VIETQS' && <label className="block text-xs font-semibold text-slate-700">베트남 소속 그룹<select aria-label="신규 베트남 소속 그룹" value={newUserVietTeamId} onChange={event=>setNewUserVietTeamId(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs text-slate-900"><option value="">그룹 미지정</option>{VIET_ASSIGNMENT_GROUPS.filter(group=>group.department===newUserDept).map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</select></label>}
+              {newUserCompany === 'VIETQS' && <label className="block text-xs font-semibold text-slate-700">베트남 소속 그룹 (필수)<select required aria-label="신규 베트남 소속 그룹" value={newUserVietTeamId} onChange={event=>setNewUserVietTeamId(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs text-slate-900"><option value="" disabled>소속 팀을 선택하세요</option>{VIET_ASSIGNMENT_GROUPS.filter(group=>group.department===newUserDept).map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</select></label>}
+              {loginError&&<p role="alert" className="text-sm text-rose-800">{loginError}</p>}
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
@@ -909,9 +944,10 @@ export const SettingsView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
+                  disabled={accountBusy}
                   className="px-4 py-2 text-xs text-white bg-blue-600 hover:bg-blue-700 font-bold rounded-lg"
                 >
-                  회원 등록 완료
+                  {accountBusy?'등록 중…':'회원 등록 완료'}
                 </button>
               </div>
             </form>
@@ -922,12 +958,12 @@ export const SettingsView: React.FC = () => {
         <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4">
           <form role="dialog" aria-modal="true" aria-labelledby="account-action-title" className="relative bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-6 rounded-xl w-full max-w-md space-y-4" onSubmit={async e=>{
             e.preventDefault();if(accountBusy||resetIssued)return;setAccountBusy(true);
-            try{const ok=accountAction.action==='reset'?await adminResetPassword(accountAction.id,resetMode==='extension'?resetExtension:resetPassword,{resetMode,extension:resetMode==='extension'?resetExtension:undefined}):await adminDeleteUser(accountAction.id);
-              if(ok){setDriveToast(`${accountAction.name} 계정 ${accountAction.action==='reset'?(resetMode==='extension'?'내선번호로 초기화':'임시 비밀번호 발급'):'비활성화'} 완료`);if(accountAction.action==='reset'&&resetMode==='temporary'){setResetIssued(true);}else{setAccountAction(null);setResetPassword('');}}
+            try{const ok=accountAction.action==='reset'?await adminResetPassword(accountAction.id,resetMode==='extension'?resetExtension:resetPassword,{resetMode,extension:resetMode==='extension'?resetExtension:undefined}):accountAction.action==='activate'?await adminReactivateUser(accountAction.id):await adminDeleteUser(accountAction.id);
+              if(ok){setDriveToast(`${accountAction.name} ${accountAction.action==='reset'?(resetMode==='extension'?'내선번호로 초기화':'임시 비밀번호 발급'):accountAction.action==='activate'?'재입사 처리':'퇴사 처리'} 완료`);if(accountAction.action==='reset'&&resetMode==='temporary'){setResetIssued(true);}else{setAccountAction(null);setResetPassword('');}}
             }finally{setAccountBusy(false);}
           }}>
             <button type="button" disabled={accountBusy} onClick={()=>{setAccountAction(null);setResetPassword('');setResetIssued(false);setShowResetPassword(false);}} aria-label="회원 계정 관리 닫기" className="absolute top-3 right-3 !m-0 rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white disabled:opacity-50"><X size={20}/></button>
-            <h3 id="account-action-title" className="!mt-0 pr-10 font-bold">{accountAction.name} · {accountAction.action==='reset'?'비밀번호 리셋':'계정 비활성화'}</h3>
+            <h3 id="account-action-title" className="!mt-0 pr-10 font-bold">{accountAction.name} · {accountAction.action==='reset'?'비밀번호 리셋':accountAction.action==='activate'?'재입사 처리':'퇴사 처리'}</h3>
             {accountAction.action==='reset'?<>
               {!resetIssued&&<label className="block text-sm">리셋 방식<select disabled={accountBusy} value={resetMode} onChange={e=>{setResetMode(e.target.value as 'extension'|'temporary');setResetPassword('');setShowResetPassword(false);}} className="mt-2 w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white p-2"><option value="extension">내선번호 4자리로 초기화</option><option value="temporary">임시 비밀번호 발급</option></select></label>}
               {resetMode==='extension'?<label className="block text-sm">내선번호 (4자리)<input autoFocus type="text" inputMode="numeric" autoComplete="off" required pattern="[0-9]{4}" minLength={4} maxLength={4} disabled={accountBusy} value={resetExtension} onChange={e=>setResetExtension(e.target.value)} className="mt-2 w-full rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white p-2"/><span className="block mt-2 text-xs text-slate-600 dark:text-slate-300">확인한 본인 내선번호를 입력하세요. 초기화한 비밀번호는 이 4자리 숫자입니다.</span></label>:<>
@@ -936,9 +972,9 @@ export const SettingsView: React.FC = () => {
                 <div className="flex flex-wrap items-center gap-3 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={showResetPassword} onChange={e=>setShowResetPassword(e.target.checked)}/>임시 비밀번호 표시</label>{!resetIssued&&<button type="button" disabled={accountBusy} className="underline" onClick={()=>{const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';setResetPassword(Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>alphabet[b&31]).join(''));}}>임시 비밀번호 생성</button>}{resetIssued&&<button type="button" className="underline" onClick={()=>void navigator.clipboard.writeText(resetPassword).then(()=>setDriveToast('임시 비밀번호를 복사했습니다.')).catch(()=>setDriveToast('복사하지 못했습니다. 임시 비밀번호 표시를 선택해 확인하세요.'))}>임시 비밀번호 복사</button>}</div>
               </>}
               <p className="text-xs text-slate-600 dark:text-slate-300">리셋하면 해당 회원의 기존 로그인은 종료됩니다. 로그인 후 개인 설정에서 비밀번호를 변경하도록 안내해 주세요.</p>
-            </>:<p className="text-sm">로그인 권한을 중지합니다. 기존 일정·회의록과 작성 기록은 유지됩니다.</p>}
+            </>:<p className="text-sm">{accountAction.action==='activate'?'같은 직원 ID로 재직 상태를 복구합니다. 이전 로그인 세션은 복구하지 않으며 다시 로그인해야 합니다. 기존 일정·보고 이력은 유지됩니다.':'로그인과 신규 업무 배정을 중지합니다. 기존 일정·회의록·업무일지·승인 이력은 삭제하지 않습니다.'}</p>}
             {loginError&&<p role="alert" className="text-red-600 dark:text-red-400 text-sm">{loginError}</p>}
-            <div className="flex justify-end gap-2"><button type="button" disabled={accountBusy} onClick={()=>{setAccountAction(null);setResetPassword('');setResetIssued(false);setShowResetPassword(false);}} className="px-4 py-2 rounded bg-slate-100 dark:bg-slate-700">{resetIssued?'닫기':'취소'}</button>{!resetIssued&&<button disabled={accountBusy} type="submit" className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50">{accountBusy?'처리 중…':accountAction.action==='reset'?(resetMode==='extension'?'내선번호로 초기화':'임시 비밀번호 발급'):'확인'}</button>}</div>
+            <div className="flex justify-end gap-2"><button type="button" disabled={accountBusy} onClick={()=>{setAccountAction(null);setResetPassword('');setResetIssued(false);setShowResetPassword(false);}} className="px-4 py-2 rounded bg-slate-100 dark:bg-slate-700">{resetIssued?'닫기':'취소'}</button>{!resetIssued&&<button disabled={accountBusy} type="submit" className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50">{accountBusy?'처리 중…':accountAction.action==='reset'?(resetMode==='extension'?'내선번호로 초기화':'임시 비밀번호 발급'):accountAction.action==='activate'?'재입사 처리 확정':'퇴사 처리 확정'}</button>}</div>
           </form>
         </div>
       )}

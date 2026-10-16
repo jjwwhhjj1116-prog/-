@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import {createServer} from 'vite';
 import {readFileSync,writeFileSync} from 'node:fs';
+import {nativeSsrPackages} from './ssr-native-packages.mjs';
 const storage=new Map();
 globalThis.localStorage={getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,String(value)),removeItem:key=>storage.delete(key)};
 globalThis.window={localStorage:globalThis.localStorage};
 const realFetch=globalThis.fetch,results=[];
 const before=process.argv.includes('--before');
-const server=await createServer({plugins:before?[{name:'protected-before-account-race',enforce:'pre',load(id){const name=['usePersonalStore.ts','useWorkLogStore.ts'].find(file=>id.replaceAll('\\','/').endsWith('/src/store/'+file));if(name)return readFileSync(new URL('../../private-provisioning/qa-todo-leave-20261006/original/scheduler-web/src/store/'+name,import.meta.url),'utf8');}}]:[],server:{middlewareMode:true,hmr:false},appType:'custom'});
+const server=await createServer({plugins:[nativeSsrPackages(),...(before?[{name:'protected-before-account-race',enforce:'pre',load(id){const name=['usePersonalStore.ts','useWorkLogStore.ts'].find(file=>id.replaceAll('\\','/').endsWith('/src/store/'+file));if(name)return readFileSync(new URL('../../private-provisioning/qa-todo-leave-20261006/original/scheduler-web/src/store/'+name,import.meta.url),'utf8');}}]:[])],server:{middlewareMode:true,hmr:false},appType:'custom'});
 const user=id=>({id,name:'합성 계정 '+id,department:'마감팀',position:id==='u_12'?'실장':'프로'});
 const log=(owner,id,revision=1,status='DRAFT')=>({id,userId:owner,date:'2026-10-06',department:'마감팀',items:[],overallNotes:'합성 보고',serverRevision:revision,approvalStatus:status});
 const personal=id=>({leaves:[{id:'leave-'+id,user_id:id,start_date:'2026-10-06',end_date:'2026-10-06',kind:'연차',revision:1}],checks:[{day:'2026-10-06',task_id:'task-'+id,done:1}],worklogs:[log(id,'log-'+id)]});

@@ -96,10 +96,10 @@ await check('VN 그룹metadata:등록11그룹은동일부서만 허용,다른부
  const saved=snapshot(f),group=VIET_ASSIGNMENT_GROUPS[0];for(const record of [{department:'구조팀',vietTeamId:group.id},{department:group.department,company:'CONCOST',vietTeamId:group.id},{vietTeamId:'qa-unknown-group'},{vietTeamId:123},{vietTeamId:[]}])status(await f.request('qa-admin','admin/users','POST',{action:'update',id:'qa-other',record}),400);
  assert.deepEqual(snapshot(f),saved);
 });
-await check('VN 그룹해제:빈문자열/null은metadata삭제,선택사번은문자열·앞자리0 보존하고공백/비문자열 거부',async f=>{
+await check('VN 필수배치:빈문자열/null 그룹해제 거부,선택사번은문자열·앞자리0 보존하고공백/비문자열 거부',async f=>{
  vietProfile(f);for(const value of ['',null]){
   status(await f.request('qa-admin','admin/users','POST',{action:'update',id:'qa-other',record:{vietTeamId:'vt_horiz_apartment',employeeNo:'0007'}}),200);
-  status(await f.request('qa-admin','admin/users','POST',{action:'update',id:'qa-other',record:{vietTeamId:value}}),200);const profile=JSON.parse(f.user('qa-other').profile);assert.equal(Object.hasOwn(profile,'vietTeamId'),false);assert.equal(profile.employeeNo,'0007');
+  const before=snapshot(f);status(await f.request('qa-admin','admin/users','POST',{action:'update',id:'qa-other',record:{vietTeamId:value}}),400);assert.deepEqual(snapshot(f),before);const profile=JSON.parse(f.user('qa-other').profile);assert.equal(profile.vietTeamId,'vt_horiz_apartment');assert.equal(profile.employeeNo,'0007');
  }
  const saved=snapshot(f);for(const employeeNo of ['', ' ',123,null,false,[]])status(await f.request('qa-admin','admin/users','POST',{action:'update',id:'qa-other',record:{employeeNo}}),400);assert.deepEqual(snapshot(f),saved);
 });

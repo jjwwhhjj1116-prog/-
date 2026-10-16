@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {runInNewContext} from 'node:vm';
+import {compareStaff} from '../src/utils/staffOrder.ts';
 
-const require=createRequire(import.meta.url),React=require('react'),jsx=require('react/jsx-runtime'),ts=require('typescript');
+const require=createRequire(import.meta.url),React=require('react'),jsx=require('react/jsx-runtime'),ts=require('typescript'),{renderToStaticMarkup}=require('react-dom/server');
 const source=readFileSync(new URL('../src/components/WeeklyReportApproval.tsx',import.meta.url),'utf8');
 const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
 const nodes=node=>Array.isArray(node)?node.flatMap(nodes):node&&typeof node==='object'&&node.props?[node,...nodes(node.props.children)]:[];
@@ -20,14 +21,14 @@ function mount({actor=admin,week='2026-10-12',initialReportKind,transport=async(
  const useRef=initial=>{const index=cursor++;return hooks[index]||(hooks[index]={current:initial});};
  const useEffect=(fn,deps)=>{const index=cursor++,old=effects[index];if(!old||deps.some((value,i)=>!Object.is(value,old.deps?.[i])))queue.push(()=>{old?.cleanup?.();effects[index]={deps,cleanup:fn()};});};
  const auth=Object.assign(selector=>selector({currentUser:currentActor}),{getState:()=>({currentUser:currentActor})});
- const modules={'react':{...React,useState,useRef,useEffect},'react/jsx-runtime':jsx,'lucide-react':require('lucide-react'),'../services/studioApi':{studioApi:async(path,method='GET',body)=>{calls.push({path,method,body});return transport(path,method,body);}},'../store/useAuthStore':{useAuthStore:auth}};
+ const modules={'react':{...React,useState,useRef,useEffect},'react/jsx-runtime':jsx,'lucide-react':require('lucide-react'),'../services/studioApi':{studioApi:async(path,method='GET',body)=>{calls.push({path,method,body});return transport(path,method,body);}},'../store/useAuthStore':{useAuthStore:auth},'../utils/staffOrder':{compareStaff}};
  const exports={};runInNewContext(compiled,{exports,Date,Error,console,setInterval:fn=>{const timer={fn,active:true};timers.push(timer);return timer;},clearInterval:timer=>{timer.active=false;},require:path=>{assert.ok(modules[path],path);return modules[path];}});
  const render=()=>{cursor=0;dirty=false;tree=exports.WeeklyReportApproval(props);};
  const settle=async()=>{for(let i=0;i<15;i++){if(dirty)render();while(queue.length)queue.shift()();await new Promise(resolve=>setImmediate(resolve));}if(dirty)render();};
  const find=label=>nodes(tree).find(node=>node.props['aria-label']===label),button=label=>nodes(tree).find(node=>node.type==='button'&&text(node)===label);
  const click=async label=>{const node=button(label)||find(label);assert.ok(node,label);assert.notEqual(node.props.disabled,true,label+' enabled');node.props.onClick();await settle();};
  const select=async(label,value)=>{const node=find(label);assert.ok(node,label);node.props.onChange({target:{value,checked:value}});await settle();};
- return {settle,find,button,click,select,all:()=>nodes(tree),content:()=>text(tree),calls,changed:()=>changed,send:async()=>{const form=nodes(tree).find(node=>node.type==='form');assert.ok(form,'상신 form');form.props.onSubmit({preventDefault(){}});await settle();},week:async next=>{props.week=next;dirty=true;await settle();},actor:async next=>{currentActor=next;dirty=true;render();await settle();},poll:async()=>{timers.filter(timer=>timer.active).forEach(timer=>timer.fn());await settle();},close:()=>effects.forEach(effect=>effect?.cleanup?.())};
+ return {settle,find,button,click,select,all:()=>nodes(tree),content:()=>text(tree),html:()=>renderToStaticMarkup(tree),calls,changed:()=>changed,send:async()=>{const form=nodes(tree).find(node=>node.type==='form');assert.ok(form,'상신 form');form.props.onSubmit({preventDefault(){}});await settle();},week:async next=>{props.week=next;dirty=true;await settle();},actor:async next=>{currentActor=next;dirty=true;render();await settle();},poll:async()=>{timers.filter(timer=>timer.active).forEach(timer=>timer.fn());await settle();},close:()=>effects.forEach(effect=>effect?.cleanup?.())};
 }
 const results=[];async function check(name,fn){try{await fn();results.push({name,status:'PASS'});console.log('PASS',name);}catch(error){results.push({name,status:'FAIL',reason:error.stack});console.error('FAIL',name,error.message);}}
 await check('서버 허용 수신자·부서 그룹 그대로 표시, 팀과 복수 수신 선택 실제 상신 payload',async()=>{
@@ -66,6 +67,11 @@ await check('주 변경 뒤 늦은 상신 응답은 새 주의 성공 메시지�
 });
 await check('조회 오류는 기존 상신본을 보존하고 다음 재조회 복구 시 오류 제거',async()=>{
  let fail=false;const screen=mount({transport:async()=>{if(fail)throw Error('합성 결재 조회 실패');return response();}});await screen.settle();fail=true;await screen.poll();assert.match(screen.content(),/합성 결재 조회 실패/);assert.equal(screen.all().filter(node=>node.props['data-weekly-submission']).length,1);fail=false;await screen.poll();assert.ok(!screen.content().includes('합성 결재 조회 실패'));screen.close();
+});
+await check('기존 서명 상신본 SSR HTML: 직급순 복사 정렬, 동직급·미지정 상대순서와 본문 불변',async()=>{
+ const data=response(),stored=data.submissions[0],base=stored.teams[0].employees[0],positions=[['pro','프로'],['unknown-a','부팀장'],['chief-z','실장'],['director','본부장'],['principal-z','수석'],['leader','팀장'],['chief-a','실장'],['principal-a','수석'],['responsible','책임'],['unknown-b','사원'],['blank',''],['missing',undefined]];
+ stored.teams=[{department:'마감팀',employees:positions.map(([id,position])=>({...base,id,name:id,position}))}];const before=JSON.stringify(data);Object.freeze(stored.teams[0].employees);
+ const screen=mount({actor:execB,transport:async()=>data});await screen.settle();assert.deepEqual([...screen.html().matchAll(/data-weekly-snapshot-employee="([^"]+)"/g)].map(match=>match[1]),['director','chief-z','chief-a','leader','principal-z','principal-a','responsible','pro','unknown-a','unknown-b','blank','missing']);assert.equal(JSON.stringify(data),before);assert.ok(screen.calls.every(call=>call.method==='GET'));screen.close();
 });
 await check('주말 추가 상신 알림 진입은 금요일 원본과 분리 강조·펼침, 원주간/주말 날짜·승인 출근과 메모 보존',async()=>{
  const friday=submission(),weekend=structuredClone(friday);weekend.id='weekly-weekend:2026-10-12';weekend.source='SCHEDULED';weekend.reportKind='WEEKEND_ADDITIONAL';weekend.originWeekStart='2026-10-12';weekend.periodStart='2026-10-17';weekend.periodEnd='2026-10-18';const owner=weekend.teams[0].employees[0];owner.weekendDays=1;owner.weekendHours=8;owner.days=[{date:'2026-10-17',future:false,logStatus:'NONE',reportSource:'',notes:'주말 메모만 있는 원문',items:[],overtime:[],weekendWork:[{...overtime,startTime:'09:00',endTime:'17:00',hours:8,reason:'주말 사유'},{...overtime,status:'PENDING'}]}];

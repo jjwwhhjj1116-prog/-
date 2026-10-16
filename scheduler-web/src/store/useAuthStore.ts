@@ -50,6 +50,7 @@ interface AuthState {
   adminAddUser: (user: Omit<ConcostUser, 'id'>) => Promise<boolean>;
   adminUpdateUser: (userId: string, update: Partial<ConcostUser>) => Promise<boolean>;
   adminDeleteUser: (userId: string) => Promise<boolean>;
+  adminReactivateUser: (userId: string) => Promise<boolean>;
   // 구글 드라이브 설정
   updateGoogleDriveConfig: (config: Partial<GoogleDriveConfig>) => void;
   testGoogleDriveConnection: () => Promise<boolean>;
@@ -185,6 +186,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   adminAddUser: async ({password,...record})=>manageUser('create',{record,password},set),
   adminUpdateUser: async (id,record)=>manageUser('update',{id,record},set),
   adminDeleteUser: async (id)=>manageUser('deactivate',{id},set),
+  adminReactivateUser: async (id)=>manageUser('activate',{id},set),
 
   // 구글 드라이브 설정 갱신
   updateGoogleDriveConfig: (config) => {
