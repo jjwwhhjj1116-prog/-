@@ -135,7 +135,7 @@ export interface ScheduleExtension {
   department?: Department;
   allocationId?: string;
   id:string; taskId:string; userId:string; userName:string; roleName:string;
-  type?:'DEADLINE'|'OVERTIME'; workDate?:string; startTime?:string; endTime?:string; hours?:number; reasonCategory?:string; approverId?:string;
+  type?:'DEADLINE'|'OVERTIME'|'WEEKEND'; workDate?:string; startTime?:string; endTime?:string; hours?:number; reasonCategory?:string; approverId?:string;
   previousEnd:string; requestedEnd:string; reason:string; createdAt:string;
   approvalStage?:'PM'|'TEAM'; pmApproverId?:string;
   pmReview?:{userId:string;name:string;approvedAt:string;memo:string};

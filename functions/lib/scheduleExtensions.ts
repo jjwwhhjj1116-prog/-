@@ -1,5 +1,5 @@
 import {projectProgress} from '../../scheduler-web/src/utils/scheduleProgress.ts';
-import {assignedTasks,validDay,assignmentAliases,assignmentPersonId,memberIds,nextDay} from '../../scheduler-web/src/utils/personalWork.ts';
+import {assignedTasks,validDay,assignmentAliases,assignmentPersonId,memberIds,nextDay,isWeekendDay} from '../../scheduler-web/src/utils/personalWork.ts';
 import {withAllocationBounds} from '../../scheduler-web/src/utils/scheduleAllocations.ts';
 import {scheduleExtensionDepartment} from '../../scheduler-web/src/utils/postDeliveryVisibility.ts';
 
@@ -29,13 +29,16 @@ export async function scheduleExtensionRoute(request:Request,env:any,user:any,ro
   if(!task)return fail('본인에게 배정된 업무만 연장을 요청할 수 있습니다.',403);
   if(input.previousEnd!==task.endDate)return fail('마감일이 변경되었습니다. 최신 일정을 확인하세요.',409);
   const type=input.type||'DEADLINE';
-  if(!['DEADLINE','OVERTIME'].includes(type)||typeof input.reason!=='string'||!input.reason.trim()||input.reason.length>1000||input.reasonCategory!==undefined&&(typeof input.reasonCategory!=='string'||input.reasonCategory.length>100))return fail('연장 유형과 사유를 확인하세요.');
+  if(!['DEADLINE','OVERTIME','WEEKEND'].includes(type)||typeof input.reason!=='string'||!input.reason.trim()||input.reason.length>1000||input.reasonCategory!==undefined&&(typeof input.reasonCategory!=='string'||input.reasonCategory.length>100))return fail('연장 유형과 사유를 확인하세요.');
   if(type==='DEADLINE'&&(!validDay(input.requestedEnd)||input.requestedEnd<=task.endDate))return fail('현재 마감일 이후의 요청 완료일을 입력하세요.');
   const minutes=(value:unknown)=>typeof value==='string'&&/^([01]\d|2[0-3]):[0-5]\d$/.test(value)?Number(value.slice(0,2))*60+Number(value.slice(3)):NaN;
   const duration=minutes(input.endTime)-minutes(input.startTime);
-  if(type==='OVERTIME'&&(!validDay(input.workDate)||input.workDate<task.startDate||!Number.isFinite(duration)||duration<=0))return fail('배정 시작일 이후의 근무일과 당일 시작·종료 시간을 확인하세요.');
-  if(requests.some((r:any)=>r.taskId===task.id&&r.userId===user.id&&r.status==='PENDING'&&(r.type||'DEADLINE')===type))return fail('이 업무의 승인 대기 요청이 이미 있습니다.',409);
-  if(type==='DEADLINE'&&requests.some((r:any)=>r.taskId===task.id&&r.userId===user.id&&r.status==='APPROVED'&&r.type!=='OVERTIME'&&r.appliedTaskId&&r.appliedTaskId!==task.id&&userTasks.some(t=>t.id===r.appliedTaskId)))return fail('이미 승인된 개인 연장 구간이 있습니다. 최신 연장 구간의 업무를 선택해 이어서 신청하세요.',409);
+  if(type!=='DEADLINE'&&(!validDay(input.workDate)||input.workDate<task.startDate||!Number.isFinite(duration)||duration<=0))return fail('배정 시작일 이후의 근무일과 당일 시작·종료 시간을 확인하세요.');
+  if(type==='WEEKEND'&&!isWeekendDay(input.workDate))return fail('주말 출근은 토요일 또는 일요일에 신청하세요.');
+  if(type==='WEEKEND'&&input.approverId===undefined&&!managers.length)return fail('주말 출근을 보고할 활성 팀장 또는 실장 계정이 필요합니다.',409);
+  if(type==='WEEKEND'&&requests.some((r:any)=>r.type==='WEEKEND'&&r.status==='APPROVED'&&r.taskId===task.id&&r.userId===user.id&&r.workDate===input.workDate&&minutes(input.startTime)<minutes(r.endTime)&&minutes(input.endTime)>minutes(r.startTime)))return fail('이미 승인된 주말 출근 시간과 겹칩니다. 승인 내역을 확인하세요.',409);
+  if(requests.some((r:any)=>r.taskId===task.id&&r.userId===user.id&&r.status==='PENDING'&&(r.type||'DEADLINE')===type&&(type!=='WEEKEND'||r.workDate===input.workDate)))return fail('이 업무의 승인 대기 요청이 이미 있습니다.',409);
+  if(type==='DEADLINE'&&requests.some((r:any)=>r.taskId===task.id&&r.userId===user.id&&r.status==='APPROVED'&&(r.type||'DEADLINE')==='DEADLINE'&&r.appliedTaskId&&r.appliedTaskId!==task.id&&userTasks.some(t=>t.id===r.appliedTaskId)))return fail('이미 승인된 개인 연장 구간이 있습니다. 최신 연장 구간의 업무를 선택해 이어서 신청하세요.',409);
   if(type==='DEADLINE'){
    if(!pmId)return fail('현재 프로젝트 PM이 없거나 확인되지 않습니다. PM 배정을 먼저 확인하세요.',409);
    if(!managers.length)return fail('해당 팀의 활성 팀장 또는 실장 계정이 필요합니다.',409);
@@ -47,7 +50,7 @@ export async function scheduleExtensionRoute(request:Request,env:any,user:any,ro
    if(!approver||!(approver.id===pmId||manager(approver)))return fail('현재 프로젝트 PM 또는 해당 팀 결재 담당자를 선택하세요.',403);
    recipients=[approver.id];
   }
-  changed={id:crypto.randomUUID(),taskId:task.id,department,...(task.allocationId?{allocationId:task.allocationId}:{}),userId:user.id,userName:user.name,roleName:task.roleName,previousEnd:task.endDate,requestedEnd:type==='DEADLINE'?input.requestedEnd:task.endDate,type,...(type==='OVERTIME'?{workDate:input.workDate,startTime:input.startTime,endTime:input.endTime,hours:duration/60}:{}),...(type==='DEADLINE'?{approvalStage:'PM',pmApproverId:pmId,approverId:pmId}:input.approverId?{approverId:input.approverId}:{}),reasonCategory:input.reasonCategory||'',reason:input.reason.trim(),createdAt:now,status:'PENDING'};
+  changed={id:crypto.randomUUID(),taskId:task.id,department,...(task.allocationId?{allocationId:task.allocationId}:{}),userId:user.id,userName:user.name,roleName:task.roleName,previousEnd:task.endDate,requestedEnd:type==='DEADLINE'?input.requestedEnd:task.endDate,type,...(type!=='DEADLINE'?{workDate:input.workDate,startTime:input.startTime,endTime:input.endTime,hours:duration/60}:{}),...(type==='DEADLINE'?{approvalStage:'PM',pmApproverId:pmId,approverId:pmId}:input.approverId?{approverId:input.approverId}:{}),reasonCategory:input.reasonCategory||'',reason:input.reason.trim(),createdAt:now,status:'PENDING'};
   project.scheduleExtensions=[...requests,changed];
   if(!recipients.length)recipients=managers.map((person:any)=>person.id);
  }else{
@@ -67,17 +70,18 @@ export async function scheduleExtensionRoute(request:Request,env:any,user:any,ro
   if(match[3]==='approve'){
    const task=assignedTasks(pending.userId,[project],aliasesFor(pending.userId)).find(t=>t.id===pending.taskId);
    let expectedEnd=pending.previousEnd;
-   if(pending.type==='OVERTIME'&&task&&task.endDate!==expectedEnd){
+   if(['OVERTIME','WEEKEND'].includes(pending.type)&&task&&task.endDate!==expectedEnd){
     // An approved deadline extension must explain the end change on this same assignment.
     const extensions=requests.filter((r:any)=>r.status==='APPROVED'&&(r.type||'DEADLINE')==='DEADLINE'&&r.userId===pending.userId&&r.taskId===pending.taskId&&(r.appliedTaskId??r.taskId)===pending.taskId&&typeof r.decidedAt==='string'&&typeof pending.createdAt==='string'&&r.decidedAt>=pending.createdAt&&validDay(r.previousEnd)&&validDay(r.requestedEnd)&&r.requestedEnd>r.previousEnd).sort((a:any,b:any)=>a.requestedEnd.localeCompare(b.requestedEnd));
     for(const extension of extensions)if(extension.previousEnd===expectedEnd)expectedEnd=extension.requestedEnd;
    }
    if(!task||task.endDate!==expectedEnd||pending.allocationId!==undefined&&pending.allocationId!==task.allocationId)return fail('배정 또는 마감일이 변경되어 승인할 수 없습니다. 요청을 반려하고 다시 신청하세요.',409);
-   if(pending.type==='OVERTIME'&&pending.workDate<task.startDate)return fail('배정 시작일이 변경되어 승인할 수 없습니다. 요청을 반려하고 다시 신청하세요.',409);
+   if(['OVERTIME','WEEKEND'].includes(pending.type)&&pending.workDate<task.startDate)return fail('배정 시작일이 변경되어 승인할 수 없습니다. 요청을 반려하고 다시 신청하세요.',409);
+   if(pending.type==='WEEKEND'&&(!isWeekendDay(pending.workDate)||!Number.isFinite(pending.hours)||pending.hours<=0))return fail('주말 출근 날짜와 시간을 확인한 뒤 다시 신청하세요.',409);
    if(staged&&!pmValid)return fail('PM 배정이 변경되어 승인할 수 없습니다. 요청을 반려하고 다시 신청하세요.',409);
    if(staged&&pending.approvalStage==='TEAM'&&!pending.pmReview?.approvedAt)return fail('PM 검토를 먼저 완료하세요.',409);
    if(staged&&pending.approvalStage==='PM'&&!managers.length)return fail('해당 팀의 활성 팀장 또는 실장 계정이 필요합니다.',409);
-   if(pending.type!=='OVERTIME'&&(!staged||pending.approvalStage==='TEAM')){
+   if((pending.type||'DEADLINE')==='DEADLINE'&&(!staged||pending.approvalStage==='TEAM')){
     const follow=(project.postDeliveryTasks||[]).find((t:any)=>`gen-${project.id}-followup-${t.id}`===task.id);
     if(follow){
      if(memberIds(follow).some(reference=>!aliasesFor(pending.userId).includes(reference))){
@@ -121,8 +125,8 @@ export async function scheduleExtensionRoute(request:Request,env:any,user:any,ro
   recipients=pmApproval?managers.map((person:any)=>person.id):[pending.userId,...(staged?chiefs.map((person:any)=>person.id):[])];
   if(staged&&match[3]==='approve')guards.push(db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1)').bind(pmId));
  }
- const detail=changed.type==='OVERTIME'?`${changed.workDate} ${changed.startTime} ~ ${changed.endTime}, ${changed.hours}시간`:`${changed.previousEnd} → ${changed.requestedEnd}`;
- const message=changed.status==='PENDING'?(changed.approvalStage==='TEAM'?`${project.code} ${changed.roleName} 일정 연장 PM 검토 완료 · 팀장 또는 실장 최종 승인 필요 (${detail})`:`${user.name} · ${project.code} ${changed.roleName} ${changed.type==='OVERTIME'?'추가 시간':'일정 연장'} 요청 (${detail})`):`${project.code} · ${project.name} · ${changed.roleName} ${changed.type==='OVERTIME'?'추가 시간':'일정 연장'} ${changed.status==='APPROVED'?'승인':'반려'} (${detail}) · ${user.name}`;
+ const detail=changed.type==='OVERTIME'||changed.type==='WEEKEND'?`${changed.workDate} ${changed.startTime} ~ ${changed.endTime}, ${changed.hours}시간`:`${changed.previousEnd} → ${changed.requestedEnd}`;
+ const message=changed.status==='PENDING'?(changed.approvalStage==='TEAM'?`${project.code} ${changed.roleName} 일정 연장 PM 검토 완료 · 팀장 또는 실장 최종 승인 필요 (${detail})`:`${user.name} · ${project.code} ${changed.roleName} ${changed.type==='WEEKEND'?'주말 출근':changed.type==='OVERTIME'?'추가 시간':'일정 연장'} 요청 (${detail})`):`${project.code} · ${project.name} · ${changed.roleName} ${changed.type==='WEEKEND'?'주말 출근':changed.type==='OVERTIME'?'추가 시간':'일정 연장'} ${changed.status==='APPROVED'?'승인':'반려'} (${detail}) · ${user.name}`;
  try{await db.batch([
   db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_projects WHERE id=? AND revision=?)').bind(id,row.revision),
   ...guards,

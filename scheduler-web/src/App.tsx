@@ -99,6 +99,7 @@ export default function App() {
   // 기본 활성 메뉴: 프로젝트 일정표
   const [activeMenu, setActiveMenu] = useState<NavCategory>('프로젝트 일정표');
   const [weeklyReportWeek,setWeeklyReportWeek]=useState<string|undefined>();
+  const [weeklyReportKind,setWeeklyReportKind]=useState<'WEEKEND_ADDITIONAL'|undefined>();
   const [supplementContext,setSupplementContext]=useState<{department?:Department;projectId?:string;taskId?:string}|null>(null);
   const openSupplement=(department?:Department,projectId?:string,taskId?:string)=>setSupplementContext({department,projectId,taskId});
   const openSupplementReport=(projectId:string,taskId:string)=>{
@@ -106,7 +107,7 @@ export default function App() {
     openSupplement(task?.department||project?.department,projectId,taskId);
   };
   useEffect(()=>setSupplementContext(null),[actorId]);
-  const openWeeklyReport=(week:string)=>{setWeeklyReportWeek(week);setActiveMenu('주간 업무·야근 보고');};
+  const openWeeklyReport=(week:string,reportKind?:'WEEKEND_ADDITIONAL')=>{setWeeklyReportWeek(week);setWeeklyReportKind(reportKind);setActiveMenu('주간 업무·야근 보고');};
   const [minutesMenuOpen,setMinutesMenuOpen]=useState(true);
   const [todoMenuOpen,setTodoMenuOpen]=useState(true);
   useEffect(()=>{
@@ -718,7 +719,7 @@ export default function App() {
                 </span>
               </button>
 
-              <button type="button" aria-current={activeMenu==='주간 업무·야근 보고'?'page':undefined} onClick={()=>{setWeeklyReportWeek(undefined);setActiveMenu('주간 업무·야근 보고');}} className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${activeMenu==='주간 업무·야근 보고'?'bg-[#00338d] text-white shadow-sm':'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50'}`}><ClipboardCheck size={16}/><span>주간 업무·야근 보고</span></button>
+              <button type="button" aria-current={activeMenu==='주간 업무·야근 보고'?'page':undefined} onClick={()=>{setWeeklyReportWeek(undefined);setWeeklyReportKind(undefined);setActiveMenu('주간 업무·야근 보고');}} className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${activeMenu==='주간 업무·야근 보고'?'bg-[#00338d] text-white shadow-sm':'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50'}`}><ClipboardCheck size={16}/><span>주간 업무·야근 보고</span></button>
               <button
                 onClick={() => setActiveMenu('자료실(google드라이브)')}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
@@ -1091,7 +1092,7 @@ export default function App() {
 
           {/* CASE 5-2: 업무일지 (팀별 일정표 연계 및 3단 결재라인) */}
           {(activeMenu==='업무일지'||workLogActorId===actorId)&&<div key={actorId} hidden={activeMenu!=='업무일지'}><DailyWorkLogView visible={activeMenu==='업무일지'} /></div>}
-          {activeMenu==='주간 업무·야근 보고'&&<WeeklyWorkReports initialWeek={weeklyReportWeek}/>}
+          {activeMenu==='주간 업무·야근 보고'&&<WeeklyWorkReports initialWeek={weeklyReportWeek} initialReportKind={weeklyReportKind}/>}
           {(activeMenu==='할 일'||activeMenu==='내 휴가 일정')&&<PersonalWorkView leaveMode={activeMenu==='내 휴가 일정'} onWorklog={(date,taskId)=>{usePersonalStore.setState({openDate:date,openTaskId:taskId||null});setActiveMenu('업무일지');}}/>}
 
           {/* CASE 6: 자료실 (Google 드라이브) */}

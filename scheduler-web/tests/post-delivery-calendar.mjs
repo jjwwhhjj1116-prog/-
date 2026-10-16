@@ -50,6 +50,24 @@ try{
  await check('등록 버튼은 팀·개인 모드마다 우측 오렌지 버튼 하나이며 지정 handler로 연결',()=>{reset('구조팀');let opened=0;const {tree,html,teamHtml}=personalCalendar('구조팀',()=>opened++);for(const markup of [teamHtml,html]){assert.equal((markup.match(/프로젝트 보완 일정 등록<\/button>/g)||[]).length,1);const button=markup.match(/<button[^>]*data-post-delivery-register[^>]*>/)?.[0];assert.ok(button);assert.ok(button.includes('ml-auto'));assert.ok(button.includes('bg-orange-700'));}assert.ok(teamHtml.indexOf('data-post-delivery-register')>teamHtml.indexOf('title="다음 달"'));nodes(tree).find(node=>node.type==='button'&&String(node.props.children).includes('프로젝트 보완 일정 등록')).props.onClick();assert.equal(opened,1);});
  await check('세 팀 통합·개인 캘린더의 보완 바는 상태·공종과 관계없이 오렌지 고정',()=>{for(const [index,id] of ['legacy','structure','civil'].entries()){reset(departments[index]);const team=renderToStaticMarkup(createElement(ProjectCalendar,{date})),person=personalCalendar(departments[index]).html;for(const html of [team,person]){const bar=html.match(new RegExp(`<[^>]*data-post-delivery-id="${id}"[^>]*>`))?.[0];assert.ok(bar);assert.ok(bar.includes('bg-orange-700'));assert.ok(!bar.includes('bg-violet-700'));}}});
  await check('기존 관리자 편집은 legacy만 유지하고 본인 보고 항목은 전용화면 안내',()=>{reset('마감팀');state(auth,{currentUser:{...users[0],id:'u_12',position:'실장'}});const html=renderToStaticMarkup(createElement(PostDeliverySchedule,{project:original}));assert.equal((html.match(/>편집<\/button>/g)||[]).length,1);assert.ok(html.includes('본인 등록 · 팀장·실장 자동 보고'));assert.ok(!html.includes('합성 보완 cancelled'));});
+ await check('승인 주말 출근은 세 팀 개인 달력에 별도 표시하고 야근·보완·휴가와 함께 보존',()=>{
+  for(const [index,department] of departments.entries()){
+   reset(department);const enriched=structuredClone(source),host=enriched[0],owner=users[index],taskId=`gen-${host.id}-followup-${['legacy','structure','civil'][index]}`;
+   const weekend={id:'weekend-'+index,taskId,department,userId:owner.id,userName:owner.name,roleName:'납품 후 수정',type:'WEEKEND',status:'APPROVED',workDate:'2026-11-07',startTime:'09:00',endTime:'17:00',hours:8};
+   host.scheduleExtensions=[weekend,{...weekend,id:'pending',workDate:'2026-11-08',status:'PENDING'},{...weekend,id:'rejected',workDate:'2026-11-14',status:'REJECTED'},{...weekend,id:'invalid-weekday',workDate:'2026-11-06'},{...weekend,id:'overtime',type:'OVERTIME',startTime:'17:00',endTime:'18:00',hours:1}];
+   state(projectStore,{projects:enriched});state(personal,{leaves:[{id:'weekend-leave',user_id:owner.id,start_date:'2026-11-07',end_date:'2026-11-07',kind:'오전 반차',revision:1}]});
+   const {tree,html}=personalCalendar(department),row=nodes(tree).find(node=>node.props['data-schedule-unit']===owner.id),days=nodes(row).filter(node=>node.props['data-weekend-work-day']);
+   assert.deepEqual(days.map(node=>node.props['data-weekend-work-day']),['2026-11-07']);assert.match(days[0].props.title,/09:00~17:00/);assert.match(days[0].props.title,/8시간/);assert.ok(html.includes('주말 출근 1일'));assert.ok(html.includes('data-overtime-day="2026-11-07"'));assert.ok(html.includes('data-leave-day="2026-11-07"'));
+   assert.ok(html.includes(`data-post-delivery-id="${['legacy','structure','civil'][index]}"`));assert.equal(host.endDate,original.endDate);assert.equal(host.progress,100);
+  }
+ });
+ await check('납품 후 다른 달의 승인 주말 출근만 있어도 통합 프로젝트 달력에서 자기 팀 날짜 표시',()=>{
+  reset('구조팀');const enriched=structuredClone(source),host=enriched[0],owner=users[1];
+  const request={id:'weekend-later',taskId:`gen-${host.id}-followup-structure`,department:'구조팀',userId:owner.id,userName:owner.name,roleName:'납품 후 수정',type:'WEEKEND',status:'APPROVED',workDate:'2026-12-05',startTime:'09:00',endTime:'17:00',hours:8};
+  host.scheduleExtensions=[request,{...request,id:'weekend-pending',workDate:'2026-12-06',status:'PENDING'},{...request,id:'weekend-weekday',workDate:'2026-12-04'}];state(projectStore,{projects:enriched});
+  const html=renderToStaticMarkup(createElement(ProjectCalendar,{date:new Date(2026,11,1)}));assert.ok(html.includes('data-project-weekend-day="2026-12-05"'));assert.ok(html.includes('data-weekend-department="구조팀"'));assert.ok(!html.includes('data-project-weekend-day="2026-12-06"'));assert.ok(!html.includes('data-project-weekend-day="2026-12-04"'));assert.ok(html.includes('09:00~17:00'));assert.ok(!html.includes('data-main-project-id="qa-finished"'));
+  state(projectStore,{filterDepartment:'토목&조경팀'});assert.ok(!renderToStaticMarkup(createElement(ProjectCalendar,{date:new Date(2026,11,1)})).includes('data-project-weekend-day="2026-12-05"'));assert.equal(JSON.stringify(source),saved);
+ });
  assert.equal(requests,0);assert.equal(JSON.stringify(source),saved);
 }finally{globalThis.fetch=originalFetch;await server.close();}
 const report={kind:'POST_DELIVERY_CALENDAR_ACTUAL_COMPONENT_SYNTHETIC',requests,productWrites:0,results};

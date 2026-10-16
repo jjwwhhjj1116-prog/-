@@ -15,12 +15,15 @@ import {
 } from 'date-fns';
 import { ko, vi } from 'date-fns/locale';
 import { CalendarPlus, ChevronLeft, ChevronRight, Printer, Info } from 'lucide-react';
-import { useProjectStore, type Department, type PostDeliveryTask } from '../store/useProjectStore';
-import {postDeliveryDepartment,visiblePostDeliveryTasks} from '../utils/postDeliveryVisibility';
+import { useProjectStore, type Department, type PostDeliveryTask, type Project, type ScheduleExtension } from '../store/useProjectStore';
+import {postDeliveryDepartment,visiblePostDeliveryTasks,scheduleExtensionDepartment} from '../utils/postDeliveryVisibility';
+import {isWeekendDay} from '../utils/personalWork';
 import { exportProjectsToExcel, importProjectsFromExcel } from '../services/excelService';
 
 import { HOLIDAYS } from '../constants/holidays';
 import { projectHasNoPM, projectPMId, type PendingIntakeProject } from '../utils/pendingAssignment';
+
+const weekendRequests=(project:Project,department:Department|'ALL')=>(project.scheduleExtensions||[]).filter(request=>request.type==='WEEKEND'&&request.status==='APPROVED'&&isWeekendDay(request.workDate||'')&&(department==='ALL'||scheduleExtensionDepartment(project,request)===department));
 
 interface ProjectCalendarProps {
   date?: Date;
@@ -100,7 +103,7 @@ export default function ProjectCalendar({
   // 1차: 부서(팀) 필터링
   const deptProjects = filterDepartment === 'ALL'
     ? projects
-    : projects.filter(p => p.department === filterDepartment || visiblePostDeliveryTasks(p,filterDepartment).length);
+    : projects.filter(p => p.department === filterDepartment || visiblePostDeliveryTasks(p,filterDepartment).length || weekendRequests(p,filterDepartment).length);
 
   // 2차: 현재 조회 월(예: 9월)에 실제로 진행 중인 프로젝트만 필터링 (사용자 요구: 9월 실제 진행 15개 정합성 확보)
   const filteredProjects = useMemo(() => {
@@ -115,10 +118,11 @@ export default function ProjectCalendar({
       const hasMainOverlap = includesMain&&Boolean(range.start&&range.end) && !(range.end < monthStartStr || range.start > monthEndStr);
       if(includesMain&&(!project.startDate||!project.endDate))return true;
       const hasFollowUp=visiblePostDeliveryTasks(project,filterDepartment).some(task=>task.startDate<=monthEndStr&&task.endDate>=monthStartStr);
-      if (!hasMainOverlap&&!hasFollowUp) return false;
+      const hasWeekend=weekendRequests(project,filterDepartment).some(request=>request.workDate!>=monthStartStr&&request.workDate!<=monthEndStr);
+      if (!hasMainOverlap&&!hasFollowUp&&!hasWeekend) return false;
 
       // 2) 이미 납품 완료된 프로젝트(100% 완료)는 9월 진행 중 목록에서 제외
-      if (!hasFollowUp&&(project.status === '납품' || project.progress >= 100)) return false;
+      if (!hasFollowUp&&!hasWeekend&&(project.status === '납품' || project.progress >= 100)) return false;
 
       // 3) 당월 초순(9월 5일 이전)에 이미 종결된 구 프로젝트 제외
 
@@ -151,6 +155,7 @@ export default function ProjectCalendar({
         actual?: number;
         status: string;
         postDeliveryTasks: PostDeliveryTask[];
+        weekendWork: ScheduleExtension[];
         postOnly: boolean;
       }[];
     }> = {};
@@ -175,7 +180,8 @@ export default function ProjectCalendar({
       const pmPerson = personnel.find((pe) => pe.id === pmId);
       const includesMain=filterDepartment==='ALL'||p.department===filterDepartment;
       const followUps=visiblePostDeliveryTasks(p,filterDepartment).filter(task=>task.startDate<=monthEndStr&&task.endDate>=monthStartStr);
-      const departments=[...new Set([...(includesMain?[p.department]:[]),...followUps.map(task=>postDeliveryDepartment(p,task))])];
+      const weekends=weekendRequests(p,filterDepartment).filter(request=>request.workDate!>=monthStartStr&&request.workDate!<=monthEndStr);
+      const departments=[...new Set([...(includesMain?[p.department]:[]),...followUps.map(task=>postDeliveryDepartment(p,task)),...weekends.map(request=>scheduleExtensionDepartment(p,request))])];
       for(const department of departments){
       const postOnly=department!==p.department;
       if(!groupMap[code].departments.includes(department))groupMap[code].departments.push(department);
@@ -192,6 +198,7 @@ export default function ProjectCalendar({
         actual:postOnly?undefined:projectProgress(p).actual,
         status: p.status,
         postDeliveryTasks:followUps.filter(task=>postDeliveryDepartment(p,task)===department),
+        weekendWork:weekends.filter(request=>scheduleExtensionDepartment(p,request)===department),
         postOnly,
       });
       }
@@ -535,8 +542,9 @@ export default function ProjectCalendar({
             {groupedProjects.map((group) => {
               const laneCount = group.lanes.length;
               const isMultiLane = laneCount > 1;
-              const laneOffsets=group.lanes.map((_,index)=>group.lanes.slice(0,index).reduce((height,lane)=>height+Math.max(32,32+lane.postDeliveryTasks.length*22),0));
-              const rowMinHeight=Math.max(50,14+group.lanes.reduce((height,lane)=>height+Math.max(32,32+lane.postDeliveryTasks.length*22),0));
+              const laneHeight=(lane:typeof group.lanes[number])=>32+lane.postDeliveryTasks.length*22+(lane.weekendWork.length?32:0);
+              const laneOffsets=group.lanes.map((_,index)=>group.lanes.slice(0,index).reduce((height,lane)=>height+laneHeight(lane),0));
+              const rowMinHeight=Math.max(50,14+group.lanes.reduce((height,lane)=>height+laneHeight(lane),0));
               const rowBgClass = 'bg-white dark:bg-slate-900';
 
               const handleRowClick = () => {
@@ -719,7 +727,7 @@ export default function ProjectCalendar({
                       if (!barStyle) return lane.unassigned ? <button key={lane.projectId} type="button" onClick={handleRowClick} style={{top:`${laneOffsets[laneIdx]+8}px`}} className="absolute left-3 z-20 text-xs font-bold text-amber-900 dark:text-amber-200 underline underline-offset-2">{lane.department} · {lang==='vi'?'Chưa phân công PM · cần lập lịch':'PM 미배정 · 일정 배정 필요'}</button> : null;
 
                       // 동적 레인 수직 위치 계산: 1개면 11px 중앙, 다중 레인이면 각 32px 간격으로 1단(8px), 2단(40px), 3단(72px) 완벽 분리
-                      const topPos = laneOffsets[laneIdx]+(isMultiLane||lane.postDeliveryTasks.length?8:11);
+                      const topPos = laneOffsets[laneIdx]+(isMultiLane||lane.postDeliveryTasks.length||lane.weekendWork.length?8:11);
                       const laneGradient =
                         lane.department === '마감팀'
                           ? 'bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 border-blue-400'
@@ -760,6 +768,10 @@ export default function ProjectCalendar({
                     {group.lanes.flatMap((lane,laneIdx)=>lane.postDeliveryTasks.map((task,index)=>{
                       const barStyle=getLaneBarStyle(task.startDate,task.endDate);
                       return barStyle?<button key={`${lane.projectId}-${task.id}`} type="button" onClick={handleRowClick} data-post-delivery-id={task.id} data-post-delivery-department={lane.department} style={{...barStyle,top:`${laneOffsets[laneIdx]+35+index*22}px`,height:19}} title={`${group.name}\n${lane.department} · 보완 · 자동 보고 · ${task.kind}\n${task.startDate} ~ ${task.endDate}\n${task.memo}`} className="absolute z-20 overflow-hidden rounded border border-orange-300 bg-orange-700 text-white text-[10px] font-bold text-left px-1.5 truncate">{lane.department.slice(0,2)} · 보완: {task.memo}</button>:null;
+                    }))}
+                    {group.lanes.flatMap((lane,laneIdx)=>[...new Set(lane.weekendWork.map(request=>request.workDate!))].map(day=>{
+                      const barStyle=getLaneBarStyle(day,day),requests=lane.weekendWork.filter(request=>request.workDate===day);
+                      return barStyle?<span key={`${lane.projectId}-${lane.department}-${day}`} data-project-weekend-day={day} data-weekend-department={lane.department} title={`${group.name}\n${lane.department} · 주말 출근 승인 · ${day}\n${requests.map(request=>`${request.userName} · ${request.roleName} · ${request.startTime}~${request.endTime} (${Number(request.hours?.toFixed(2))}시간)`).join('\n')}`} style={{...barStyle,top:laneOffsets[laneIdx]+35+lane.postDeliveryTasks.length*22,height:26}} className="absolute z-20 rounded bg-teal-700 py-0.5 text-center text-[9px] leading-[11px] font-bold text-white">주말<br/>출근</span>:null;
                     }))}
                   </div>
                 </div>

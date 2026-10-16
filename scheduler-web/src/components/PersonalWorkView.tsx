@@ -33,12 +33,12 @@ export function PersonalWorkView({leaveMode=false,onWorklog}:{leaveMode?:boolean
    <div className="grid lg:grid-cols-2 gap-5">{[today,nextDay(today)].map((day,index)=>{
     const tasks=assignedItems(user.id,day,projects,assignmentAliases(user,users)),vacations=leavesFor(leaves,user.id,day),off=dayOff(day);
     return <article key={day} className={panel}><div className="flex justify-between gap-3 items-center"><h3 className="text-lg font-bold">{index===0?'오늘':'내일'} <span className="text-sm font-normal">{day}</span></h3><span className="text-sm">{tasks.length}건</span></div>
-    {off&&<p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{off} · 정규 배정 업무를 표시하지 않는 날입니다.</p>}
+    {off&&<p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{off} · 승인된 주말 출근 업무만 표시합니다.</p>}
     {vacations.length>0&&<p className="mt-3 rounded-lg bg-amber-100 text-amber-950 p-3 text-sm">{vacations.map(l=>l.kind).join(' · ')} 등록일{tasks.length>0?' · 배정 업무와 겹칩니다. 팀장·실장과 일정을 조정하세요.':''}</p>}
     <ul className="divide-y divide-slate-200 dark:divide-slate-700 mt-3">{tasks.map(t=>{const done=checks.some(c=>c.day===day&&c.task_id===t.id&&c.done===1);return <li key={t.id} className="py-4 flex gap-3"><input className="mt-1 w-5 h-5 accent-blue-700 shrink-0" type="checkbox" aria-label={`${day} ${t.projectCode} ${t.roleName} 완료`} checked={done} disabled={busy||!loaded} onChange={e=>void run(async()=>{await studioApi('task-checks','POST',{day,taskId:t.id,done:e.target.checked});})}/><div className="min-w-0"><div className="text-xs text-slate-600 dark:text-slate-300">{t.projectCode} · {t.roleName}</div><p data-no-translate className={'font-semibold break-words '+(done?'line-through opacity-60':'')}>{t.projectName}</p><p className="text-sm mt-1 whitespace-pre-wrap">{t.todayTask}</p><p className="text-xs mt-2 text-slate-600 dark:text-slate-300">{t.notes}</p><button type="button" className="mt-2 inline-flex items-center gap-1 rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800 focus-visible:outline-2 focus-visible:outline-blue-500" onClick={()=>onWorklog(day,t.id)}>이 업무의 업무일지 열기 <ArrowRight size={14}/></button></div></li>;})}</ul>
     {!tasks.length&&!off&&<p className="py-6 text-sm text-slate-600 dark:text-slate-300">배정된 업무가 없습니다. 새 배정은 자동으로 표시됩니다.</p>}
     <button className="mt-3 flex items-center gap-2 text-blue-700 dark:text-blue-300 font-semibold text-sm" onClick={()=>onWorklog(day)}>이 날짜 업무일지 열기 <ArrowRight size={16}/></button>
-   </article>;})}</div><p className="text-xs text-slate-600 dark:text-slate-300">완료 체크는 개인 확인용입니다. 공종 실제 진척률은 업무일지 결재를 통해 반영됩니다. 주말·등록 공휴일은 배정 목록에서 제외됩니다.</p>
+   </article>;})}</div><p className="text-xs text-slate-600 dark:text-slate-300">완료 체크는 개인 확인용입니다. 공종 실제 진척률은 업무일지 결재를 통해 반영됩니다. 주말은 승인된 출근 업무만 표시하며, 등록 공휴일의 정규 배정은 제외됩니다.</p>
   </>}
  </section>;
 }

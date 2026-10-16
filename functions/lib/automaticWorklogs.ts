@@ -1,20 +1,25 @@
-import {assignedItems,assignmentAliases,automaticWorkLogItems,dayOff,reconcileWorkLogItems} from '../../scheduler-web/src/utils/personalWork.ts';
+import {assignedItems,assignmentAliases,automaticWorkLogItems,dayOff,isWeekendDay,reconcileWorkLogItems} from '../../scheduler-web/src/utils/personalWork.ts';
 
 // The scheduler writes once per user/day and never approves an employee's report.
 export async function syncAutomaticWorklogs(env:any,{now=new Date(),onlyUserId,submit=true}:{now?:Date;onlyUserId?:string;submit?:boolean}={}){
  const local=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(now);
  const day=local.slice(0,10),hour=Number(local.slice(11,13)),db=env.DB;
  const result={day,created:0,updated:0,submitted:0,skipped:0,conflicts:0};
- if(dayOff(day)||hour<9)return result;
+ const weekend=isWeekendDay(day);
+ if(hour<9||dayOff(day)&&!weekend)return result;
+ // Empty weekend ticks do one project lookup, before loading users, leave records or work logs.
+ const projectRows=(await (weekend?db.prepare("SELECT id,body,revision FROM studio_projects WHERE id NOT IN (SELECT project_id FROM studio_project_archive) AND EXISTS(SELECT 1 FROM json_each(studio_projects.body,'$.scheduleExtensions') AS extension WHERE json_extract(extension.value,'$.type')='WEEKEND' AND json_extract(extension.value,'$.status')='APPROVED' AND json_extract(extension.value,'$.workDate')=? AND (? IS NULL OR json_extract(extension.value,'$.userId')=?))").bind(day,onlyUserId??null,onlyUserId??null):db.prepare('SELECT id,body,revision FROM studio_projects WHERE id NOT IN (SELECT project_id FROM studio_project_archive)')).all()).results;
+ if(weekend&&!projectRows.length)return result;
+ const schedules=projectRows.map((row:any)=>JSON.parse(row.body));
+ const weekendUsers:string[]=weekend?[...new Set<string>(schedules.flatMap((project:any)=>(project.scheduleExtensions||[]).filter((request:any)=>request.type==='WEEKEND'&&request.status==='APPROVED'&&request.workDate===day&&(!onlyUserId||request.userId===onlyUserId)).map((request:any)=>request.userId)))]:[];
+ if(weekend&&!weekendUsers.length)return result;
  const directory=(await db.prepare('SELECT id,name,department,position,profile,active FROM studio_users').all()).results;
  const profiles=directory.map((row:any)=>{let profile:any={};try{profile=JSON.parse(row.profile);}catch{}return {...profile,id:row.id,name:row.name,department:row.department,position:row.position,active:row.active===1};});
- const projectRows=(await db.prepare('SELECT id,body,revision FROM studio_projects WHERE id NOT IN (SELECT project_id FROM studio_project_archive)').all()).results;
- const schedules=projectRows.map((row:any)=>JSON.parse(row.body));
  const leaves=(await db.prepare('SELECT user_id,start_date,end_date,kind FROM studio_leaves WHERE cancelled=0 AND start_date<=? AND end_date>=?').bind(day,day).all()).results;
- const logRows=(await (onlyUserId?db.prepare('SELECT * FROM studio_worklogs WHERE day=? AND user_id=? AND removed=0').bind(day,onlyUserId):db.prepare('SELECT * FROM studio_worklogs WHERE day=? AND removed=0').bind(day)).all()).results;
+ const logRows=(await (onlyUserId?db.prepare('SELECT * FROM studio_worklogs WHERE day=? AND user_id=? AND removed=0').bind(day,onlyUserId):weekend?db.prepare(`SELECT * FROM studio_worklogs WHERE day=? AND removed=0 AND user_id IN (${weekendUsers.map(()=>'?').join(',')})`).bind(day,...weekendUsers):db.prepare('SELECT * FROM studio_worklogs WHERE day=? AND removed=0').bind(day)).all()).results;
  const byUser=new Map(logRows.map((row:any)=>[row.user_id,row]));
  const pending:{statements:any[];updated:boolean;submitted:boolean}[]=[];
- for(const user of profiles.filter((u:any)=>u.active&&(!onlyUserId||u.id===onlyUserId)&&['마감팀','구조팀','토목&조경팀'].includes(u.department))){
+ for(const user of profiles.filter((u:any)=>u.active&&(!onlyUserId||u.id===onlyUserId)&&(!weekend||weekendUsers.includes(u.id))&&['마감팀','구조팀','토목&조경팀'].includes(u.department))){
   if(leaves.some((l:any)=>l.user_id===user.id&&!l.kind.includes('반차'))){result.skipped++;continue;}
   const aliases=assignmentAliases(user,profiles),assigned=assignedItems(user.id,day,schedules,aliases);
   if(!assigned.length){result.skipped++;continue;}

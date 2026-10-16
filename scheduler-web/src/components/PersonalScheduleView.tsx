@@ -1,6 +1,6 @@
 import {usePersonalStore} from '../store/usePersonalStore';
 import {useLanguageStore} from '../store/useLanguageStore';
-import {assignedTasksForAliases,assignmentAliases,validDay} from '../utils/personalWork';
+import {assignedTasksForAliases,assignmentAliases,validDay,isWeekendDay} from '../utils/personalWork';
 import {scheduleExtensionDepartment} from '../utils/postDeliveryVisibility';
 import {scheduleExtensionPeriods} from '../utils/scheduleExtensionPeriods';
 import { compareStaff } from '../utils/staffOrder';
@@ -117,12 +117,16 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
       if(request.type!=='OVERTIME'||request.status!=='APPROVED')return false;
       return scheduleExtensionDepartment(project,request)===department;
     }).map(request=>({...request,projectCode:project.code}))),[projects,department]);
+  const deptWeekendWork = useMemo(() => projects.flatMap(project => (project.scheduleExtensions || [])
+    .filter(request => request.type==='WEEKEND'&&request.status==='APPROVED'&&isWeekendDay(request.workDate||'')&&scheduleExtensionDepartment(project,request)===department)
+    .map(request=>({...request,projectCode:project.code}))),[projects,department]);
   // 소속과 다른 팀의 PM/공종을 맡은 직원도 해당 배정팀에서 휴가를 확인할 수 있다.
   const monthAssignedUserIds = useMemo(() => new Set(users.filter(person =>
     assignedTasksForAliases(assignmentAliases(person, users), projects)
       .some(task => task.department === department && task.startDate <= monthEndStr && task.endDate >= monthStartStr)
       || deptOvertime.some(request => request.userId === person.id && typeof request.workDate === 'string' && validDay(request.workDate) && request.workDate >= monthStartStr && request.workDate <= monthEndStr)
-  ).map(person => person.id)), [users, projects, deptOvertime, department, monthStartStr, monthEndStr]);
+      || deptWeekendWork.some(request => request.userId === person.id && typeof request.workDate === 'string' && request.workDate >= monthStartStr && request.workDate <= monthEndStr)
+  ).map(person => person.id)), [users, projects, deptOvertime, deptWeekendWork, department, monthStartStr, monthEndStr]);
 
   // 해당 부서 한국 본사 인원과 당월 실제 배정 인원 (개인별)
   const koreaUsers = useMemo(() => {
@@ -583,8 +587,10 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                     && leave.start_date <= monthEndStr && leave.end_date >= monthStartStr);
                   const monthOvertime = deptOvertime.filter(request => leaveMemberIds.includes(request.userId)
                       && typeof request.workDate === 'string' && validDay(request.workDate) && request.workDate >= monthStartStr && request.workDate <= monthEndStr);
+                  const monthWeekendWork = deptWeekendWork.filter(request => leaveMemberIds.includes(request.userId)
+                      && typeof request.workDate === 'string' && request.workDate >= monthStartStr && request.workDate <= monthEndStr);
                   const leaveLabel = (leave: typeof monthLeaves[number]) => `${unit.vietTeamData ? `${users.find(person => person.id === leave.user_id)?.name || leave.name || leave.user_id} · ` : ''}${leave.kind}`;
-                  const rowHeight = Math.max(52+monthLeaves.length*14, (maxLane + 1) * 32 + 12)+monthLeaves.length*24+(monthOvertime.length?24:0);
+                  const rowHeight = Math.max(52+monthLeaves.length*14, (maxLane + 1) * 32 + 12)+monthLeaves.length*24+(monthOvertime.length?24:0)+(monthWeekendWork.length?32:0);
 
                   return (
                     <div
@@ -631,6 +637,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                               {unit.subTitle}
                               {monthLeaves.map(l=><span key={l.id} className="block text-amber-800 dark:text-amber-300 whitespace-normal">{l.start_date.slice(5)}~{l.end_date.slice(5)} {leaveLabel(l)}</span>)}
                               {monthOvertime.length > 0 && <span className="block text-indigo-800 whitespace-normal">야근 {new Set(monthOvertime.map(request => request.workDate)).size}일</span>}
+                              {monthWeekendWork.length > 0 && <span className="block text-teal-800 whitespace-normal">주말 출근 {new Set(monthWeekendWork.map(request => request.workDate)).size}일</span>}
                             </span>
                           </div>
                         </div>
@@ -691,6 +698,8 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                           const dayLeaveLabel = dayLeaves.length ? `${unit.name} ${dateStr} · ${dayLeaves.map(leaveLabel).join(' / ')} · 본인 등록` : undefined;
                           const dayOvertime = monthOvertime.filter(request => request.workDate === dateStr);
                           const dayOvertimeLabel = dayOvertime.length ? `${unit.name} ${dateStr} 야근 · ${dayOvertime.map(request => `${request.userName} · ${request.projectCode} ${request.roleName} · ${request.startTime}~${request.endTime} (${Number(request.hours?.toFixed(2))}시간)`).join(' / ')} · 승인됨` : undefined;
+                          const dayWeekendWork = monthWeekendWork.filter(request => request.workDate === dateStr);
+                          const dayWeekendWorkLabel = dayWeekendWork.length ? `${unit.name} ${dateStr} 주말 출근 · ${dayWeekendWork.map(request => `${request.userName} · ${request.projectCode} ${request.roleName} · ${request.startTime}~${request.endTime} (${Number(request.hours?.toFixed(2))}시간)`).join(' / ')} · 승인됨` : undefined;
 
                           return (
                             <div
@@ -698,7 +707,8 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                               data-calendar-person-day={dateStr}
                               data-leave-day={dayLeaves.length ? dateStr : undefined}
                               data-overtime-day={dayOvertime.length ? dateStr : undefined}
-                              title={[dayLeaveLabel,dayOvertimeLabel].filter(Boolean).join('\n') || undefined}
+                              data-weekend-work-day={dayWeekendWork.length ? dateStr : undefined}
+                              title={[dayLeaveLabel,dayOvertimeLabel,dayWeekendWorkLabel].filter(Boolean).join('\n') || undefined}
                               style={{ flex: 1, minWidth: 0, minHeight: rowHeight }}
                               className={`relative border-r border-slate-100 shrink-0 ${
                                 dayLeaves.length
@@ -710,8 +720,9 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
                                   : ''
                               }`}
                             >
-                              {dayLeaves.length > 0 && <span aria-label={dayLeaveLabel} className="absolute inset-x-0 text-center text-[10px] font-bold text-amber-900 dark:text-amber-200 pointer-events-none" style={{ bottom: monthLeaves.length * 24 + (monthOvertime.length?28:4) }}>휴</span>}
-                              {dayOvertime.length > 0 && <span aria-label={dayOvertimeLabel} className="absolute inset-x-0 mx-0.5 rounded bg-indigo-700 px-0.5 text-center text-[10px] font-bold text-white pointer-events-none" style={{ bottom: monthLeaves.length * 24 + 4 }}>야근</span>}
+                              {dayLeaves.length > 0 && <span aria-label={dayLeaveLabel} className="absolute inset-x-0 text-center text-[10px] font-bold text-amber-900 dark:text-amber-200 pointer-events-none" style={{ bottom: monthLeaves.length * 24 + (monthOvertime.length?24:0)+(monthWeekendWork.length?32:0)+4 }}>휴</span>}
+                              {dayOvertime.length > 0 && <span aria-label={dayOvertimeLabel} className="absolute inset-x-0 mx-0.5 rounded bg-indigo-700 px-0.5 text-center text-[10px] font-bold text-white pointer-events-none" style={{ bottom: monthLeaves.length * 24 +(monthWeekendWork.length?32:0)+4 }}>야근</span>}
+                              {dayWeekendWork.length > 0 && <span aria-label={dayWeekendWorkLabel} className="absolute inset-x-0 mx-0.5 rounded bg-teal-700 px-0.5 py-0.5 text-center text-[9px] leading-[11px] font-bold text-white pointer-events-none" style={{bottom:monthLeaves.length*24+4}}>주말<br/>출근</span>}
                             </div>
                           );
                         })}

@@ -29,7 +29,7 @@ export async function buildWeeklyReport(env:any,user:any,week:string,now=new Dat
   if(!canRead(id,department))return null;
   const team=teams.find(team=>team.department===department);if(!team)return null;
   let result=team.employees.find(person=>person.id===id);
-  if(!result){const person=people.find((person:any)=>person.id===id);result={id,name:name||person?.name||id,position:position||person?.position||'',days:Array.from({length:7},(_,index)=>({date:shift(weekStart,index),future:shift(weekStart,index)>today,logStatus:'NONE',reportSource:'',notes:'',items:[],supplementReports:[],overtime:[]})),reportCount:0,approvedReportCount:0,overtimeDays:0,overtimeHours:0};team.employees.push(result);}return result;
+  if(!result){const person=people.find((person:any)=>person.id===id);result={id,name:name||person?.name||id,position:position||person?.position||'',days:Array.from({length:7},(_,index)=>({date:shift(weekStart,index),future:shift(weekStart,index)>today,logStatus:'NONE',reportSource:'',notes:'',items:[],supplementReports:[],overtime:[],weekendWork:[]})),reportCount:0,approvedReportCount:0,overtimeDays:0,overtimeHours:0,weekendDays:0,weekendHours:0};team.employees.push(result);}return result;
  };
  for(const person of people.filter((person:any)=>person.active&&departments.includes(person.department)))employee(person.id,person.department);
  const logs=(await db.prepare('SELECT user_id,day,department,body FROM studio_worklogs WHERE removed=0 AND day>=? AND day<=? ORDER BY day').bind(weekStart,weekEnd).all()).results;
@@ -42,7 +42,7 @@ export async function buildWeeklyReport(env:any,user:any,week:string,now=new Dat
   day.reportedProgress=average(day.items.filter((item:any)=>!item.autoScheduleDate||item.manualFields.includes('progress')).map((item:any)=>item.progress).filter((value:any)=>value!==undefined));
   owner.reportCount++;if(['APPROVED_FINAL','APPROVED'].includes(day.logStatus))owner.approvedReportCount++;
  }
- // Archived projects retain approved overtime history; only approved requests are counted.
+ // Archived projects retain approved attendance history; overtime and weekend work remain separate.
  const projects=(await db.prepare('SELECT body,id IN (SELECT project_id FROM studio_project_archive) AS archived FROM studio_projects').all()).results;
  const schedules=projects.filter((row:any)=>!row.archived).map((row:any)=>parse(row.body)),logByDay=new Map(logs.map((row:any)=>[`${row.user_id}:${row.day}`,parse(row.body)]));
  const supplementUsers=[...new Set<string>(schedules.flatMap((project:any)=>(project.postDeliveryTasks||[]).filter((task:any)=>task.submissionStatus==='REPORTED').flatMap((task:any)=>task.personIds||[])))];
@@ -58,19 +58,30 @@ export async function buildWeeklyReport(env:any,user:any,week:string,now=new Dat
  }
  const seen=new Set<string>();
  for(const row of projects){const project=parse(row.body);for(const request of project.scheduleExtensions||[]){
-  if(request.type!=='OVERTIME'||request.status!=='APPROVED'||!validDay(request.workDate)||request.workDate<weekStart||request.workDate>weekEnd||!request.userId||typeof request.id!=='string')continue;
+  if(!['OVERTIME','WEEKEND'].includes(request.type)||request.status!=='APPROVED'||!validDay(request.workDate)||request.workDate<weekStart||request.workDate>weekEnd||!request.userId||typeof request.id!=='string')continue;
+  if(request.type==='WEEKEND'&&![0,6].includes(new Date(request.workDate+'T12:00:00Z').getUTCDay()))continue;
   const key=project.id+':'+request.id;if(seen.has(key))continue;seen.add(key);
   const owner=employee(request.userId,scheduleExtensionDepartment(project,request));if(!owner)continue;
   const day=owner.days.find((day:any)=>day.date===request.workDate);if(!day)continue;
   const match=(value:string)=>/^([01]\d|2[0-3]):([0-5]\d)$/.exec(value||'');
   const start=match(request.startTime),end=match(request.endTime);if(!start||!end)continue;
   const minutes=(Number(end[1])*60+Number(end[2]))-(Number(start[1])*60+Number(start[2]));if(minutes<=0)continue;
-  day.overtime.push({projectCode:project.code||'',projectName:project.name||'',roleName:request.roleName||'',startTime:request.startTime,endTime:request.endTime,hours:minutes/60,status:'APPROVED'});
+  day[request.type==='WEEKEND'?'weekendWork':'overtime'].push({projectCode:project.code||'',projectName:project.name||'',roleName:request.roleName||'',startTime:request.startTime,endTime:request.endTime,hours:minutes/60,status:'APPROVED',reason:typeof request.reason==='string'?request.reason:''});
  }}
- for(const team of teams){for(const owner of team.employees){owner.overtimeDays=owner.days.filter((day:any)=>day.overtime.length).length;owner.overtimeHours=Math.round(owner.days.flatMap((day:any)=>day.overtime).reduce((total:number,overtime:any)=>total+overtime.hours,0)*100)/100;}team.employees.sort((a:any,b:any)=>a.name.localeCompare(b.name,'ko'));}
+ for(const team of teams){for(const owner of team.employees){for(const [field,days,hours] of [['overtime','overtimeDays','overtimeHours'],['weekendWork','weekendDays','weekendHours']]){owner[days]=owner.days.filter((day:any)=>day[field].length).length;owner[hours]=Math.round(owner.days.flatMap((day:any)=>day[field]).reduce((total:number,entry:any)=>total+entry.hours,0)*100)/100;}}team.employees.sort((a:any,b:any)=>a.name.localeCompare(b.name,'ko'));}
  const delivered=await db.prepare('SELECT sent_at,recipient_ids FROM studio_weekly_reports WHERE week_start=?').bind(weekStart).first();
  const sentRecipients=delivered?parse(delivered.recipient_ids):[];
  return {weekStart,weekEnd,teams:teams.filter(team=>team.employees.length),delivery:{status:delivered?'SENT':recipients.length?'NOT_SENT':'RECIPIENTS_REQUIRED',...(delivered?{sentAt:delivered.sent_at}:{}),recipients:(delivered?people.filter((person:any)=>sentRecipients.includes(person.id)):recipients).map((person:any)=>({id:person.id,name:person.name}))},canConfigure,config:{recipientIds:canConfigure?config.recipientIds:[]},...(canConfigure?{directory:people.filter((person:any)=>person.active&&allowed.includes(person.id)).map(({id,name,department,position}:any)=>({id,name,department,position}))}:{})};
+}
+
+// A separate immutable Monday snapshot contains only the preceding Saturday and Sunday.
+export function weekendWeeklyReport(report:any){
+ const periodStart=shift(report.weekStart,5),periodEnd=report.weekEnd;
+ const teams=report.teams.map((team:any)=>({...team,employees:team.employees.map((owner:any)=>{
+  const days=owner.days.filter((day:any)=>day.date>=periodStart&&day.date<=periodEnd);
+  return {...owner,days,reportCount:days.filter((day:any)=>day.logStatus!=='NONE').length,approvedReportCount:days.filter((day:any)=>['APPROVED_FINAL','APPROVED'].includes(day.logStatus)).length,overtimeDays:days.filter((day:any)=>day.overtime.length).length,overtimeHours:Math.round(days.flatMap((day:any)=>day.overtime).reduce((sum:number,entry:any)=>sum+entry.hours,0)*100)/100,weekendDays:days.filter((day:any)=>day.weekendWork.length).length,weekendHours:Math.round(days.flatMap((day:any)=>day.weekendWork).reduce((sum:number,entry:any)=>sum+entry.hours,0)*100)/100};
+ }).filter((owner:any)=>owner.days.some((day:any)=>day.items.length||day.notes.trim()||day.supplementReports.length||day.overtime.length||day.weekendWork.length))})).filter((team:any)=>team.employees.length);
+ return {weekStart:report.weekStart,weekEnd:report.weekEnd,reportKind:'WEEKEND_ADDITIONAL',originWeekStart:report.weekStart,periodStart,periodEnd,teams};
 }
 
 export async function weeklyReportRoute(request:Request,env:any,user:any,path:string):Promise<Response|null>{
@@ -104,6 +115,6 @@ export async function sendWeeklyReports(env:any,{now=new Date()}:{now?:Date}={})
  const guards=[weeklyReportSourceGuard(db,sourceSnapshot),db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE EXISTS(SELECT 1 FROM studio_weekly_reports WHERE week_start=?)').bind(result.weekStart),db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_reporting_settings WHERE id=? AND body=?)').bind('weekly-reporting',JSON.stringify(config))];
  for(const id of ids)guards.push(db.prepare('INSERT INTO studio_write_assertions SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1)').bind(id));
  const statements=[db.prepare('INSERT INTO studio_weekly_reports (week_start,week_end,sent_at,recipient_ids,body) VALUES (?,?,?,?,?)').bind(report.weekStart,report.weekEnd,sentAt,JSON.stringify(ids),JSON.stringify({weekStart:report.weekStart,weekEnd:report.weekEnd,teams:report.teams}))];
- for(const person of recipients)statements.push(db.prepare('INSERT INTO studio_notifications (id,user_id,meeting_id,message,created_at) VALUES (?,?,?,?,?)').bind(`weekly-report:${report.weekStart}:${person.id}`,person.id,`weekly-report:${report.weekStart}`,`${report.weekStart} ~ ${report.weekEnd} 팀별·개인별 주간 업무일지와 승인 야근 보고가 도착했습니다.`,sentAt));
+ for(const person of recipients)statements.push(db.prepare('INSERT INTO studio_notifications (id,user_id,meeting_id,message,created_at) VALUES (?,?,?,?,?)').bind(`weekly-report:${report.weekStart}:${person.id}`,person.id,`weekly-report:${report.weekStart}`,`${report.weekStart} ~ ${report.weekEnd} 팀별·개인별 주간 업무일지와 승인 야근·주말 출근 보고가 도착했습니다.`,sentAt));
  try{await db.batch([...guards,...statements]);return {...result,status:'SENT',recipients:ids.length};}catch{return {...result,status:'CONFLICT_RETRY'};}
 }
