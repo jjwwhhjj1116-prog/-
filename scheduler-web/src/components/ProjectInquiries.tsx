@@ -9,12 +9,15 @@ import type {Inquiry,InquiryImage,InquiryImportResult,InquiryRound} from '../typ
 import {inquiryRoundNumber} from '../utils/inquiryRounds';
 import {inquiryTranslationPreserves} from '../utils/inquiryTranslationSafety';
 import {readInquiryDraft,writeInquiryDraft,type InquiryDraft} from '../utils/inquiryDrafts';
-import {sameWorkProject,workProjectOptions} from '../utils/personalWork';
+import {sameWorkProject} from '../utils/personalWork';
+import {buildProjectCatalog,projectCatalogCode} from '../utils/projectCatalog';
+import type {IntakeProject} from './IntakeListView';
 import {decodeTsv,encodeTsv,inquiryClipboardMime,parseCopiedInquiryRows} from '../utils/inquiryClipboard';
 
 const columns=[['no','No'],['classification','구분'],['drawingNumbers','관련 도면'],['question','질의사항'],['answer','산출사항 / 답변'],['review','검토사항'],['notes','비고']] as const;
 type Field=typeof columns[number][0];
 type Position={row:number;column:number};
+const emptyIntakeProjects:IntakeProject[]=[];
 type Response={inquiries:Inquiry[];rounds?:InquiryRound[];capabilities:{canCreate:boolean;canManage:boolean;canEdit?:boolean;projectIds?:string[];writableProjectIds?:string[]}};
 const koreanFields=[['classification','구분'],['question','질의사항'],['answer','산출사항 / 답변'],['review','검토사항'],['notes','비고']] as const;
 type KoreanItem={id:string;revision:number;classification:string;question:string;answer:string;review:string;notes:string;imageCaptions:{id:string;caption:string}[]};
@@ -85,14 +88,14 @@ async function copyImage(image:InquiryImage){
  try{canvas.width=bitmap.width;canvas.height=bitmap.height;canvas.getContext('2d')!.drawImage(bitmap,0,0);const png=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('사진 복사 실패')),'image/png'));await navigator.clipboard.write([new ClipboardItem({'image/png':png})]);}finally{bitmap.close();}
 }
 
-export function ProjectInquiries({department,initialProjectId,initialProjectCode,initialContextVersion,initialTrade,visible=true,onDepartmentChange}:{department:Department;initialProjectId?:string;initialProjectCode?:string;initialContextVersion?:number;initialTrade?:string;visible?:boolean;onDepartmentChange?:(department:Department,projectCode?:string)=>void}){
+export function ProjectInquiries({department,intakeProjects=emptyIntakeProjects,initialProjectId,initialProjectCode,initialContextVersion,initialTrade,visible=true,onDepartmentChange}:{department:Department;intakeProjects?:IntakeProject[];initialProjectId?:string;initialProjectCode?:string;initialContextVersion?:number;initialTrade?:string;visible?:boolean;onDepartmentChange?:(department:Department,projectCode?:string)=>void}){
  const projects=useProjectStore(s=>s.projects),actor=useAuthStore(s=>s.currentUser),studio=useStudioStore();
  const actorId=actor?.id||'';
- const teamProjects=useMemo(()=>workProjectOptions(projects).map(project=>projects.find(candidate=>candidate.department===department&&sameWorkProject(projects,candidate.id,project.id))||project),[projects,department]);
- const [projectId,setProjectId]=useState(initialProjectId!==undefined?initialProjectId:initialProjectCode?teamProjects.find(project=>project.code===initialProjectCode)?.id||'':teamProjects[0]?.id||'');
- const [requestedCode,setRequestedCode]=useState(initialProjectCode||projects.find(p=>p.id===initialProjectId)?.code||teamProjects[0]?.code||'');
+ const teamProjects=useMemo(()=>buildProjectCatalog(intakeProjects,projects,studio.archivedProjects).map(item=>({...item,id:item.projects.find(project=>project.department===department)?.id||item.projects[0]?.id||item.id})),[intakeProjects,projects,studio.archivedProjects,department]);
+ const [projectId,setProjectId]=useState(initialProjectId!==undefined?initialProjectId:initialProjectCode?teamProjects.find(project=>projectCatalogCode(project.code)===projectCatalogCode(initialProjectCode))?.id||'':teamProjects[0]?.id||'');
+ const [requestedCode,setRequestedCode]=useState(initialProjectCode||intakeProjects.find(p=>p.id===initialProjectId)?.code||teamProjects.find(p=>p.id===initialProjectId||p.projects.some(source=>source.id===initialProjectId)||p.archivedProjects.some(source=>source.id===initialProjectId))?.code||projects.find(p=>p.id===initialProjectId)?.code||teamProjects[0]?.code||'');
  const project=teamProjects.find(p=>p.id===projectId);
- const headingProject=project||projects.find(p=>p.code===requestedCode);
+ const headingProject=project||teamProjects.find(p=>projectCatalogCode(p.code)===projectCatalogCode(requestedCode));
  const [trade,setTrade]=useState(initialTrade&&initialTrade!=='PM'?initialTrade:TEAM_ROLES[department].find(x=>x!=='PM')||'기타');
  const [search,setSearch]=useState(''),[draft,setDraft]=useState<InquiryDraft>({rows:[],unassignedImages:[],updatedAt:0});
  const [remote,setRemote]=useState<Inquiry[]>([]),[capabilities,setCap]=useState<Response['capabilities']>({canCreate:false,canManage:false});
@@ -176,7 +179,7 @@ export function ProjectInquiries({department,initialProjectId,initialProjectCode
  useEffect(()=>{setTranslationOpen(false);setTranslationPreview(null);setTranslationProgress({completed:0,total:0});},[key,roundNumber,trade,visible,initialContextVersion]);
  useEffect(()=>{setSelectedRowIds([]);if(excelMenu.current)excelMenu.current.open=false;},[key,roundNumber,trade,visible]);
  useEffect(()=>{if(initialProjectId!==undefined)setProjectId(initialProjectId);if(initialProjectCode!==undefined)setRequestedCode(initialProjectCode);if(initialTrade&&initialTrade!=='PM')setTrade(initialTrade);},[initialProjectId,initialProjectCode,initialTrade,initialContextVersion]);
- useEffect(()=>{if(!teamProjects.some(p=>p.id===projectId)){const candidate=requestedCode?teamProjects.find(p=>p.code===requestedCode):teamProjects[0];setProjectId(candidate?.id||'');if(candidate&&!requestedCode)setRequestedCode(candidate.code);}},[projectId,teamProjects,requestedCode]);
+ useEffect(()=>{if(!teamProjects.some(p=>p.id===projectId)){const candidate=requestedCode?teamProjects.find(p=>projectCatalogCode(p.code)===projectCatalogCode(requestedCode)):teamProjects[0];setProjectId(candidate?.id||'');if(candidate&&!requestedCode)setRequestedCode(candidate.code);}},[projectId,teamProjects,requestedCode]);
 
  const orderedExportRows=(rows:Inquiry[])=>{
   const roles=TEAM_ROLES[department],sheets=new Map<string,number>();

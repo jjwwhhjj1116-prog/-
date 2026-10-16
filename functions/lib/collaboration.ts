@@ -243,12 +243,12 @@ export async function handleCollaboration(request:Request,env:Environment,archiv
    return json({ok:true,...(sessionRevoked?{sessionRevoked}: {})},200,sessionRevoked?{'Set-Cookie':'studio_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'}:{});
   }
   if(route==='projects'&&method==='GET') {
-   const {items}=await ensureIntakeSchedules(env.DB);
+   const {items,intakeList}=await ensureIntakeSchedules(env.DB);
    const rows=await env.DB.prepare('SELECT * FROM studio_projects').all<any>();
    const archived=await env.DB.prepare('SELECT * FROM studio_project_archive').all<any>();
    const activeProjects=rows.results.filter(r=>!archived.results.some(a=>a.project_id===r.id)).map(r=>({project:JSON.parse(r.body),revision:r.revision}));
    const archivedProjects=rows.results.filter(r=>archived.results.some(a=>a.project_id===r.id)).map(r=>({project:JSON.parse(r.body),revision:r.revision}));
-   return json({projects:activeProjects,archived:archivedProjects,pendingIntake:pendingIntakeSchedules(items,activeProjects.map(r=>r.project),archivedProjects.map(r=>r.project))});
+   return json({projects:activeProjects,archived:archivedProjects,intakeList,pendingIntake:pendingIntakeSchedules(items,activeProjects.map(r=>r.project),archivedProjects.map(r=>r.project))});
   }
   const lifecycle=route.match(/^projects\/([^/]+)\/(archive|restore)$/);
   if(lifecycle&&method==='POST'){

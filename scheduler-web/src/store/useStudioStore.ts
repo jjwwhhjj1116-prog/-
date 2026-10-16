@@ -1,5 +1,7 @@
 import {refreshPersonal,usePersonalStore} from './usePersonalStore';
 import seedProjects from '../data/realProjects.json';
+import seedIntake from '../data/intakeProjects.json';
+import type {IntakeProject} from '../components/IntakeListView';
 import {rebaseProject} from '../utils/rebaseProject';
 import {create} from 'zustand';
 import {studioApi,StudioError} from '../services/studioApi';
@@ -10,12 +12,19 @@ import {canManageSchedule} from '../utils/schedulePermissions';
 import type {PendingIntakeProject} from '../utils/pendingAssignment';
 export interface StudioNotification {id:string;meeting_id:string;message:string;created_at:string;read_at:string|null}
 interface StudioState {
+ intakeProjects:IntakeProject[];
  pendingIntake:PendingIntakeProject[];
  archivedProjects:Project[];
  actorId:string|null;ready:boolean;hasLoaded:boolean;status:string;pending:number;conflict:boolean;
  unreadCount:number;notifications:StudioNotification[];meetings:any[];openMeetingId:string|null;
 }
-export const useStudioStore=create<StudioState>(()=>({pendingIntake:[],archivedProjects:[],actorId:null,ready:false,hasLoaded:false,status:'중앙 서버 연결 확인 중',pending:0,conflict:false,unreadCount:0,notifications:[],meetings:[],openMeetingId:null}));
+const mergedIntakes=(records:IntakeProject[])=>{
+ const merged=new Map((seedIntake as IntakeProject[]).map(item=>[item.id,item]));
+ records.forEach(item=>merged.set(item.id,{...merged.get(item.id),...item}));
+ return [...merged.values()].sort((a,b)=>b.no-a.no);
+};
+export const useStudioStore=create<StudioState>(()=>({intakeProjects:mergedIntakes([]),pendingIntake:[],archivedProjects:[],actorId:null,ready:false,hasLoaded:false,status:'중앙 서버 연결 확인 중',pending:0,conflict:false,unreadCount:0,notifications:[],meetings:[],openMeetingId:null}));
+export function updateStudioIntakeProjects(records:IntakeProject[]){useStudioStore.setState({intakeProjects:mergedIntakes(records)});}
 let stopCurrent=()=>{};
 let refreshCurrent=async()=>{};
 let flushCurrent=async()=>{};
@@ -43,7 +52,7 @@ export function startStudioSync(userId:string) {
  queueKey=`studio-outbox:${userId}`;
  try{queue=new Map(JSON.parse(localStorage.getItem(queueKey)||'[]'));}catch{queue=new Map();}
  known=new Map();
- useStudioStore.setState({pendingIntake:[],actorId:userId,ready:false,hasLoaded:false,conflict:false,status:'중앙 서버 연결 확인 중',pending:queue.size});
+ useStudioStore.setState({intakeProjects:mergedIntakes([]),pendingIntake:[],actorId:userId,ready:false,hasLoaded:false,conflict:false,status:'중앙 서버 연결 확인 중',pending:queue.size});
  // Before the first shared pull, preserve this PC's old store and merge only edits versus the shipped seed.
  const backupKey='studio-legacy-project-backup-v1',migrationKey=`studio-legacy-import-v1:${userId}`;
  try{
@@ -60,13 +69,14 @@ export function startStudioSync(userId:string) {
  }catch{useStudioStore.setState({status:'이전 PC 자료 보존 실패 · 저장 공간을 확보한 뒤 다시 로그인하세요.'});return ()=>{};}
 
  const current=()=>!stopped&&useAuthStore.getState().currentUser?.id===userId;
- const publishRemote=(records:{project:Project}[],archived:{project:Project}[]=[],pendingIntake:PendingIntakeProject[]=[])=>{
+ const publishRemote=(records:{project:Project}[],archived:{project:Project}[]=[],pendingIntake:PendingIntakeProject[]=[],intakeList?:IntakeProject[])=>{
   if(!current())return;
   const remote=new Map(records.map(r=>[r.project.id,r.project]));
   known=new Map(remote);
   applying=true;
   const local=useProjectStore.getState().projects;
   useStudioStore.setState({pendingIntake,archivedProjects:archived.map(r=>r.project)});
+  if(intakeList)updateStudioIntakeProjects(intakeList);
   const merged=local.filter(p=>remote.has(p.id)||queue.has(p.id)).map(p=>queue.get(p.id)?.project||(JSON.stringify(remote.get(p.id))===JSON.stringify(p)?p:remote.get(p.id))||p);
   for(const [id,p]of remote)if(!merged.some(x=>x.id===id))merged.push(p);
   if(merged.length!==local.length||merged.some((p,i)=>p!==local[i]))useProjectStore.setState({projects:merged});applying=false;
@@ -87,7 +97,7 @@ export function startStudioSync(userId:string) {
     persist();
    }
    const {versions:latest}=await studioApi('changes');
-   if(latest.projects!==versions.projects||latest.intake!==versions.intake){const response=await studioApi('projects');publishRemote(response.projects,response.archived,response.pendingIntake);}
+   if(latest.projects!==versions.projects||latest.intake!==versions.intake){const response=await studioApi('projects');publishRemote(response.projects,response.archived,response.pendingIntake,response.intakeList);}
    if((latest.meetings!==versions.meetings||latest.inbox!==versions.inbox)&&!await refreshStudioMeetings())throw new Error('중앙 알림 수신 대기 · 다음 갱신에서 다시 확인합니다.');
    if(latest.directory!==versions.directory){const {users}=await studioApi('directory');if(current()){useAuthStore.setState({users});useProjectStore.setState({personnel:mergeDirectoryPersonnel(useProjectStore.getState().personnel,users)});}}
    if((latest.personal!==versions.personal||latest.projects!==versions.projects)&&!await refreshPersonal())throw new Error('중앙 개인 일정 수신 대기 · 다음 갱신에서 다시 확인합니다.');
@@ -109,7 +119,7 @@ export function startStudioSync(userId:string) {
    });
  void tick();
  timer=setInterval(()=>void tick(),2000);
- const stop=()=>{usePersonalStore.setState({leaves:[],workCalendars:[],checks:[],loaded:false,openDate:null,openTaskId:null,openWorkLogId:null,openExtension:null});useWorkLogStore.setState({workLogs:[],selectedWorkLogId:null});stopped=true;refreshCurrent=async()=>{};flushCurrent=async()=>{};clearInterval(timer);unsubscribe();useStudioStore.setState({pendingIntake:[],archivedProjects:[],actorId:null,ready:false,hasLoaded:false,conflict:false,pending:0,status:'중앙 서버 연결 확인 중',unreadCount:0,notifications:[],meetings:[],openMeetingId:null});};stopCurrent=stop;return stop;
+ const stop=()=>{usePersonalStore.setState({leaves:[],workCalendars:[],checks:[],loaded:false,openDate:null,openTaskId:null,openWorkLogId:null,openExtension:null});useWorkLogStore.setState({workLogs:[],selectedWorkLogId:null});stopped=true;refreshCurrent=async()=>{};flushCurrent=async()=>{};clearInterval(timer);unsubscribe();useStudioStore.setState({intakeProjects:mergedIntakes([]),pendingIntake:[],archivedProjects:[],actorId:null,ready:false,hasLoaded:false,conflict:false,pending:0,status:'중앙 서버 연결 확인 중',unreadCount:0,notifications:[],meetings:[],openMeetingId:null});};stopCurrent=stop;return stop;
 }
 export async function refreshStudioProjects(){
  const actor=useAuthStore.getState().currentUser?.id,session=refreshCurrent;
@@ -140,6 +150,7 @@ export async function resolveScheduleConflict(keepLocal:boolean){
  const actor=useAuthStore.getState().currentUser?.id,session=refreshCurrent;
  const response=await studioApi('projects');
  if(!actor||actor!==useAuthStore.getState().currentUser?.id||useStudioStore.getState().actorId!==actor||session!==refreshCurrent)throw new Error('계정 또는 동기화 연결이 변경되어 충돌 처리를 중단했습니다. 현재 계정의 입력은 유지됩니다.');
+ if(response.intakeList)updateStudioIntakeProjects(response.intakeList);
  const remote=new Map<string,Project>(response.projects.map((r:any)=>[r.project.id,r.project]));
  const archived=new Set<string>((response.archived||[]).map((r:any)=>r.project.id));
  if(keepLocal&&[...queue.keys()].some(id=>archived.has(id)))throw new Error('정리된 프로젝트의 대기 변경은 보존되어 있습니다. 서버 내용 적용 후 프로젝트를 복원하고 수정하세요.');

@@ -68,7 +68,8 @@ try {
     const {WorkLogProjectSummary}=await server.ssrLoadModule('/src/components/WorkLogReporting.tsx');
     state(studio,{ready:true,actorId:owner.id});state(language,{lang:'vi'});
     const protectedNames=html=>[...html.matchAll(/<([a-z][\w-]*)\b[^>]*\bdata-no-translate(?:="[^"]*")?[^>]*>([^<]*)<\/\1>/g)].map(match=>match[2]);
-    const cases=[['integrated',ProjectIntegratedModal,{projectCode:project.code,onClose(){}}],['detail-print',ProjectDetailPrint,{project,people,leaves:[],onClose(){}}],['QC-select',QCLinkView,{}],['inquiries',ProjectInquiries,{department:project.department,initialProjectId:project.id}],['worklog-summary',WorkLogProjectSummary,{project,logs:[],date:'2026-09-09'}]];
+    const intakeProjects=[{id:'intake-canonical102',no:85102,code:project.code,name:project.name,client:'',targetDepartments:[project.department]}];
+    const cases=[['integrated',ProjectIntegratedModal,{projectCode:project.code,onClose(){}}],['detail-print',ProjectDetailPrint,{project,people,leaves:[],onClose(){}}],['QC-select',QCLinkView,{intakeProjects}],['inquiries',ProjectInquiries,{department:project.department,initialProjectId:project.id,intakeProjects}],['worklog-summary',WorkLogProjectSummary,{project,logs:[],date:'2026-09-09'}]];
     for(const [name,Component,props]of cases){const html=renderToStaticMarkup(createElement(Component,props)),protectedText=protectedNames(html);assert.ok(protectedText.some(text=>text.includes(project.name)),name+' projectname must be excluded from VI translation');assert.ok(!protectedText.some(text=>text==='프로젝트 상세 일정표'||text==='프로젝트 질의사항'||text==='전체 프로젝트 진행률'),name+' general labels stay translatable');}
     state(language,{lang:'ko'});assert.deepEqual(project,snapshot);
     return {surfaces:cases.map(([name])=>name),language:'vi',projectName:project.name,originalProjectUnchanged:true};

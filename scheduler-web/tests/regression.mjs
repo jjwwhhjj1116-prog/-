@@ -5,6 +5,7 @@ import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import ts from 'typescript';
 import {isWorkDay} from '../src/utils/workCalendar.ts';
+import * as projectCatalog from '../src/utils/projectCatalog.ts';
 
 const data = new Map();
 globalThis.localStorage = { getItem: k => data.get(k) ?? null, setItem: (k,v) => data.set(k,String(v)), removeItem: k => data.delete(k) };
@@ -19,7 +20,7 @@ const server = await createServer({ssr:{noExternal:[/^(react|react-dom|zustand|x
  const source=readFileSync(personalSource||new URL('../src/components/PersonalScheduleView.tsx',import.meta.url),'utf8');return source.replace(/useState<'PERSONAL'\s*\|\s*'TEAM'>\('TEAM'\)/,"useState<'PERSONAL' | 'TEAM'>('PERSONAL')");
 }}}], server: { middlewareMode: true, hmr:false }, appType: 'custom' });
 const results = [];
-async function check(name, fn) { if(onlyRangeSummary&&!name.startsWith('범위요약')||onlyIntegratedAlias&&!name.startsWith('통합상세 명부')||onlyPersonalOverlap&&!name.startsWith('개인캘린더 중복')||onlyMinutesOutput&&!name.startsWith('회의록 출력 경계')||onlyQCLink&&!name.startsWith('QC 프로젝트 전달'))return;try { await fn(); results.push({name, status:'PASS'}); } catch(e) { results.push({name,status:'FAIL',reason:e.message}); } }
+async function check(name, fn) { if(onlyRangeSummary&&!name.startsWith('범위요약')||onlyIntegratedAlias&&!name.startsWith('통합상세 명부')||onlyPersonalOverlap&&!name.startsWith('개인캘린더 중복')||onlyMinutesOutput&&!name.startsWith('회의록 출력 경계')||onlyQCLink&&!name.startsWith('QC 프로젝트 전달')&&!name.startsWith('QC 차수 연결'))return;try { await fn(); results.push({name, status:'PASS'}); } catch(e) { results.push({name,status:'FAIL',reason:e.message}); } }
 try {
   const { useProjectStore: projects, syncProjectTasks } = await server.ssrLoadModule('/src/store/useProjectStore.ts');
   const { useWorkLogStore: logs } = await server.ssrLoadModule('/src/store/useWorkLogStore.ts');
@@ -525,14 +526,14 @@ try {
   const qcText=readFileSync(qcSource||new URL('../src/components/QCLinkView.tsx',import.meta.url),'utf8'),qcCompiled=ts.transpileModule(qcText,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,qcRuntime=await import('react/jsx-runtime');
   const qcBase='https://concost-qc-studio.jjwwhhjj1116.workers.dev/';
   const qcScreen=(initialProjects,initialActor={id:'qc-user',name:'합성 직원'})=>{
-    const hooks=[],effects=[],queue=[];let cursor=0,dirty=true,tree,list=initialProjects,actor=initialActor,studio={ready:true,actorId:initialActor?.id};
+    const hooks=[],effects=[],queue=[];let cursor=0,dirty=true,tree,list=initialProjects,actor=initialActor,studio={ready:true,actorId:initialActor?.id,archivedProjects:[]};
     const useState=initial=>{const index=cursor++;if(!(index in hooks))hooks[index]=initial;return[hooks[index],value=>{const next=typeof value==='function'?value(hooks[index]):value;if(!Object.is(next,hooks[index])){hooks[index]=next;dirty=true;}}];};
     const same=(left,right)=>left&&right&&left.length===right.length&&left.every((value,index)=>Object.is(value,right[index]));
     const useMemo=(fn,deps)=>{const index=cursor++;if(!hooks[index]||!same(hooks[index].deps,deps))hooks[index]={deps,value:fn()};return hooks[index].value;};
     const useEffect=(fn,deps)=>{const index=cursor++;if(!same(effects[index]?.deps,deps)){effects[index]={deps};queue.push(fn);}};
-    const exports={};runInNewContext(qcCompiled,{exports,URL,require:name=>{if(name==='react')return {useState,useEffect,useMemo};if(name==='react/jsx-runtime')return qcRuntime;if(name==='lucide-react')return new Proxy({},{get:()=>()=>null});if(name==='../store/useAuthStore')return {useAuthStore:selector=>selector({currentUser:actor})};if(name==='../store/useProjectStore')return {useProjectStore:selector=>selector({projects:list})};if(name==='../store/useStudioStore')return {useStudioStore:selector=>selector(studio)};throw Error('Unexpected QC dependency '+name);}});
+    const exports={};runInNewContext(qcCompiled,{exports,URL,require:name=>{if(name==='react')return {useState,useEffect,useMemo};if(name==='react/jsx-runtime')return qcRuntime;if(name==='lucide-react')return new Proxy({},{get:()=>()=>null});if(name==='../store/useAuthStore')return {useAuthStore:selector=>selector({currentUser:actor})};if(name==='../store/useProjectStore')return {useProjectStore:selector=>selector({projects:list})};if(name==='../store/useStudioStore')return {useStudioStore:selector=>selector(studio)};if(name==='../utils/projectCatalog')return projectCatalog;throw Error('Unexpected QC dependency '+name);}});
     const nodes=node=>Array.isArray(node)?Array.from(node).flatMap(nodes):node&&typeof node==='object'&&node.props?[node,...nodes(node.props.children)]:[];
-    const render=()=>{cursor=0;tree=exports.QCLinkView();dirty=false;};
+    const render=()=>{cursor=0;tree=exports.QCLinkView({intakeProjects:list.map((project,index)=>({id:project.id||'qc-intake-'+index,no:list.length-index,code:project.code,name:project.name,client:project.client||''}))});dirty=false;};
     const settle=()=>{for(let n=0;n<6&&(dirty||queue.length);n++){if(dirty)render();while(queue.length)queue.shift()();}assert.equal(dirty,false,'QC state should settle');};
     const select=()=>nodes(tree).find(node=>node.type==='select');settle();
     return {href:()=>nodes(tree).find(node=>node.type==='a').props.href,select,round:value=>{nodes(tree).find(node=>node.type==='input'&&node.props['aria-label']==='검수 차수').props.onChange({target:{value:String(value)}});settle();},options:()=>nodes(tree).filter(node=>node.type==='option').map(node=>node.props.value),choose:code=>{assert.ok(select(),'QC project selection is present');select().props.onChange({target:{value:code}});settle();},setProjects:next=>{list=next;dirty=true;settle();},setActor:next=>{actor=next;studio={ready:true,actorId:next?.id};dirty=true;render();const immediate=nodes(tree).find(node=>node.type==='a').props.href;settle();return immediate;},setStudio:next=>{studio=next;dirty=true;settle();}};

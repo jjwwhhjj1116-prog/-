@@ -26,14 +26,15 @@ export function intakeProjectStatements(DB:D1Database,items:unknown[],stamp:stri
 
 export async function ensureIntakeSchedules(DB:D1Database) {
  const rows=await DB.prepare('SELECT data,updated_at FROM studio_intake_documents ORDER BY document_no DESC').all<{data:string;updated_at:string}>();
- const items=rows.results.flatMap(row=>{try{const item=JSON.parse(row.data);return validIntake(item)?[item]:[];}catch{return [];}});
+ const intakeList=rows.results.flatMap(row=>{try{return [JSON.parse(row.data)];}catch{return [];}});
+ const items=intakeList.filter(validIntake);
  const existing=await DB.prepare("SELECT id,upper(trim(json_extract(body,'$.code'))) AS code,json_extract(body,'$.department') AS department FROM studio_projects WHERE json_valid(body)").all<{id:string;code:string;department:string}>();
  const scheduled=new Set(existing.results.map(project=>`${project.code}\0${project.department}`));
  const missing=items.map(item=>({...item,targetDepartments:item.targetDepartments.filter(department=>!scheduled.has(`${intakeCode(item.code)}\0${department}`))}));
  const statements=intakeProjectStatements(DB,missing,new Date().toISOString());
  if(statements.length)await DB.batch(statements);
  // Direct SQL collectors are also repaired before the next shared version snapshot.
- return {items,intakeVersion:`${rows.results.reduce((latest,row)=>row.updated_at>latest?row.updated_at:latest,'')}:${rows.results.length}`};
+ return {items,intakeList,intakeVersion:`${rows.results.reduce((latest,row)=>row.updated_at>latest?row.updated_at:latest,'')}:${rows.results.length}`};
 }
 
 export function pendingIntakeSchedules(items:Intake[],active:Record<string,any>[],archived:Record<string,any>[]):PendingIntake[] {

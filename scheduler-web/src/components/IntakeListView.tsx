@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { useProjectStore, type Department } from '../store/useProjectStore';
 import {newProjectFromIntake} from '../utils/intakeRegistration';
-import {refreshStudioProjects,waitForSchedulePublished,useStudioStore} from '../store/useStudioStore';
+import {refreshStudioProjects,waitForSchedulePublished,useStudioStore,updateStudioIntakeProjects} from '../store/useStudioStore';
 import {pendingAssignmentReason} from '../utils/pendingAssignment';
 import intakeRawData from '../data/intakeProjects.json';
 
@@ -53,17 +53,17 @@ export interface IntakeProject {
 }
 
 interface Props {
+  intakeProjects?:IntakeProject[];
   onNavigateToSchedule: (dept?: Department) => void;
   openIntakeCode?:string|null;
   onIntakeOpened?:()=>void;
   lang?: 'ko' | 'vi';
 }
 
-export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, openIntakeCode, onIntakeOpened, lang = 'ko' }) => {
+export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, openIntakeCode, onIntakeOpened, intakeProjects=intakeRawData as IntakeProject[], lang = 'ko' }) => {
   const { addProject, projects, setSelectedProjectId } = useProjectStore();
   const [selectedIntake, setSelectedIntake] = useState<IntakeProject | null>(null);
   const currentUser = useAuthStore(state => state.currentUser);
-  const [remoteIntake,setRemoteIntake]=useState<IntakeProject[]>([]);
   const [syncState,setSyncState]=useState('중앙 수주 연결 확인 중');
   useEffect(()=>{
     let stopped=false, busy=false;
@@ -75,7 +75,7 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, openInta
         const data=await response.json();
         if(!Array.isArray(data.intakeList))throw new Error('수주 응답 오류');
         if(stopped)return;
-        setRemoteIntake(data.intakeList);
+        updateStudioIntakeProjects(data.intakeList);
         const last=data.sync?.last_success;
         const stale=last && Date.now()-Date.parse(last)>90*60*1000;
         const issue=data.sync?.last_error?` · 수집 실패 (${data.sync.last_error})`:last?(stale?' · 갱신 지연':' · 정상'):'';
@@ -88,15 +88,13 @@ export const IntakeListView: React.FC<Props> = ({ onNavigateToSchedule, openInta
     return()=>{stopped=true;clearInterval(timer);window.removeEventListener('focus',focus);};
   },[currentUser?.id]);
   const intakeList = useMemo(()=>{
-    const mergedIntake=new Map((intakeRawData as IntakeProject[]).map(item=>[item.id,item]));
-    remoteIntake.forEach(item=>mergedIntake.set(item.id,{...mergedIntake.get(item.id),...item}));
-    return [...mergedIntake.values()].sort((a,b)=>b.no-a.no).map(item => {
+    return intakeProjects.map(item => {
     const departments=item.targetDepartments.length?item.targetDepartments:[...new Set(projects.filter(p=>p.code===item.code).map(p=>p.department))];
     const isScheduled=departments.length>0&&departments.every(dept=>projects.some(p=>p.code===item.code&&p.department===dept));
     const needsAssignment=!isScheduled||departments.some(dept=>{const project=projects.find(p=>p.code===item.code&&p.department===dept);return project&&pendingAssignmentReason(project);});
     return {...item,targetDepartments:departments,isScheduled,needsAssignment,status:isScheduled?'프로젝트등록':'접수완료'};
     });
-  },[remoteIntake,projects]);
+  },[intakeProjects,projects]);
   const [searchTerm, setSearchTerm] = useState('');
   const [deptFilter, setDeptFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');

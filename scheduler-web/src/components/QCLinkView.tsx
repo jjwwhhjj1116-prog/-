@@ -3,25 +3,21 @@ import { ArrowUpRight, ShieldCheck, FileSearch, ExternalLink } from 'lucide-reac
 import { useAuthStore } from '../store/useAuthStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useStudioStore } from '../store/useStudioStore';
+import type {IntakeProject} from './IntakeListView';
+import {buildProjectCatalog} from '../utils/projectCatalog';
 
-export const QCLinkView: React.FC = () => {
+const emptyIntakes:IntakeProject[]=[];
+export const QCLinkView: React.FC<{intakeProjects?:IntakeProject[]}> = ({intakeProjects=emptyIntakes}={}) => {
   const user = useAuthStore(state => state.currentUser);
   const projects = useProjectStore(state => state.projects);
   const ready = useStudioStore(state => !!user && state.ready && state.actorId === user.id);
+  const archivedProjects=useStudioStore(state=>state.archivedProjects);
   const [selection, setSelection] = useState<{ actor: typeof user; code: string; round: number } | null>(null);
   const availableProjects = useMemo(() => {
-    const unique = new Map<string, { code: string; name: string; client: string; round: number }>();
-    for (const project of projects) {
-      const code = project.code;
-      if (typeof code === 'string' && code.length >= 2 && code.length <= 40 && code === code.trim()) {
-        const round = Math.min(999, Math.max(1, ...(project.revisions || []).map(revision => revision.round + 1)));
-        const existing = unique.get(code);
-        if (existing) existing.round = Math.max(existing.round, round);
-        else unique.set(code, { code, name: project.name, client: project.client || '', round });
-      }
-    }
-    return [...unique.values()];
-  }, [projects]);
+    return buildProjectCatalog(intakeProjects,projects,archivedProjects)
+      .filter(project=>typeof project.code==='string'&&project.code.length>=2&&project.code.length<=40&&project.code===project.code.trim())
+      .map(project=>({code:project.code,name:project.name,client:project.client||'',round:Math.min(999,Math.max(1,...project.projects.flatMap(record=>(record.revisions||[]).map(revision=>revision.round+1))))}));
+  }, [intakeProjects,projects,archivedProjects]);
   const selectedCode = ready && selection && selection.actor === user && availableProjects.some(project => project.code === selection.code) ? selection.code : '';
   useEffect(() => {
     setSelection(previous => previous && (!ready || previous.actor !== user || !availableProjects.some(project => project.code === previous.code)) ? null : previous);

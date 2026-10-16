@@ -11,6 +11,7 @@
     "test:schedule-admin": "node tests/schedule-admin.mjs",
     "test:post-delivery-workflow": "node tests/post-delivery-workflow.mjs",
     "test:employee-management": "node tests/employee-lifecycle.mjs && node tests/employee-lifecycle-ui.mjs && node tests/employee-lifecycle-sync.mjs",
+    "test:project-catalog": "node tests/qc-project-catalog-client.mjs && node tests/inquiry-intake-api.mjs && node tests/intake-client.mjs && node tests/inquiry-navigation-client.mjs",
     "test:work-calendar": "node tests/work-calendar.mjs && node tests/work-calendar-dialog.mjs && node tests/work-calendars-api.mjs && node tests/work-calendars-store.mjs && node tests/work-calendar-display-client.mjs && node tests/work-calendar-personal.mjs && node tests/work-calendar-worklog-ui.mjs && node tests/work-calendar-outputs.mjs",
     "test:weekend-work": "node tests/weekend-work-core.mjs && node tests/weekend-work-ui.mjs && node tests/weekend-work-weekly.mjs && node tests/post-delivery-calendar.mjs",
     "preview": "vite preview"

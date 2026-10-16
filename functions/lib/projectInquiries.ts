@@ -80,31 +80,37 @@ export async function projectInquiryRoute(request:Request,env:any,user:any,route
  if(match?.[2]&&!row)return fail('저장된 질의사항을 찾을 수 없습니다.',404);
  const projectId=method==='GET'?new URL(request.url).searchParams.get('projectId'):translate||roundMatch?body?.projectId:row?.project_id||body?.inquiry?.projectId;
  if(!smallId(projectId))return fail('프로젝트를 선택하세요.');
- const projectRow=await db.prepare('SELECT * FROM studio_projects WHERE id=?').bind(projectId).first();if(!projectRow)return fail('중앙 저장된 프로젝트를 찾을 수 없습니다.',404);
- const project=JSON.parse(projectRow.body),department=method==='GET'?new URL(request.url).searchParams.get('department')||project.department:body.department||body.inquiry?.department||row?.department||project.department;
+ const projectRow=await db.prepare('SELECT * FROM studio_projects WHERE id=?').bind(projectId).first();
+ const intakeRow=projectRow?null:await db.prepare('SELECT id,data,updated_at FROM studio_intake_documents WHERE id=? AND json_valid(data)').bind(projectId).first();
+ if(!projectRow&&!intakeRow)return fail('중앙 저장된 프로젝트 또는 접수 내역을 찾을 수 없습니다.',404);
+ // Inquiry-only intake sources keep their document ID; no schedule is created here.
+ const project=JSON.parse(projectRow?.body||intakeRow.data),defaultDepartment=project.department||user.department,department=method==='GET'?new URL(request.url).searchParams.get('department')||defaultDepartment:body.department||body.inquiry?.department||row?.department||defaultDepartment;
  if(!['마감팀','구조팀','토목&조경팀'].includes(department))return fail('질의사항 팀을 확인하세요.');
  if(row&&row.department!==department)return fail('질의사항의 팀 연결을 변경할 수 없습니다.');
  const storedProfile=JSON.parse(user.profile),profile={...storedProfile,id:user.id,department:user.department,position:user.position};
  const admin=storedProfile.id===user.id&&isScheduleAdmin(profile),manage=admin||canManageSchedule(profile,department,false);
- const archived=Boolean(await db.prepare('SELECT project_id FROM studio_project_archive WHERE project_id=?').bind(projectId).first());
  const directoryRows=(await db.prepare('SELECT id,profile,active FROM studio_users').all()).results;
  const directory=directoryRows.map((record:any)=>{const person=JSON.parse(record.profile);return {...(person.id===record.id?person:{}),id:record.id,active:record.active===1};});
  const code=typeof project.code==='string'?project.code.trim().toUpperCase():'';
  const siteReadRows=(await db.prepare("SELECT id,body,revision FROM studio_projects WHERE id=? UNION ALL SELECT id,body,revision FROM studio_projects WHERE ?<>'' AND json_valid(body) AND upper(trim(json_extract(body,'$.code')))=? AND id<>?").bind(projectId,code,code,projectId).all()).results;
- const siteIds=siteReadRows.map((record:any)=>record.id),siteSql=siteIds.map(()=>'?').join(',');
+ const intakeRows=(await db.prepare("SELECT id,data,updated_at FROM studio_intake_documents WHERE id=? OR (?<>'' AND json_valid(data) AND upper(trim(json_extract(data,'$.code')))=?) ORDER BY document_no DESC").bind(projectId,code,code).all()).results;
+ const siteIds=[...new Set<string>([...siteReadRows,...intakeRows].map((record:any)=>record.id))],siteSql=siteIds.map(()=>'?').join(',');
  const archivedIds=new Set((await db.prepare('SELECT project_id FROM studio_project_archive').all()).results.map((record:any)=>record.project_id));
  const siteRows=siteReadRows.filter((record:any)=>!archivedIds.has(record.id));
+ const intakeWritable=siteReadRows.length===0||siteRows.length>0,archived=archivedIds.has(projectId)||Boolean(intakeRow&&!intakeWritable);
  const sitePmRows=siteRows.filter((record:any)=>{const site=JSON.parse(record.body),pm={...site.roles,...site.subTasks}.PM;return assignmentPersonId(site.pmId,directory)===user.id||pm&&assignmentSegments(pm).some(segment=>segment.personIds.some(reference=>assignmentPersonId(reference,directory)===user.id));});
  const sitePm=sitePmRows.length>0;
  const canWrite=admin||user.department===department||sitePm;
- const capabilities={projectId,projectIds:siteIds,writableProjectIds:siteRows.map((record:any)=>record.id),actorId:user.id,canCreate:canWrite&&!archived,canEdit:canWrite&&!archived,canManage:manage&&!archived};
+ const capabilities={projectId,projectIds:siteIds,writableProjectIds:[...siteRows,...(intakeWritable?intakeRows.filter((record:any)=>!archivedIds.has(record.id)):[])].map((record:any)=>record.id),actorId:user.id,canCreate:canWrite&&!archived,canEdit:canWrite&&!archived,canManage:manage&&!archived};
  const decodeRow=(record:any):Inquiry=>{const inquiry=JSON.parse(record.body);return {...inquiry,roundNumber:inquiryRoundNumber(inquiry),revision:record.revision};};
  const roundRows=(await db.prepare(`SELECT * FROM studio_inquiry_rounds WHERE project_id IN (${siteSql}) AND department=? ORDER BY project_id,round_number`).bind(...siteIds,department).all()).results;
  const roundState=(number:number):any=>roundRows.find((record:any)=>record.round_number===number&&record.status==='SENT')||roundRows.find((record:any)=>record.round_number===number&&record.project_id===projectId)||roundRows.find((record:any)=>record.round_number===number);
  const pmGuard=sitePm&&!admin&&user.department!==department?sitePmRows.map(()=> 'EXISTS(SELECT 1 FROM studio_projects WHERE id=? AND revision=?) AND NOT EXISTS(SELECT 1 FROM studio_project_archive WHERE project_id=?)').join(' AND '):'';
- const siteGuard="(SELECT COALESCE(json_group_array(id),'[]') FROM (SELECT id FROM studio_projects WHERE id=? UNION SELECT id FROM studio_projects WHERE ?<>'' AND json_valid(body) AND upper(trim(json_extract(body,'$.code')))=? ORDER BY id))=?";
- const accessGuard='EXISTS(SELECT 1 FROM studio_projects WHERE id=? AND revision=?) AND NOT EXISTS(SELECT 1 FROM studio_project_archive WHERE project_id=?) AND EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1 AND profile=? AND department=? AND position=?)'+(pmGuard?' AND '+pmGuard:'')+' AND '+siteGuard;
- const accessParams=[projectId,projectRow.revision,projectId,user.id,user.profile,user.department,user.position,...(pmGuard?sitePmRows.flatMap((record:any)=>[record.id,record.revision,record.id]):[]),projectId,code,code,JSON.stringify([...siteIds].sort())];
+ const siteGuard="(SELECT COALESCE(json_group_array(id),'[]') FROM (SELECT id FROM studio_projects WHERE id=? UNION SELECT id FROM studio_projects WHERE ?<>'' AND json_valid(body) AND upper(trim(json_extract(body,'$.code')))=? UNION SELECT id FROM studio_intake_documents WHERE id=? OR (?<>'' AND json_valid(data) AND upper(trim(json_extract(data,'$.code')))=?) ORDER BY id))=?";
+ const sourceGuard=projectRow?'EXISTS(SELECT 1 FROM studio_projects WHERE id=? AND revision=?)':"EXISTS(SELECT 1 FROM studio_intake_documents WHERE id=? AND data=? AND updated_at=?)"+(siteReadRows.length?" AND EXISTS(SELECT 1 FROM studio_projects WHERE json_valid(body) AND upper(trim(json_extract(body,'$.code')))=? AND id NOT IN (SELECT project_id FROM studio_project_archive))":'');
+ const sourceParams=projectRow?[projectId,projectRow.revision]:[projectId,intakeRow.data,intakeRow.updated_at,...(siteReadRows.length?[code]:[])];
+ const accessGuard=sourceGuard+' AND NOT EXISTS(SELECT 1 FROM studio_project_archive WHERE project_id=?) AND EXISTS(SELECT 1 FROM studio_users WHERE id=? AND active=1 AND profile=? AND department=? AND position=?)'+(pmGuard?' AND '+pmGuard:'')+' AND '+siteGuard;
+ const accessParams=[...sourceParams,projectId,user.id,user.profile,user.department,user.position,...(pmGuard?sitePmRows.flatMap((record:any)=>[record.id,record.revision,record.id]):[]),projectId,code,code,projectId,code,code,JSON.stringify([...siteIds].sort())];
  if(method==='GET'){
   const rows=await db.prepare(`SELECT * FROM studio_project_inquiries WHERE project_id IN (${siteSql}) AND department=? ORDER BY updated_at DESC,id`).bind(...siteIds,department).all();
   const includeDeleted=new URL(request.url).searchParams.get('includeDeleted')==='1';
@@ -123,12 +129,12 @@ export async function projectInquiryRoute(request:Request,env:any,user:any,route
   return translateInquiryTexts(body,env,projectId,records.map((record:any)=>({...record,project_id:projectId})),roundRows,async()=>{
    const {sessionUser}=await import('./collaboration.ts'),currentUser=await sessionUser(request,env);
    if(!currentUser||currentUser.id!==user.id||currentUser.profile!==user.profile||currentUser.department!==user.department||currentUser.position!==user.position)return false;
-   const currentProject=await db.prepare('SELECT revision FROM studio_projects WHERE id=?').bind(projectId).first();
-   if(currentProject?.revision!==projectRow.revision||await db.prepare('SELECT project_id FROM studio_project_archive WHERE project_id=?').bind(projectId).first())return false;
+   if(!(await db.prepare(`SELECT ${accessGuard} AS allowed`).bind(...accessParams).first())?.allowed)return false;
    const currentRounds=(await db.prepare(`SELECT project_id,round_number,revision,status FROM studio_inquiry_rounds WHERE project_id IN (${siteSql}) AND department=? ORDER BY project_id,round_number`).bind(...siteIds,department).all()).results;
    const roundVersions=(rows:any[])=>JSON.stringify(rows.map(record=>[record.project_id,record.round_number,record.revision,record.status]));
    if(roundVersions(currentRounds)!==roundVersions(roundRows)||currentRounds.some((record:any)=>record.round_number===body.roundNumber&&record.status==='SENT'))return false;
    for(const source of siteReadRows){const latest=await db.prepare('SELECT revision FROM studio_projects WHERE id=?').bind(source.id).first();if(latest?.revision!==source.revision)return false;}
+   for(const source of intakeRows){const latest=await db.prepare('SELECT data,updated_at FROM studio_intake_documents WHERE id=?').bind(source.id).first();if(latest?.data!==source.data||latest?.updated_at!==source.updated_at)return false;}
    for(const item of body.items){const previous=records.find((record:any)=>record.id===item.id),latest=await db.prepare('SELECT project_id,revision FROM studio_project_inquiries WHERE id=?').bind(item.id).first();if(previous?latest?.project_id!==previous.project_id||latest.revision!==previous.revision:Boolean(latest))return false;}
    return true;
   });

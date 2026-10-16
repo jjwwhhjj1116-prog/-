@@ -31,18 +31,18 @@ function screen(projects,user=manager,item=intake,options={}){
   if(path==='lucide-react')return new Proxy({},{get:()=>()=>null});
   if(path==='../store/useAuthStore')return {useAuthStore:Object.assign(selector=>selector(auth),{getState:()=>auth})};
   if(path==='../store/useProjectStore')return {useProjectStore:Object.assign(()=>state,{getState:()=>state})};
-  if(path==='../store/useStudioStore')return {useStudioStore:{getState:()=>studio},refreshStudioProjects:async()=>{refreshes.push('projects');if(options.refreshError)throw Error(options.refreshError);},waitForSchedulePublished:async ids=>{waits.push(Array.from(ids));if(options.wait)await options.wait();if(options.waitError)throw Error(options.waitError);}};
+  if(path==='../store/useStudioStore')return {useStudioStore:{getState:()=>studio},updateStudioIntakeProjects:()=>{throw Error('Registration-only fixture must not poll intake');},refreshStudioProjects:async()=>{refreshes.push('projects');if(options.refreshError)throw Error(options.refreshError);},waitForSchedulePublished:async ids=>{waits.push(Array.from(ids));if(options.wait)await options.wait();if(options.waitError)throw Error(options.waitError);}};
   if(path==='../utils/schedulePermissions')return {canManageSchedule};
   if(path==='../utils/intakeRegistration')return {newProjectFromIntake};
   if(path==='../utils/pendingAssignment')return pendingAssignment;
   if(path==='../data/intakeProjects.json')return [structuredClone(item)];
   throw Error('Unexpected dependency '+path);
  }});
- const render=()=>{cursor=0;tree=exports.IntakeListView({onNavigateToSchedule:dept=>navigation.push(dept)});};render();
+ const render=()=>{cursor=0;tree=exports.IntakeListView({intakeProjects:options.intakeProjects||[structuredClone(item)],onNavigateToSchedule:dept=>navigation.push(dept)});};render();
  const row=()=>nodes(tree).find(node=>node.type==='tr'&&text(node).includes(item.code));
  const buttons=root=>nodes(root).filter(node=>node.type==='button').map(node=>({text:text(node).trim(),disabled:Boolean(node.props.disabled)}));
  const button=(label,root=tree)=>{const found=nodes(root).find(node=>node.type==='button'&&text(node).trim()===label);assert.ok(found,label);return found;};
- return {row,rowText:()=>text(row()),rowButtons:()=>buttons(row()),buttons:()=>buttons(tree),html:()=>renderToStaticMarkup(tree),open:()=>{nodes(row()).find(node=>node.type==='td'&&node.props.onClick).props.onClick();render();},click:async label=>{const found=button(label);assert.equal(Boolean(found.props.disabled),false,label+' disabled');await found.props.onClick();for(let i=0;i<4;i++)await Promise.resolve();render();},register:async(value,department)=>{await register(value,department);render();},toast:()=>hooks[7],navigation,selection,writes,timers,refreshes,waits,switchActor:next=>{auth.currentUser=next;}};
+ return {row,rowText:()=>text(row()),rowButtons:()=>buttons(row()),buttons:()=>buttons(tree),html:()=>renderToStaticMarkup(tree),open:()=>{nodes(row()).find(node=>node.type==='td'&&node.props.onClick).props.onClick();render();},click:async label=>{const found=button(label);assert.equal(Boolean(found.props.disabled),false,label+' disabled');await found.props.onClick();for(let i=0;i<4;i++)await Promise.resolve();render();},register:async(value,department)=>{await register(value,department);render();},toast:()=>hooks[6],navigation,selection,writes,timers,refreshes,waits,switchActor:next=>{auth.currentUser=next;}};
 }
 const results=[];
 async function check(name,fn){try{await fn();results.push({name,status:'PASS'});console.log('PASS',name);}catch(error){results.push({name,status:'FAIL',reason:error.message});console.log('FAIL',name,error.message);}}
@@ -86,6 +86,7 @@ await check('미확인 담당 팀의 서버 미연결·저장 실패·계정 전
  let release;const delayed=screen([],manager,blank,{wait:()=>new Promise(resolve=>{release=resolve;})});const request=delayed.register(blank,'구조팀');await Promise.resolve();assert.equal(typeof release,'function');assert.equal(delayed.selection.length,0);delayed.switchActor(viewer);release();await request;assert.equal(delayed.selection.length,0);assert.equal(delayed.navigation.length,0);
  const refreshError=screen([],manager,intake,{refreshError:'합성 다시 읽기 실패'});await refreshError.register(intake,'구조팀');assert.equal(refreshError.writes.length,0);assert.equal(refreshError.toast(),'합성 다시 읽기 실패');
 });
+await check('공유 intakeProjects prop은 자체 번들명부 대신 입력된 동일 목록·순서·접수 이름을 표시',()=>{const high={...intake,id:'intake-shared-1',no:850003,code:'TK-2026999',name:'공유 최신 한국 현장'},low={...intake,id:'intake-shared-2',no:850002,code:'TK-2026997',name:'공유 다음 한국 현장'},records=[high,low],before=JSON.stringify(records),s=screen([],manager,intake,{intakeProjects:records}),html=s.html();assert.ok(html.includes(high.code)&&html.includes(low.code));assert.ok(html.indexOf(high.code)<html.indexOf(low.code));assert.ok(html.includes(high.name)&&html.includes(low.name));assert.equal(s.row(),undefined,'A project outside the shared prop must not reappear from the bundled seed');assert.equal(JSON.stringify(records),before);assert.equal(s.writes.length,0);});
 const report={kind:'ACTUAL_INTAKE_COMPONENT_HOOKS_SSR_AND_HANDLER_MEMORY',sourceSHA256:createHash('sha256').update(source).digest('hex').toUpperCase(),PASS:results.filter(row=>row.status==='PASS').length,FAIL:results.filter(row=>row.status==='FAIL').length,results,operationalRegistrationWrites:0,networkRequests:0,limits:['Complete component runs with isolated hooks/store/auth/icons/raw-data/effects; actual registration handler is exposed only by test instrumentation.','Existing canManageSchedule and newProjectFromIntake execute; central refresh/save confirmation is modeled in memory. No actual browser/OS/crawler/DB run.']};
 const output=process.argv.find(arg=>arg.startsWith('--output='))?.slice('--output='.length);if(output)writeFileSync(output,JSON.stringify(report,null,2)+'\n');if(report.FAIL)process.exitCode=1;
 await server.close();

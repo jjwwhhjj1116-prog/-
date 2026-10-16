@@ -815,6 +815,7 @@ export default function App() {
           {/* CASE 0: 프로젝트 접수목록 (그룹웨어 수주소식 실시간 연동) */}
           {activeMenu === '프로젝트 접수목록' && (
             <IntakeListView
+              intakeProjects={studio.intakeProjects}
               lang={lang}
               openIntakeCode={openIntakeCode}
               onIntakeOpened={()=>setOpenIntakeCode(null)}
@@ -1089,7 +1090,7 @@ export default function App() {
           )}
 
           {/* CASE 5: 회의록 (작성 및 목록 2단 분기) */}
-          {inquiryVisited.map(department=><div key={`${actorId}:${department}`} hidden={activeMenu!=='프로젝트 질의사항'||inquiryDepartment!==department}><ProjectInquiries department={department} onDepartmentChange={selectInquiryDepartment} initialProjectId={inquiryContext[department]?.projectId} initialProjectCode={inquiryContext[department]?.projectCode} initialContextVersion={inquiryContext[department]?.version} initialTrade={inquiryContext[department]?.trade} visible={activeMenu==='프로젝트 질의사항'&&inquiryDepartment===department}/></div>)}
+          {inquiryVisited.map(department=><div key={`${actorId}:${department}`} hidden={activeMenu!=='프로젝트 질의사항'||inquiryDepartment!==department}><ProjectInquiries intakeProjects={studio.intakeProjects} department={department} onDepartmentChange={selectInquiryDepartment} initialProjectId={inquiryContext[department]?.projectId} initialProjectCode={inquiryContext[department]?.projectCode} initialContextVersion={inquiryContext[department]?.version} initialTrade={inquiryContext[department]?.trade} visible={activeMenu==='프로젝트 질의사항'&&inquiryDepartment===department}/></div>)}
           {(activeMenu === '회의록' || activeMenu === '회의록 작성') && (
             <MinutesView initialTab="write" />
           )}
@@ -1106,7 +1107,7 @@ export default function App() {
           {activeMenu === '자료실(google드라이브)' && <DriveView />}
 
           {/* CASE 7: 연계시스템 (QC 검토) */}
-          {activeMenu === '연계시스템(검토)' && <QCLinkView />}
+          {activeMenu === '연계시스템(검토)' && <QCLinkView intakeProjects={studio.intakeProjects} />}
 
           {/* CASE 8: 설정 (Google 드라이브 / 회원 관리) */}
           {activeMenu === '설정' && <SettingsView />}
