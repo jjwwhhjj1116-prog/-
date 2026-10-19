@@ -73,6 +73,22 @@ try{
  await check('실제 개인 컴포넌트 검색 이벤트: 배정 프로젝트만 번호/이름 검색·0건·지우기',()=>{
   const a=project('personal-alpha',kr.id),b=project('personal-beta',vn.id);reset([a,b]);const snapshot=structuredClone(projects.getState().projects),q=mount('PersonalScheduleView');q.personal();q.search('BETA');assert.ok(q.bars(b.id).length&&!q.bars(a.id).length);assert.ok(!q.row(kr.id));q.search('없는현장');assert.ok(q.html().includes('현재 월·팀에 일치하는 프로젝트가 없습니다'));q.event(q.button('검색 지우기'));assert.ok(q.row(kr.id)&&q.row(vn.id));assert.equal(projects.getState().selectedProjectId,null);assert.deepEqual(projects.getState().projects,snapshot);return {emptyResultExplicit:true,clearRestoresRows:true};
  });
+ for(const department of ['마감팀','구조팀','토목&조경팀'])await check(`${department} 프로젝트 일정표 승인 야근: 해당일만 표시·대기/반려 제외·원문 보존`,()=>{
+  const p=project('overtime-'+department,kr.id,'2026-09-01','2026-09-30',{department,status:'납품',progress:100});
+  const request={id:'approved-ot',type:'OVERTIME',status:'APPROVED',department,userId:kr.id,userName:kr.name,taskId:`gen-${p.id}-내부`,roleName:'내부',workDate:'2026-10-14',startTime:'17:00',endTime:'20:00',hours:3};
+  p.scheduleExtensions=[request,{...request,id:'pending-ot',status:'PENDING',workDate:'2026-10-15'},{...request,id:'rejected-ot',status:'REJECTED',workDate:'2026-10-16'},{...request,id:'other-month-ot',workDate:'2026-11-02'}];
+  reset([p],[],department);const before=structuredClone(projects.getState().projects),q=mount('ProjectCalendar');
+  const badges=q.all().filter(node=>node.props['data-project-overtime-day']);assert.equal(badges.length,1);assert.equal(badges[0].props['data-project-overtime-day'],'2026-10-14');assert.equal(badges[0].props['data-overtime-department'],department);assert.equal(text(badges[0]),'야근');assert.match(badges[0].props.title,/17:00~20:00/);assert.match(badges[0].props.title,/3시간/);assert.match(badges[0].props.title,/합성 한국 직원/);
+  assert.ok(!covered(q.bars(p.id),'2026-10-14'),'야근 승인으로 원 프로젝트 납기 구간이 부활하면 안 됨');assert.deepEqual(projects.getState().projects,before);
+  reset([{...p,scheduleExtensions:p.scheduleExtensions.filter(r=>r.status!=='APPROVED')}],[],department);assert.equal(mount('ProjectCalendar').all().filter(node=>node.props['data-project-overtime-day']).length,0);
+  return {badges:1,pendingRejected:0,originalPeriodPreserved:true};
+ });
+ await check('타팀 보완 야근·주말 동시 표시: 부서 격리·배지 위치 분리',()=>{
+  const p=project('cross-followup-ot',kr.id,'2026-09-01','2026-09-30',{status:'납품',progress:100});p.postDeliveryTasks=[{id:'structure-followup',kind:'수정',department:'구조팀',submissionStatus:'REPORTED',personIds:[vn.id],startDate:'2026-10-14',endDate:'2026-10-17',memo:'구조 보완 원문',status:'예정'}];
+  const request={id:'structure-ot',type:'OVERTIME',status:'APPROVED',department:'구조팀',userId:vn.id,userName:vn.name,taskId:`gen-${p.id}-followup-structure-followup`,roleName:'납품 후 수정',workDate:'2026-10-17',startTime:'17:00',endTime:'20:00',hours:3};p.scheduleExtensions=[request,{...request,id:'structure-weekend',type:'WEEKEND',startTime:'09:00',endTime:'17:00',hours:8}];
+  reset([p],[], '구조팀');const q=mount('ProjectCalendar'),overtime=q.all().find(node=>node.props['data-project-overtime-day']),weekend=q.all().find(node=>node.props['data-project-weekend-day']);assert.ok(overtime&&weekend);assert.equal(overtime.props['data-overtime-department'],'구조팀');assert.ok(Number(overtime.props.style.top)>=Number(weekend.props.style.top)+26);
+  reset([p],[],'마감팀');assert.equal(mount('ProjectCalendar').all().filter(node=>node.props['data-project-overtime-day']).length,0);
+ });
 }finally{globalThis.fetch=savedFetch;await server.close();}
 const output=arg('output');if(output)writeFileSync(output,JSON.stringify({kind:'ACTUAL_CALENDAR_COMPONENT_EVENTS_SYNTHETIC',externalRequests:requests,productionWrites:0,results,limits:['실제 컴포넌트의 이벤트와 DOM·스타일·표시구간을 합성 store로 검증했다. 실제 운영 브라우저·저장·여러 PC는 별도 검수한다.']},null,2)+'\n');
 if(requests||results.some(result=>result.status!=='PASS'))process.exitCode=1;
