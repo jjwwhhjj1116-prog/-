@@ -3,6 +3,12 @@ type ReleaseNote = { id: string; date: string; ko: string[]; vi: string[] };
 // 새 버전을 배포할 때 실제 변경 사항을 최신 날짜가 먼저 오도록 추가합니다.
 export const releaseNotes: ReleaseNote[] = [
   {
+    id: '2026-10-20-meeting-intake-gemini-draft',
+    date: '2026-10-20',
+    ko: ['회의록의 프로젝트 선택 목록을 프로젝트 접수목록과 맞췄습니다.', '회의 녹취록·문서·엑셀을 맨 위에서 첨부하면 Gemini가 아래 회의록 초안을 작성합니다. 내용을 확인·수정한 뒤 저장하세요.'],
+    vi: ['Danh sách chọn dự án trong biên bản họp nay khớp với danh sách tiếp nhận dự án.', 'Đính kèm bản ghi âm, tài liệu hoặc Excel ở đầu trang để Gemini tạo bản nháp biên bản bên dưới. Kiểm tra và sửa trước khi lưu.'],
+  },
+  {
     id: '2026-10-20-phone-business-card',
     date: '2026-10-20',
     ko: ['명함 등록에서 일회용 QR을 만들면 휴대폰으로 찍은 사진이 PC 등록 화면에 도착합니다. PC에서 Gemini 인식 결과를 확인·수정한 뒤 저장하세요.'],

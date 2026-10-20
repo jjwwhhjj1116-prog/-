@@ -4,7 +4,9 @@ import {studioApi} from '../services/studioApi';
 import {ownLegacyMinutes,legacyMinuteId} from '../utils/legacyMinutes';
 import {useStudioStore,refreshStudioMeetings} from '../store/useStudioStore';
 import directory from '../data/publicDirectory.json';
-import { buildMeetingWorkbook, rebuildTranslatedMeetingWorkbook, downloadMeetingWorkbook, readMeetingBody, extractAiMeetingSummary } from '../services/meetingExcel';
+import { buildMeetingWorkbook, rebuildTranslatedMeetingWorkbook, downloadMeetingWorkbook, readMeetingBody } from '../services/meetingExcel';
+import {meetingSource,requestMeetingDraft,type MeetingDraft} from '../services/meetingDraft';
+import {buildProjectCatalog} from '../utils/projectCatalog';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { useAuthStore } from '../store/useAuthStore';
@@ -195,7 +197,7 @@ export interface MinutesViewProps {
 export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }) => {
   const { currentUser } = useAuthStore();
   const { projects } = useProjectStore();
-  const {ready,meetings:sharedMeetings,openMeetingId}=useStudioStore();
+  const {ready,meetings:sharedMeetings,openMeetingId,intakeProjects,archivedProjects}=useStudioStore();
   const [saving,setSaving]=useState(false);
   const [importingLegacy,setImportingLegacy]=useState(false);
   const [legacyMessage,setLegacyMessage]=useState('');
@@ -261,22 +263,18 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(()=>{if(openMeetingId&&meetings.some(m=>m.id===openMeetingId)){void openMeeting(openMeetingId);useStudioStore.setState({openMeetingId:null});}},[openMeetingId,meetings]);
 
-  // 고유 프로젝트 목록 (코드 기준 중복 제거)
+  // 접수목록과 동일한 수주 원장을 사용한다. 팀별 일정 생성 여부로 프로젝트를 제한하지 않는다.
   const uniqueProjects = useMemo(() => {
-    const map = new Map<string, typeof projects[0]>();
-    projects.forEach((p) => {
-      const code = p.code || p.id;
-      if (!map.has(code)) {
-        map.set(code, p);
-      }
-    });
-    return Array.from(map.values());
-  }, [projects]);
+    return buildProjectCatalog(intakeProjects,projects,archivedProjects).map(item=>({id:item.code,code:item.code,name:item.name,client:item.client,department:currentUser?.department||''}));
+  }, [intakeProjects,projects,archivedProjects,currentUser?.department]);
 
   // 상단 프로젝트 선택 드롭다운 상태
   const [selectedProjectCode, setSelectedProjectCode] = useState<string>(() => {
-    return uniqueProjects[0]?.code || 'TK-2026087';
+    return uniqueProjects[0]?.code || '';
   });
+  useEffect(()=>{
+    if(uniqueProjects.length&&!uniqueProjects.some(p=>p.code===selectedProjectCode))setSelectedProjectCode(uniqueProjects[0].code);
+  },[uniqueProjects,selectedProjectCode]);
 
   // 선택된 프로젝트의 회의록 목록
   const projectMeetings = useMemo(() => {
@@ -426,53 +424,56 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
   // AI 자동 요약 실행 상태
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [aiToast, setAiToast] = useState<string | null>(null);
+  const draftSequence=useRef(0);
+  const activeDraftProject=useRef(selectedProjectCode);
+  activeDraftProject.current=selectedProjectCode;
 
-  // 자료 파일(텍스트 등) 첨부 핸들러
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const context=beginMeetingFileRead();
-    if(!context)return;
-
-    // 텍스트 파일인 경우 내용 자동 읽어 원문 대화록에 채움
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if(!isCurrentMeetingFileRead(context))return;
-      setFormAttachedFile(file.name);
-      const text = event.target?.result as string;
-      if (text) {
-        setFormTranscript(text);
-        setAiToast(`📎 파일 '${file.name}' 첨부 완료: 대화록 원문이 자동 로드되었습니다. [원문 정리]를 실행하세요.`);
-        setTimeout(() => setAiToast(null), 4000);
-      }
-    };
-    reader.readAsText(file, 'utf-8');
-  };
-
-  // ✨ 원문 정리 및 작성 실행
-  const handleRunAiAutoGenerate = async () => {
-    if (!formTranscript.trim()) {
-      void translatedAlert('회의 자료를 첨부하거나 회의 원문 대화록을 먼저 입력해 주세요.');
-      return;
-    }
-
-    setIsAiProcessing(true);
-
-
-    const result = extractAiMeetingSummary(formTranscript, currentMeeting?.projectName || '');
+  const applyGeminiDraft=(draft:MeetingDraft,sourceText:string|undefined,fileName:string|undefined,sourceKind:string)=>{
     formRevision.current++;
-    setFormSummary(result.summary);
-    setFormDecisions(result.decisions.join('\n'));
-
-    // 공식 서식 본문에도 핵심 요약 & 결정사항 자동 세팅
-    if (!formNotesAndInstructions.trim()) {
-      const autoNotes = formTranscript;
-      setFormNotesAndInstructions(autoNotes);
+    if(draft.title)setFormTitle(draft.title);
+    if(draft.meetingDate)setFormDate(draft.meetingDate);
+    if(draft.location)setFormLocation(draft.location);
+    if(draft.clientName)setFormClientName(draft.clientName);
+    if(draft.attendeesInternal.length)setFormAttendeesInternal(draft.attendeesInternal.join(', '));
+    if(draft.attendeesExternal.length)setFormAttendeesExternal(draft.attendeesExternal.join(', '));
+    if(draft.notesAndInstructions)setFormNotesAndInstructions(draft.notesAndInstructions);
+    if(draft.summary)setFormSummary(draft.summary);
+    if(draft.decisions.length)setFormDecisions(draft.decisions.join('\n'));
+    if(sourceText)setFormTranscript(sourceText);
+    else if(draft.transcript)setFormTranscript(`[AI ${sourceKind.startsWith('audio/')?'음성':'문서'} 발췌 · 전체 원문 아님]\n${draft.transcript}`);
+    if(fileName)setFormAttachedFile(fileName);
+    setAiToast('Gemini 초안을 아래 서식에 채웠습니다. 원본과 날짜·참석자·결정사항을 확인한 뒤 저장해 주세요.');
+  };
+  const runGeminiDraft=async(source:{text?:string;file?:File},fileName?:string)=>{
+    if(isAiProcessing)return;
+    if(currentMeeting&&!canEditMeeting){setAiToast('열람 전용 회의록입니다. 새 회의록을 만든 뒤 첨부해 주세요.');return;}
+    const project=uniqueProjects.find(p=>p.code===selectedProjectCode);
+    if(!project){setAiToast('접수목록의 프로젝트를 먼저 선택해 주세요.');return;}
+    const target=currentMeeting||handleCreateNewMeeting();
+    if(!target)return;
+    const context={actorId:currentUser?.id,meetingId:target.id,projectCode:project.code,revision:formRevision.current,sequence:++draftSequence.current};
+    setIsAiProcessing(true);setAiToast('Gemini가 회의 자료를 읽고 초안을 작성하고 있습니다.');
+    try{
+      const result=await requestMeetingDraft(project.code,project.name,source);
+      if(context.sequence!==draftSequence.current||context.revision!==formRevision.current||context.actorId!==useAuthStore.getState().currentUser?.id||fileEditor.current.id!==context.meetingId||activeDraftProject.current!==context.projectCode){setAiToast('초안 작성 중 회의록이나 입력이 바뀌어 결과를 덮어쓰지 않았습니다.');return;}
+      applyGeminiDraft(result.draft,source.text,fileName,result.sourceKind);
+    }catch(cause){if(context.sequence===draftSequence.current)setAiToast(cause instanceof Error?cause.message:'Gemini 초안 작성에 실패했습니다. 입력은 유지됩니다.');}
+    finally{if(context.sequence===draftSequence.current)setIsAiProcessing(false);}
+  };
+  const handleFileUpload=async(e:React.ChangeEvent<HTMLInputElement>)=>{
+    const file=e.target.files?.[0];e.target.value='';
+    if(!file)return;
+    const context={actorId:currentUser?.id,meetingId:currentMeeting?.id,projectCode:selectedProjectCode,sequence:++fileReadSequence.current};
+    try{
+      const source=await meetingSource(file);
+      if(context.sequence!==fileReadSequence.current||context.actorId!==useAuthStore.getState().currentUser?.id||context.meetingId!==fileEditor.current.id||context.projectCode!==activeDraftProject.current)return;
+      await runGeminiDraft(source,file.name);
     }
-
-    setIsAiProcessing(false);
-    setAiToast('✨ 원문 정리 완료! 핵심 요약 및 주요 결정사항이 공식 서식에 반영되었습니다.');
-    setTimeout(() => setAiToast(null), 4500);
+    catch(cause){setAiToast(cause instanceof Error?cause.message:'파일을 읽지 못했습니다.');}
+  };
+  const handleRunAiAutoGenerate=async()=>{
+    if(!formTranscript.trim()){void translatedAlert('회의 자료를 첨부하거나 회의 원문 대화록을 먼저 입력해 주세요.');return;}
+    await runGeminiDraft({text:formTranscript});
   };
 
   // 폼 내용 실시간 회의록에 저장 (저장 후 목록으로 자동 이동 옵션)
@@ -522,7 +523,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
 
   // 신규 회의록 등록 (실제 프로젝트 및 거래처 기반 실데이터 템플릿 생성)
   const handleCreateNewMeeting = () => {
-    const proj = uniqueProjects.find((p) => (p.code || p.id) === selectedProjectCode) || uniqueProjects[0];
+    const proj = uniqueProjects.find((p) => p.code === selectedProjectCode);
     if (!proj) { setAiToast('회의록을 연결할 프로젝트를 먼저 등록해 주세요.'); return; }
     const clientName = proj?.client || (proj?.name?.match(/\[(.*?)\]/)?.[1]) || '';
     const cleanProjName = proj?.name?.replace(/^\[.*?\]\s*/, '').replace(/\s*(견적용역|용역|공사\s*견적용역)$/g, '').trim() || proj?.name || '신규 프로젝트';
@@ -565,6 +566,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     setActiveSubTab('write');
     setAiToast('📝 새 회의록이 생성되었습니다. 서식을 편집하고 저장하세요.');
     setTimeout(() => setAiToast(null), 3000);
+    return newMeeting;
   };
 
   // 거래처명 추출 헬퍼 (프로젝트 정보 및 대괄호에서 실데이터 정밀 매핑)
@@ -625,7 +627,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     if(!context)return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       if(!isCurrentMeetingFileRead(context))return;
       try {
         const data = new Uint8Array(event.target?.result as ArrayBuffer);
@@ -694,30 +696,10 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
         if (fullBodyText) {
           setFormNotesAndInstructions(fullBodyText);
           setFormTranscript(fullBodyText);
-
-          // ✨ AI 자동 분석 및 요약 엔진 즉시 연동!
-          const aiResult = extractAiMeetingSummary(fullBodyText, currentMeeting.projectName || '');
-          setFormSummary(aiResult.summary);
-          setFormDecisions(aiResult.decisions.join('\n'));
-
-          setMeetings((prev) =>
-            prev.map((m) =>
-              m.id === currentMeeting.id
-                ? {
-                    ...m,
-                    notesAndInstructions: fullBodyText,
-                    rawTranscript: fullBodyText,
-                    summary: aiResult.summary,
-                    decisions: aiResult.decisions,
-                    updatedAt: new Date().toLocaleString('ko-KR')
-                  }
-                : m
-            )
-          );
+          await runGeminiDraft({text:fullBodyText},file.name);
+        }else{
+          setAiToast('엑셀의 회의록 본문이 비어 있습니다. 자동 초안을 만들지 않았습니다.');
         }
-
-        setAiToast('📥 공식 회의록 엑셀 양식 데이터 파싱 및 원문 정리가 100% 성공적으로 완료되었습니다.');
-        setTimeout(() => setAiToast(null), 5000);
       } catch (err) {
         console.error(err);
         setAiToast('⚠️ 엑셀 파일을 읽는 중 오류가 발생했습니다. 파일 형식을 확인해 주세요.');
@@ -1098,6 +1080,15 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
             </div>
           )}
 
+          <div className="rounded-2xl border-2 border-indigo-400 bg-indigo-950 p-4 text-white shadow-xl">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div><h2 className="font-black text-sm flex items-center gap-2"><Paperclip size={17}/>회의 녹취록·자료를 먼저 첨부하세요</h2><p className="mt-1 text-xs text-indigo-200">첨부하면 Gemini가 아래 회의록 초안을 채웁니다. 저장 전 원본과 대조해 수정하세요.</p></div>
+              <button type="button" onClick={()=>fileInputRef.current?.click()} disabled={isAiProcessing||!uniqueProjects.length||!canEditMeeting} className="rounded-xl bg-indigo-500 px-4 py-2.5 text-xs font-black text-white hover:bg-indigo-400 disabled:opacity-50 flex items-center gap-2"><Upload size={15}/>{isAiProcessing?'Gemini 초안 작성 중…':'파일 첨부 · 자동 초안 작성'}</button>
+            </div>
+            <p className="mt-2 text-[11px] text-indigo-200">TXT·CSV·DOCX·XLSX·PDF·MP3·WAV·M4A·WEBM·OGG·AAC·FLAC · 녹음/PDF 30MB 이하. 파일은 초안 생성에 쓰이며 원본 파일 자체는 회의록에 자동 보관되지 않습니다.</p>
+            {formAttachedFile&&<div className="mt-2 flex items-center gap-2 text-xs"><Paperclip size={12}/><span className="truncate">초안 자료: {formAttachedFile}</span><button type="button" onClick={()=>setFormAttachedFile('')} className="text-rose-200 underline">표시 제거</button></div>}
+          </div>
+
           {/* 2. 대화형 2단 메인 레이아웃 */}
           {/* 좌측 (6열): 회의록 수동작성 & 자료 첨부시 원문 정리 기능 */}
           {/* 우측 (6열): 클레임센터 표준 정식 서식 미리보기 & 결재라인 */}
@@ -1267,38 +1258,14 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
             </div>
           </div>
 
-          {/* 카드 B: 회의내용 및 지시사항 + 대화록 첨부 & AI 자동정리 */}
+          {/* 카드 B: 회의내용 및 지시사항과 원문 확인 */}
           <div className="bg-slate-900 bg-gradient-to-br from-slate-900 via-indigo-950/40 to-slate-900 border-2 border-indigo-500/50 rounded-2xl p-4 text-white space-y-3 shadow-xl">
             <div className="flex items-center justify-between pb-2 border-b border-indigo-900/60">
               <span className="text-xs font-black text-indigo-300 flex items-center gap-1.5">
                 <Sparkles size={14} className="text-amber-400 animate-pulse" />
                 <span>2. 회의내용 및 지시사항 (공식 본문 & 원문 정리)</span>
               </span>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="text-[11px] font-bold text-indigo-300 hover:text-white flex items-center gap-1 bg-indigo-950 px-2.5 py-1 rounded-lg border border-indigo-800 transition cursor-pointer"
-              >
-                <Paperclip size={12} />
-                <span>회의자료 파일 첨부</span>
-              </button>
             </div>
-
-            {formAttachedFile && (
-              <div className="bg-indigo-950/80 border border-indigo-800 px-3 py-1.5 rounded-xl text-xs text-indigo-200 flex items-center justify-between">
-                <span className="flex items-center gap-1.5 truncate">
-                  <Paperclip size={12} className="text-amber-400" />
-                  <strong>첨부파일:</strong> {formAttachedFile}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setFormAttachedFile('')}
-                  className="text-xs text-rose-400 hover:text-rose-300 font-bold ml-2 cursor-pointer"
-                >
-                  제거
-                </button>
-              </div>
-            )}
 
             {/* 공식 서식 본문: 회의내용 및 지시사항 직접 작성란 */}
             <div>
@@ -1326,7 +1293,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                 rows={4}
                 value={formTranscript}
                 onChange={(e) => setFormTranscript(e.target.value)}
-                placeholder="회의에서 오간 대화 내용이나 녹취록을 붙여넣으세요. 아래 [✨ 원문 정리]를 누르면 공식 서식 본문과 핵심 요약, 공종별 실행과제가 입력한 원문을 그대로 정리합니다. 결정사항은 직접 확인해 주세요."
+                placeholder="회의 대화나 녹취록을 붙여넣고 아래 Gemini 초안 작성을 누르세요. 음성 파일의 발췌는 전체 녹취록이 아니므로 원본을 확인해 주세요."
                 className="w-full text-xs font-mono p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none leading-relaxed"
               />
             </div>
@@ -1341,12 +1308,12 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
               {isAiProcessing ? (
                 <>
                   <Loader2 size={16} className="animate-spin text-amber-300" />
-                  <span>입력한 원문을 정리 중입니다...</span>
+                  <span>Gemini가 원문 초안을 작성 중입니다...</span>
                 </>
               ) : (
                 <>
                   <Sparkles size={16} className="text-amber-300 animate-pulse" />
-                  <span>✨ 회의 자료 기반 원문 정리 및 공식 서식 반영 (원문 발췌)</span>
+                  <span>✨ 입력한 원문으로 Gemini 초안 작성</span>
                 </>
               )}
             </button>
@@ -1642,8 +1609,8 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
       <input readOnly={!canEditMeeting}
         ref={fileInputRef}
         type="file"
-        accept=".txt, .docx, .pdf, .csv"
-        onChange={handleFileUpload}
+        accept=".txt,.csv,.docx,.xlsx,.xls,.pdf,.mp3,.wav,.m4a,.webm,.ogg,.aac,.flac"
+        onChange={event=>void handleFileUpload(event)}
         className="hidden"
       />
       {/* 회의록 웹 목록 정리 확인 커스텀 모달 (브라우저 confirm 차단 완전 방지) */}

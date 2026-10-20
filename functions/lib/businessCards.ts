@@ -45,6 +45,8 @@ async function credential(env:Env){
  return new TextDecoder().decode(decrypted);
 }
 const currentModel=(env:Env)=>/^gemini-[a-z0-9.-]+$/.test(env.GEMINI_MODEL||'')?env.GEMINI_MODEL!:'gemini-3.1-flash-lite';
+export const configuredGeminiKey=credential;
+export const configuredGeminiModel=currentModel;
 
 export async function businessCardsRoute(request:Request,env:Env,actor:StudioUser,path:string,deps:Dependencies):Promise<Response|null>{
  if(!path.startsWith('business-cards'))return null;

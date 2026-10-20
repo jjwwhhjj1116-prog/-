@@ -3,6 +3,7 @@ import { resumableUpload } from '../lib/driveResumable';
 import { archiveMeeting } from '../lib/meetingArchive';
 import { handleTranslation } from '../lib/translation';
 import { businessCardsRoute } from '../lib/businessCards';
+import { meetingDraftRoute } from '../lib/meetingDraft';
 import {intakeProjectStatements} from '../lib/intakeSchedule';
 // Cloudflare Pages Functions: D1 Database & Google Drive Integration REST API Route
 interface Env {
@@ -281,6 +282,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       folder:serverFindOrCreateFolder,
       upload:serverUploadToDrive,
     }))!;
+    if(path==='meetings/draft')return meetingDraftRoute(request,env);
     if(path.startsWith('google/oauth/')&&!administrator)return new Response(JSON.stringify({error:'관리자만 회사 Google 연결을 변경할 수 있습니다.'}),{status:403,headers});
     // 0. Google OAuth 서버 엔드포인트
     if (path.startsWith('google/')) {
