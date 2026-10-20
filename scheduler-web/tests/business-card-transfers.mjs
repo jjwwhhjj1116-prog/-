@@ -1,0 +1,53 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {database} from './d1.mjs';
+import {businessCardsRoute} from '../../functions/lib/businessCards.ts';
+
+const {db,DB}=database();
+db.exec(readFileSync(new URL('../../migrations/0013_business_cards.sql',import.meta.url),'utf8'));
+db.exec(readFileSync(new URL('../../migrations/0014_business_card_transfers.sql',import.meta.url),'utf8'));
+const actors=[{id:'staff-a',name:'직원 A',profile:JSON.stringify({email:'a@example.test'})},{id:'staff-b',name:'직원 B',profile:JSON.stringify({email:'b@example.test'})}];
+for(const actor of actors)db.prepare('INSERT INTO studio_users VALUES(?,?,?,?,?,?,?,?,?,1)').run(actor.id,actor.id,JSON.parse(actor.profile).email,actor.name,'마감팀','프로',actor.profile,'salt','hash');
+const env={DB,GOOGLE_CLIENT_SECRET:'test-only-encryption-secret-never-production',GEMINI_API_KEY:'test-only-gemini-key',GEMINI_MODEL:'gemini-test'};
+let driveUploads=0,geminiCalls=0;
+const deps={accessToken:async()=> 'mock-token',folder:async(name)=>name==='기술본부 자료실'?'root-folder-12345':'cards-folder-12345',upload:async()=>{driveUploads++;return{id:'google-file-12345'};}};
+const image=new File([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB','base64')],'phone.png',{type:'image/png'});
+const fields={name:'시험 명함',company:'검수 회사',department:'기술부',title:'실장',mobile:'010-0000-0000',phone:'',fax:'',email:'qa@example.test',website:'',address:'',tags:'',notes:''};
+const originalFetch=globalThis.fetch;
+globalThis.fetch=async(url)=>{geminiCalls++;assert.match(String(url),/generativelanguage\.googleapis\.com/);return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(fields)}]}}]});};
+const send=async(actor,path,method='GET',body,headers={})=>{
+ const url=new URL(`https://example.invalid/api/${path}`);
+ return businessCardsRoute(new Request(url,{method,body,headers}),env,actor,url.pathname.replace('/api/',''),deps);
+};
+const data=async response=>response.json();
+try{
+ const created=await send(actors[0],'business-cards/transfers','POST');assert.equal(created.status,201);
+ const {token}=await data(created);assert.match(token,/^[0-9a-f]{48}$/);
+ assert.equal(db.prepare('SELECT token_hash FROM studio_business_card_transfers').get().token_hash===token,false);
+ assert.equal((await send(actors[1],`business-cards/transfers/${token}`)).status,404);
+ const form=new FormData();form.set('file',image);
+ assert.equal((await send(actors[1],`business-cards/transfers/${token}/upload`,'POST',form)).status,404);
+ assert.equal((await send(actors[0],`business-cards/transfers/${token}/image`)).status,409);
+ assert.equal((await send(actors[0],`business-cards/transfers/${token}/upload`,'POST',form)).status,200);
+ assert.equal((await send(actors[0],`business-cards/transfers/${token}/upload`,'POST',form)).status,409);
+ assert.equal((await send(actors[1],`business-cards/transfers/${token}/image`)).status,404);
+ const stored=db.prepare('SELECT ciphertext,iv,status FROM studio_business_card_transfers').get();assert.equal(stored.status,'UPLOADED');assert.ok(!stored.ciphertext.includes(Buffer.from(await image.arrayBuffer()).toString('base64')));
+ const received=await send(actors[0],`business-cards/transfers/${token}/image`);
+ assert.equal(received.status,200);assert.equal(received.headers.get('cache-control'),'private, no-store');assert.deepEqual(Buffer.from(await received.arrayBuffer()),Buffer.from(await image.arrayBuffer()));
+ assert.equal(driveUploads,0);assert.equal(geminiCalls,0);
+ const analyzed=await send(actors[0],'business-cards/analyze','POST',form);assert.equal(analyzed.status,200);const analysis=await data(analyzed);
+ const registration=new FormData();registration.set('file',image);registration.set('analysisId',analysis.analysis.id);registration.set('fields',JSON.stringify({...fields,company:'PC에서 수정'}));
+ const saved=await send(actors[0],'business-cards','POST',registration,{'Idempotency-Key':`business-card:${crypto.randomUUID()}`});assert.equal(saved.status,201);assert.equal(driveUploads,1);assert.equal(db.prepare('SELECT company FROM studio_business_cards').get().company,'PC에서 수정');
+ assert.equal((await send(actors[0],`business-cards/transfers/${token}`,'DELETE')).status,200);assert.equal(db.prepare('SELECT COUNT(*) AS n FROM studio_business_card_transfers').get().n,0);
+ const expired=await data(await send(actors[0],'business-cards/transfers','POST'));
+ db.prepare('UPDATE studio_business_card_transfers SET expires_at=?').run('2000-01-01T00:00:00.000Z');
+ assert.equal((await send(actors[0],`business-cards/transfers/${expired.token}`)).status,404);
+ const tooLarge=await data(await send(actors[0],'business-cards/transfers','POST'));
+ assert.equal(db.prepare('SELECT COUNT(*) AS n FROM studio_business_card_transfers').get().n,1);
+ const padded=new File([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB','base64'),new Uint8Array(900_000)],'large.png',{type:'image/png'});
+ const largeForm=new FormData();largeForm.set('file',padded);
+ assert.equal((await send(actors[0],`business-cards/transfers/${tooLarge.token}/upload`,'POST',largeForm)).status,413);
+ assert.equal((await data(await send(actors[0],`business-cards/transfers/${tooLarge.token}`))).status,'PENDING');
+ await send(actors[0],`business-cards/transfers/${tooLarge.token}`,'DELETE');
+ console.log('PASS same-account QR transfer, encrypted temporary photo, PC review and Drive registration, expiry cleanup');
+}finally{globalThis.fetch=originalFetch;db.close();}

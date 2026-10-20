@@ -56,6 +56,7 @@ import {VietWorkCalendarDialog} from './components/VietWorkCalendarDialog';
 import {StudioHelpDialog, type HelpMenu, type HelpTab} from './components/StudioHelpDialog';
 import {markHelpSeen, readHelpStatus} from './components/studioHelpState';
 import {BusinessCardContacts, type ContactMode} from './components/BusinessCardContacts';
+import {BusinessCardCapture} from './components/BusinessCardTransfer';
 
 // 좌측 카테고리 정의 (최상단에 '프로젝트 접수목록' 추가, 회의록 하위 2단 카테고리 추가)
 export type NavCategory =
@@ -80,6 +81,7 @@ export type NavCategory =
   | '설정';
 
 export default function App() {
+  const [cardCaptureToken]=useState(()=>typeof window==='undefined'?null:new URLSearchParams(window.location.search).get('cardCapture'));
   const {
     projects,
     personnel,
@@ -102,7 +104,7 @@ export default function App() {
   const [hasUnseenUpdate,setHasUnseenUpdate]=useState(false);
 
   useEffect(()=>{void restoreStudioSession().finally(()=>setSessionChecked(true));},[]);
-  useEffect(()=>{if(sessionChecked&&actorId)return startStudioSync(actorId);},[sessionChecked,actorId]);
+  useEffect(()=>{if(sessionChecked&&actorId&&!cardCaptureToken)return startStudioSync(actorId);},[sessionChecked,actorId,cardCaptureToken]);
   useEffect(()=>{
     if(!actorId||!sharedLoaded){setHelpTab(null);setHasUnseenUpdate(false);return;}
     const status=readHelpStatus(actorId);
@@ -355,6 +357,7 @@ export default function App() {
   if (!currentUser) {
     return <LoginScreen />;
   }
+  if(cardCaptureToken)return <BusinessCardCapture token={cardCaptureToken} actorName={currentUser.name}/>;
   if (!sharedLoaded && localViewActorId !== actorId) {
     return <div className={`min-h-screen ${darkMode?'dark bg-slate-950 text-slate-100':'bg-slate-50 text-slate-900'}`}>
       {studio.actorId===actorId&&studio.conflict&&<StudioCollaboration onOpenMeeting={()=>setActiveMenu('회의록 작성')} onOpenWorkLog={()=>setActiveMenu('업무일지')} onOpenWeeklyReport={openWeeklyReport} onOpenSupplement={openSupplementReport} />}

@@ -3,6 +3,12 @@ type ReleaseNote = { id: string; date: string; ko: string[]; vi: string[] };
 // 새 버전을 배포할 때 실제 변경 사항을 최신 날짜가 먼저 오도록 추가합니다.
 export const releaseNotes: ReleaseNote[] = [
   {
+    id: '2026-10-20-phone-business-card',
+    date: '2026-10-20',
+    ko: ['명함 등록에서 일회용 QR을 만들면 휴대폰으로 찍은 사진이 PC 등록 화면에 도착합니다. PC에서 Gemini 인식 결과를 확인·수정한 뒤 저장하세요.'],
+    vi: ['Tạo mã QR dùng một lần trong Đăng ký danh thiếp để gửi ảnh chụp từ điện thoại đến màn hình PC. Kiểm tra và sửa kết quả Gemini trên PC trước khi lưu.'],
+  },
+  {
     id: '2026-10-20-calendar-page-scroll',
     date: '2026-10-20',
     ko: ['프로젝트·개인 일정표의 긴 목록을 브라우저 전체 스크롤로 볼 수 있게 바꾸고, 날짜의 가로 스크롤은 유지했습니다.', '인맥관리의 명함 삭제 확인을 화면 안 대화상자로 바꿨습니다.'],

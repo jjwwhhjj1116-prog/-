@@ -30,11 +30,14 @@ async function validImage(value:FormDataEntryValue|null){
  return{file:value,bytes,sha:hex(await crypto.subtle.digest('SHA-256',bytes))};
 }
 function base64(bytes:Uint8Array){let output='';for(let i=0;i<bytes.length;i+=8192)output+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(output);}
-async function secretKey(env:Env){
+async function secretKey(env:Env,purpose='Gemini API key at rest'){
  if(!env.GOOGLE_CLIENT_SECRET)throw new Error('서버 암호화 설정이 없습니다. 관리자에게 연결 상태를 확인해 주세요.');
  const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(env.GOOGLE_CLIENT_SECRET),'HKDF',false,['deriveKey']);
- return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:new TextEncoder().encode('concost-studio-business-card-key-v1'),info:new TextEncoder().encode('Gemini API key at rest')},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+ return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:new TextEncoder().encode('concost-studio-business-card-key-v1'),info:new TextEncoder().encode(purpose)},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
 }
+const transferKey=(env:Env)=>secretKey(env,'Phone to PC business card photo transfer v1');
+const transferHash=async(token:string)=>hex(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token)));
+const fromBase64=(encoded:string)=>Uint8Array.from(atob(encoded),character=>character.charCodeAt(0));
 async function credential(env:Env){
  const row=await env.DB.prepare("SELECT ciphertext,iv FROM studio_business_card_credentials WHERE id='gemini'").first<{ciphertext:string;iv:string}>();
  if(!row)return env.GEMINI_API_KEY?.trim()||'';
@@ -47,6 +50,49 @@ export async function businessCardsRoute(request:Request,env:Env,actor:StudioUse
  if(!path.startsWith('business-cards'))return null;
  const url=new URL(request.url),method=request.method,admin=isAdmin(actor);
  try{
+  if(path.startsWith('business-cards/transfers')){
+   const now=new Date().toISOString();
+   if(path==='business-cards/transfers'&&method==='POST'){
+    await env.DB.prepare('DELETE FROM studio_business_card_transfers WHERE expires_at<=?').bind(now).run();
+    const active=await env.DB.prepare('SELECT COUNT(*) AS count FROM studio_business_card_transfers WHERE actor_id=?').bind(actor.id).first<{count:number}>();
+    if((active?.count||0)>=3)return error('열린 휴대폰 촬영 연결이 3개입니다. 이전 연결을 닫거나 10분 후 다시 시도해 주세요.',429);
+    const token=hex(crypto.getRandomValues(new Uint8Array(24)).buffer);
+    const expiresAt=new Date(Date.now()+10*60_000).toISOString();
+    await env.DB.prepare("INSERT INTO studio_business_card_transfers(token_hash,actor_id,status,created_at,expires_at) VALUES(?,?,'PENDING',?,?)").bind(await transferHash(token),actor.id,now,expiresAt).run();
+    return reply({token,expiresAt},201);
+   }
+   const match=/^business-cards\/transfers\/([0-9a-f]{48})(?:\/(upload|image))?$/.exec(path);
+   if(!match)return error('촬영 연결을 찾을 수 없습니다.',404);
+   const hash=await transferHash(match[1]);
+   const row=await env.DB.prepare('SELECT status,original_name,mime_type,expires_at FROM studio_business_card_transfers WHERE token_hash=? AND actor_id=?').bind(hash,actor.id).first<{status:string;original_name:string|null;mime_type:string|null;expires_at:string}>();
+   if(!row)return error('촬영 연결이 없거나 만료됐습니다. PC에서 새 QR을 만들어 주세요.',404);
+   if(row.expires_at<=now){await env.DB.prepare('DELETE FROM studio_business_card_transfers WHERE token_hash=? AND actor_id=?').bind(hash,actor.id).run();return error('촬영 연결이 만료됐습니다. PC에서 새 QR을 만들어 주세요.',404);}
+   if(method==='GET'&&!match[2])return reply({status:row.status,originalName:row.original_name,expiresAt:row.expires_at});
+   if(method==='POST'&&match[2]==='upload'){
+    if(row.status!=='PENDING')return error('이미 사진이 전송됐습니다. PC에서 확인해 주세요.',409);
+    const image=await validImage((await request.formData()).get('file'));
+    if(image.bytes.length>900_000)return error('전송 사진은 900KB 이하여야 합니다. 사진 크기를 줄인 뒤 다시 시도해 주세요.',413);
+    const iv=crypto.getRandomValues(new Uint8Array(12));
+    const encrypted=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},await transferKey(env),image.bytes));
+    const name=image.file.name.slice(0,160).split('').map(char=>char==='/'||char==='\\'||char.charCodeAt(0)<32?'_':char).join('')||'business-card.jpg';
+    const uploadedAt=new Date().toISOString();
+    const result=await env.DB.prepare("UPDATE studio_business_card_transfers SET status='UPLOADED',ciphertext=?,iv=?,original_name=?,mime_type=?,uploaded_at=? WHERE token_hash=? AND actor_id=? AND status='PENDING' AND expires_at>?").bind(base64(encrypted),hex(iv.buffer),name,image.file.type,uploadedAt,hash,actor.id,uploadedAt).run();
+    if(result.meta.changes!==1)return error('촬영 연결이 변경됐거나 만료됐습니다.',409);
+    return reply({status:'UPLOADED'});
+   }
+   if(method==='GET'&&match[2]==='image'){
+    if(row.status!=='UPLOADED'||!row.mime_type)return error('아직 사진이 도착하지 않았습니다.',409);
+    const photo=await env.DB.prepare('SELECT ciphertext,iv FROM studio_business_card_transfers WHERE token_hash=? AND actor_id=?').bind(hash,actor.id).first<{ciphertext:string;iv:string}>();
+    if(!photo?.ciphertext||!photo.iv)return error('명함 사진을 읽지 못했습니다.',409);
+    const decrypted=await crypto.subtle.decrypt({name:'AES-GCM',iv:bytesFromHex(photo.iv)},await transferKey(env),fromBase64(photo.ciphertext));
+    return new Response(decrypted,{headers:{'Content-Type':row.mime_type,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
+   }
+   if(method==='DELETE'&&!match[2]){
+    await env.DB.prepare('DELETE FROM studio_business_card_transfers WHERE token_hash=? AND actor_id=?').bind(hash,actor.id).run();
+    return reply({ok:true});
+   }
+   return error('지원하지 않는 촬영 요청입니다.',405);
+  }
   if(path==='business-cards/settings'){
    if(!admin)return error('관리자만 Gemini API 키를 설정할 수 있습니다.',403);
    if(method==='GET')return reply({configured:!!(await credential(env)),source:(await env.DB.prepare("SELECT id FROM studio_business_card_credentials WHERE id='gemini'").first())?'ADMIN':'SERVER',model:currentModel(env)});
