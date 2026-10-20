@@ -15,7 +15,8 @@ const compiled=ts.transpileModule(instrumented,{compilerOptions:{module:ts.Modul
 const text=node=>node==null||typeof node==='boolean'?'':typeof node==='string'||typeof node==='number'?String(node):Array.isArray(node)?node.map(text).join(''):text(node.props?.children);
 const nodes=node=>node==null||typeof node!=='object'?[]:Array.isArray(node)?node.flatMap(nodes):[node,...nodes(node.props?.children)];
 const project=(id,department,code)=>({id,department,code,name:'[합성] 메뉴 연결 검수',status:'진행중',progress:0,roles:{},subTasks:{},startDate:'',endDate:'',pmId:''});
-function screen(department='마감팀',lang='ko'){
+function screen(department='마감팀',lang='ko',search=''){
+ const location={pathname:'/',search,origin:'https://tech.example.invalid'};
  const actor={id:'qa-nav-actor104',department,name:'[합성] 메뉴 검수자',position:'실장',role:'ADMIN'};
  const auth={currentUser:actor},hooks=[];let cursor=0,tree,handlers;
  const records=[project('qa-structure-other104','구조팀','QA-OTHER'),project('qa-finish-same104','마감팀','QA-SAME'),project('qa-structure-same104','구조팀','QA-SAME'),project('qa-civil-other104','토목&조경팀','QA-OTHER')];
@@ -25,7 +26,7 @@ function screen(department='마감팀',lang='ko'){
  const useRef=initial=>{const index=cursor++;if(!(index in hooks))hooks[index]={current:initial};return hooks[index];};
  const react={useState,useRef,useEffect(){cursor++;},useMemo(factory){cursor++;return factory();}};
  const exported={};
- runInNewContext(compiled,{exports:exported,localStorage:{getItem:()=>null},Date,Set,Map,URL,URLSearchParams,setTimeout(){},fetch(){throw Error('Unexpected external request');},capture:value=>{handlers=value;},require:name=>{
+ runInNewContext(compiled,{window:{location},exports:exported,localStorage:{getItem:()=>null},Date,Set,Map,URL,URLSearchParams,setTimeout(){},fetch(){throw Error('Unexpected external request');},capture:value=>{handlers=value;},require:name=>{
   if(name==='react')return{...react,default:react};if(name==='react/jsx-runtime')return jsx;
   if(name==='lucide-react')return new Proxy({},{get:(_,key)=>String(key)});
   if(name==='./store/useProjectStore')return{useProjectStore:Object.assign(()=>state,{getState:()=>state})};
@@ -43,7 +44,7 @@ function screen(department='마감팀',lang='ko'){
  const panels=()=>nodes(tree).filter(node=>node.type==='div'&&node.props.children?.type==='ProjectInquiries');
  const visible=()=>panels().filter(node=>!node.props.hidden);
  render();handlers.setSessionChecked(true);render();
- return{render,button,panels,visible,records,auth,state,get tree(){return tree;},get h(){return handlers;},openModal(id,trade){state.selectedProjectId=id;render();const modal=nodes(tree).find(node=>node.type==='ProjectModal');assert.ok(modal);modal.props.onOpenInquiries(id,trade);render();}};
+ return{render,button,panels,visible,records,auth,state,location,get tree(){return tree;},get h(){return handlers;},openModal(id,trade){state.selectedProjectId=id;render();const modal=nodes(tree).find(node=>node.type==='ProjectModal');assert.ok(modal);modal.props.onOpenInquiries(id,trade);render();}};
 }
 const results=[];
 function check(name,fn){try{fn();results.push({name,status:'PASS'});console.log('PASS '+name);}catch(error){results.push({name,status:'FAIL',reason:error.message});console.log('FAIL '+name+' '+error.message);}}
@@ -80,6 +81,12 @@ check('질의 첫 진입: 소속팀 기본값·베트남 메뉴·계정별 패�
  const s=screen('구조팀','vi');s.button('Câu hỏi dự án').props.onClick();s.render();assert.equal(s.visible()[0].props.children.props.department,'구조팀');const key=s.visible()[0].key;
  s.auth.currentUser={...s.auth.currentUser,id:'qa-nav-actor-other104'};s.render();assert.notEqual(s.visible()[0].key,key);assert.match(s.visible()[0].key,/qa-nav-actor-other104/);
  const tf=screen('개발 TF');tf.button('프로젝트 질의사항').props.onClick();tf.render();assert.equal(tf.visible()[0].props.children.props.department,'마감팀');
+});
+check('기존 기본 진입과 업무일지 딥링크 진입을 구분하며 case/date query를 보존',()=>{
+ const normal=screen();assert.equal(normal.h.activeMenu,'프로젝트 일정표');
+ const search='?view=claim-worklogs&caseId=10000000-0000-4000-8000-000000000001&date=2026-10-20';
+ const linked=screen('마감팀','ko',search);assert.equal(linked.h.activeMenu,'클레임센터 업무일지');assert.equal(linked.location.search,search);
+ const panel=nodes(linked.tree).find(node=>node.type==='ProjectWorklogPanel');assert.ok(panel);assert.equal(panel.props.basePath,'/api/collaboration/claim-worklogs');assert.equal(panel.props.techLink,false);
 });
 const report={kind:'ACTUAL_APP_NAVIGATION_HANDLERS_IN_MEMORY',sourceSHA256:createHash('sha256').update(source).digest('hex').toUpperCase(),PASS:results.filter(result=>result.status==='PASS').length,FAIL:results.filter(result=>result.status==='FAIL').length,results,operatingWrites:0,externalCalls:0,limits:['App navigation and emitted real component props execute; nested editor rendering and IDB behavior are verified separately.','React effects and store/API behavior are isolated stubs; this is not browser visual evidence.']};
 const output=process.argv.find(arg=>arg.startsWith('--output='))?.slice(9);if(output)writeFileSync(output,JSON.stringify(report,null,2));
