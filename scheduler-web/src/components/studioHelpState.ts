@@ -3,6 +3,12 @@ type ReleaseNote = { id: string; date: string; ko: string[]; vi: string[] };
 // 새 버전을 배포할 때 실제 변경 사항을 최신 날짜가 먼저 오도록 추가합니다.
 export const releaseNotes: ReleaseNote[] = [
   {
+    id: '2026-10-20-calendar-page-scroll',
+    date: '2026-10-20',
+    ko: ['프로젝트·개인 일정표의 긴 목록을 브라우저 전체 스크롤로 볼 수 있게 바꾸고, 날짜의 가로 스크롤은 유지했습니다.', '인맥관리의 명함 삭제 확인을 화면 안 대화상자로 바꿨습니다.'],
+    vi: ['Có thể cuộn cả trang để xem danh sách dài trong lịch dự án và lịch cá nhân; vẫn cuộn ngang để xem ngày.', 'Hộp xác nhận xóa danh thiếp nay hiển thị ngay trong trang.'],
+  },
+  {
     id: '2026-10-20-contacts',
     date: '2026-10-20',
     ko: ['인맥관리에서 명함을 촬영·업로드하고 Gemini 인식값을 수정한 뒤 회사 Drive에 등록할 수 있습니다.', '관리자는 설정에서 명함 인식용 Gemini API 키를 입력하고 명함 DB를 관리할 수 있습니다.', '처음 접속하면 주요 업무 흐름을 안내합니다. 상단의 사용 안내에서 언제든 다시 볼 수 있습니다.', '업데이트 내용을 날짜별로 확인할 수 있으며 새 내용은 접속 시 알려줍니다.'],
