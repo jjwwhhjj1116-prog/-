@@ -3,7 +3,7 @@ import { ArrowRight, BookOpen, CalendarDays, Check, ChevronLeft, ChevronRight, X
 import { releaseNotes } from './studioHelpState';
 
 export type HelpTab = 'guide' | 'updates';
-export type HelpMenu = '프로젝트 접수목록' | '프로젝트 일정표' | '할 일' | '업무일지' | '주간 업무·야근 보고' | '인맥관리';
+export type HelpMenu = '프로젝트 접수목록' | '프로젝트 일정표' | '할 일' | '업무일지' | '클레임센터 업무일지' | '주간 업무·야근 보고' | '인맥관리';
 
 type Language = 'ko' | 'vi';
 type GuideStep = { title: string; summary: string; actions: string[]; menu: HelpMenu; menuLabel: string };
@@ -13,6 +13,7 @@ const guideSteps: Record<Language, GuideStep[]> = {
     { title: '프로젝트와 일정 찾기', summary: '프로젝트 번호나 이름으로 찾고, 팀·개인 일정에서 누가 언제 일하는지 확인하세요.', actions: ['좌측 프로젝트 접수목록에서 프로젝트를 찾습니다.', '프로젝트 일정표에서 검색하거나 개인/팀별 캘린더를 엽니다.'], menu: '프로젝트 일정표', menuLabel: '일정표 열기' },
     { title: '오늘·내일 할 일 확인', summary: '배정된 업무를 날짜별로 보고 해당 업무의 일지로 바로 이동할 수 있습니다.', actions: ['좌측 할 일 (TO DO)을 펼쳐 오늘·내일 할 일을 누릅니다.', '업무 아래 이 업무의 업무일지 열기를 누릅니다.'], menu: '할 일', menuLabel: '오늘·내일 할 일 열기' },
     { title: '업무일지 작성과 저장', summary: '보고 날짜·프로젝트·역할을 확인하고 결과를 기록하세요.', actions: ['업무 결과와 내일 업무계획을 입력한 뒤 임시 저장 또는 저장을 누릅니다. 입력만으로는 저장되지 않습니다.', '평일 오후 5시 자동 업무보고는 배정 업무를 기준으로 실행됩니다. 결재 상태는 업무일지에서 확인하세요.'], menu: '업무일지', menuLabel: '업무일지 열기' },
+    { title: '클레임센터 프로젝트 업무일지', summary: '배정된 클레임 프로젝트를 선택하고 본인 업무를 기록합니다. 클레임센터와 같은 저장본을 사용합니다.', actions: ['최영배 본부장·장범선 실장은 기존 기술본부 계정으로 로그인합니다. 이경훈 센터장은 기존 클레임센터 계정에서 작성합니다.', '프로젝트·작성일·본인 작성자를 확인한 뒤 업무와 계획을 입력하고 업무일지 저장을 누릅니다. 서버 저장본 다시 열기로 결과를 확인하세요. 대표·부사장은 기존 조회·결재 권한을 유지합니다.'], menu: '클레임센터 업무일지', menuLabel: '클레임센터 업무일지 열기' },
     { title: '야근·주말 출근·일정 연장', summary: '업무일지의 신청 탭에서 프로젝트와 날짜·시간·사유를 적어 요청합니다.', actions: ['야근 신청, 주말 출근 신청 또는 일정 연장 요청 탭을 선택합니다.', '요청을 제출하고 승인 알림을 확인합니다. 승인된 일정은 관련 달력에서 확인할 수 있습니다.'], menu: '업무일지', menuLabel: '신청 화면 열기' },
     { title: '납품 후 보완 일정', summary: '납품한 프로젝트를 다시 수정할 때 보완 일정을 등록하세요.', actions: ['프로젝트 일정표의 프로젝트 보완 일정 등록을 누릅니다.', '납품한 프로젝트·수정 날짜·사유를 등록하면 일정이 바로 확정되고 팀장·실장에게 보고됩니다. 달력에서는 주황색으로 표시됩니다.'], menu: '프로젝트 일정표', menuLabel: '보완 일정 등록 위치 보기' },
     { title: '주간보고와 알림 확인', summary: '개인·팀의 업무일지와 승인된 야근·주말 기록을 한 주 단위로 확인합니다.', actions: ['좌측 주간 업무·야근 보고에서 기간과 항목을 확인합니다.', '결재 담당자는 상단 알림에서 도착한 보고를 열고 내용을 확인합니다.'], menu: '주간 업무·야근 보고', menuLabel: '주간보고 열기' },
@@ -22,6 +23,7 @@ const guideSteps: Record<Language, GuideStep[]> = {
     { title: 'Tìm dự án và lịch', summary: 'Tìm theo mã hoặc tên dự án; xem ai làm việc và khi nào trên lịch nhóm/cá nhân.', actions: ['Mở Danh sách tiếp nhận dự án ở thanh bên trái.', 'Tìm trên Lịch dự án hoặc mở lịch cá nhân/nhóm.'], menu: '프로젝트 일정표', menuLabel: 'Mở lịch dự án' },
     { title: 'Xem việc hôm nay và ngày mai', summary: 'Xem việc được giao theo ngày và mở nhật ký của đúng công việc.', actions: ['Mở TO DO ở thanh bên rồi chọn Việc hôm nay · ngày mai.', 'Chọn Mở nhật ký công việc trên dòng việc cần xem.'], menu: '할 일', menuLabel: 'Mở việc hôm nay' },
     { title: 'Viết và lưu nhật ký', summary: 'Kiểm tra ngày báo cáo, dự án và vai trò trước khi ghi kết quả.', actions: ['Nhập kết quả và kế hoạch ngày mai rồi chọn Lưu tạm hoặc Lưu. Chỉ nhập nội dung sẽ không tự lưu.', 'Báo cáo tự động lúc 17:00 ngày làm việc dùng các việc được giao. Xem trạng thái duyệt trong nhật ký.'], menu: '업무일지', menuLabel: 'Mở nhật ký' },
+    { title: 'Nhật ký dự án Claim Center', summary: 'Chọn dự án claim được phân công và ghi công việc bằng tài khoản hiện có. Hai trang dùng cùng bản lưu.', actions: ['Choi Young-bae và Jang Beom-seon dùng tài khoản kỹ thuật hiện có. Lee Kyung-hoon viết bằng tài khoản Claim Center hiện có.', 'Kiểm tra dự án, ngày và người viết; nhập công việc, kế hoạch rồi lưu. Mở lại bản lưu máy chủ để kiểm tra. Quyền xem và duyệt hiện có được giữ nguyên.'], menu: '클레임센터 업무일지', menuLabel: 'Mở nhật ký Claim Center' },
     { title: 'Làm thêm, cuối tuần, gia hạn', summary: 'Gửi yêu cầu trong các thẻ của Nhật ký công việc.', actions: ['Chọn thẻ Làm thêm, Làm việc cuối tuần hoặc Gia hạn lịch.', 'Nhập dự án, ngày, giờ và lý do; sau khi được duyệt, kiểm tra thông báo và lịch liên quan.'], menu: '업무일지', menuLabel: 'Mở màn hình yêu cầu' },
     { title: 'Lịch sửa sau bàn giao', summary: 'Đăng ký lịch sửa cho dự án đã bàn giao.', actions: ['Trong Lịch dự án, chọn Đăng ký lịch sửa dự án.', 'Chọn dự án, ngày và lý do. Lịch được xác nhận ngay, báo cho trưởng nhóm và trưởng bộ phận, và hiển thị màu cam.'], menu: '프로젝트 일정표', menuLabel: 'Xem nơi đăng ký' },
     { title: 'Báo cáo tuần và thông báo', summary: 'Xem nhật ký và các ca làm thêm/cuối tuần đã duyệt theo tuần.', actions: ['Mở Báo cáo công việc · làm thêm hàng tuần ở thanh bên.', 'Người duyệt mở thông báo ở đầu trang để xem báo cáo đã gửi.'], menu: '주간 업무·야근 보고', menuLabel: 'Mở báo cáo tuần' },

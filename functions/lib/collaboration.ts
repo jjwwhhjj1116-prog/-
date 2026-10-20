@@ -4,6 +4,7 @@ import {VIET_ASSIGNMENT_GROUPS} from '../../scheduler-web/src/utils/vietPersonne
 import {validDay} from '../../scheduler-web/src/utils/personalWork.ts';
 import {isScheduleAdmin} from '../../scheduler-web/src/utils/schedulePermissions.ts';
 import {personalRoute} from './personal.ts';
+import {claimWorklogsRoute} from './claimWorklogs.ts';
 import {syncAutomaticWorklogs} from './automaticWorklogs.ts';
 import {weeklyReportRoute} from './weeklyReports.ts';
 import {weeklyApprovalRoute} from './weeklyApprovals.ts';
@@ -14,8 +15,8 @@ import {applyProjectDates} from '../../scheduler-web/src/utils/projectScheduleDa
 import {postDeliverySchedulesRoute,protectReportedPostDeliveryTasks} from './postDeliverySchedules.ts';
 import {workCalendarRoute} from './workCalendars.ts';
 // A small, versioned collaboration API. D1 is the shared source; cookies identify the actor.
-export type StudioUser = { id:string; name:string; department:string; position:string; profile:string; login?:string; salt?:string; password_hash?:string };
-type Environment = { DB: D1Database; CIVIL_APPROVER_ID?: string; GEMINI_API_KEY?: string; GEMINI_MODEL?: string };
+export type StudioUser = { id:string; name:string; department:string; position:string; profile:string; login?:string; email?:string; salt?:string; password_hash?:string };
+type Environment = { DB: D1Database; CIVIL_APPROVER_ID?: string; GEMINI_API_KEY?: string; GEMINI_MODEL?: string; CLAIM_WORKLOGS?:{fetch(request:Request):Promise<Response>} };
 type Archive = (meeting: Record<string, any>, revision:number) => Promise<string>;
 const archiveReceiptsSql='(SELECT json_group_array(json_array(id,meeting_id,revision,recipient_id,stage,read_at,decision,decided_at)) FROM (SELECT * FROM studio_reviews WHERE meeting_id=? AND revision=? ORDER BY id))';
 const archiveReceiptsSnapshot=(receipts:Record<string,unknown>[])=>JSON.stringify(receipts.map(row=>[row.id,row.meeting_id,row.revision,row.recipient_id,row.stage,row.read_at,row.decision,row.decided_at]));
@@ -153,6 +154,7 @@ export async function handleCollaboration(request:Request,env:Environment,archiv
   }
   const user=await sessionUser(request,env);
   if(!user)return fail('서버 로그인이 필요합니다.',401);
+  const claimWorklogs=await claimWorklogsRoute(request,env,user,route);if(claimWorklogs)return claimWorklogs;
   if(route==='automatic-worklogs/sync'){
    if(method!=='POST')return fail('지원하지 않는 요청입니다.',405);
    if(request.body||url.search)return fail('자동 보고는 서버의 현재 날짜와 배정만 사용합니다. 입력값은 지정할 수 없습니다.');

@@ -3,6 +3,7 @@
   "name": "concost-tech-scheduler",
   "compatibility_date": "2026-09-18",
   "pages_build_output_dir": "dist",
+  "services": [{"binding":"CLAIM_WORKLOGS","service":"concost-claim-center-preview","entrypoint":"ClaimWorklogs"}],
   "d1_databases": [
     {
       "binding": "DB",

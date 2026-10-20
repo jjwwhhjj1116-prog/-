@@ -2,6 +2,7 @@ type ReleaseNote = { id: string; date: string; ko: string[]; vi: string[] };
 
 // 새 버전을 배포할 때 실제 변경 사항을 최신 날짜가 먼저 오도록 추가합니다.
 export const releaseNotes: ReleaseNote[] = [
+  {id:'2026-10-20-claim-worklogs',date:'2026-10-20',ko:['클레임센터 업무일지에서 기존 본인 계정으로 배정된 클레임 프로젝트의 수행 업무·계획·특이사항을 저장하고 다시 열 수 있습니다. 클레임센터와 같은 저장본을 사용합니다.','작성 대상은 이경훈 센터장·최영배 본부장·장범선 실장입니다. 대표·부사장의 기존 조회·결재 권한과 기존 기술본부 업무일지는 유지합니다. 이경훈 센터장은 기존 클레임센터 계정으로 작성합니다.'],vi:['Nhật ký Claim Center dùng cùng bản lưu với Claim Center; chọn dự án được phân công và ngày để ghi kết quả, kế hoạch và ghi chú.','Chỉ ba người phụ trách được chỉ định có thể viết bằng tài khoản hiện có. Quyền xem, duyệt và nhật ký kỹ thuật hiện có được giữ nguyên.']},
   {
     id: '2026-10-20-meeting-intake-gemini-draft',
     date: '2026-10-20',

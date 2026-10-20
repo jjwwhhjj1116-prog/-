@@ -35,6 +35,7 @@ import ProjectModal from './components/ProjectModal';
 import { ProjectIntegratedModal } from './components/ProjectIntegratedModal';
 import { MinutesView } from './components/MinutesView';
 import { DailyWorkLogView } from './components/DailyWorkLogView';
+import {ProjectWorklogPanel} from './components/ProjectWorklogPanel';
 import {WeeklyWorkReports} from './components/WeeklyWorkReports';
 import { DriveView } from './components/DriveView';
 import { QCLinkView } from './components/QCLinkView';
@@ -70,6 +71,7 @@ export type NavCategory =
   | '회의록 작성'
   | '회의록 목록'
   | '업무일지'
+  | '클레임센터 업무일지'
   | '주간 업무·야근 보고'
   | '할 일'
   | '내 휴가 일정'
@@ -116,10 +118,13 @@ export default function App() {
     setHasUnseenUpdate(false);
     setHelpTab(null);
   };
-  const handleLogout=()=>{setLocalViewActorId(null);logout();};
+  const [claimWorklogDirty,setClaimWorklogDirty]=useState(false);
+  const handleLogout=()=>{if(claimWorklogDirty&&!window.confirm('저장하지 않은 클레임센터 업무일지가 있습니다. 입력을 버리고 로그아웃할까요?'))return;setLocalViewActorId(null);logout();};
 
   // 기본 활성 메뉴: 프로젝트 일정표
-  const [activeMenu, setActiveMenu] = useState<NavCategory>('프로젝트 일정표');
+  const [activeMenu, setActiveMenu] = useState<NavCategory>(()=>new URLSearchParams(window.location.search).get('view')==='claim-worklogs'?'클레임센터 업무일지':'프로젝트 일정표');
+  const [claimWorklogActorId,setClaimWorklogActorId]=useState<string|undefined>();
+  useEffect(()=>{if(activeMenu==='클레임센터 업무일지'&&actorId)setClaimWorklogActorId(actorId);},[activeMenu,actorId]);
   const [weeklyReportWeek,setWeeklyReportWeek]=useState<string|undefined>();
   const [weeklyReportKind,setWeeklyReportKind]=useState<'WEEKEND_ADDITIONAL'|undefined>();
   const [supplementContext,setSupplementContext]=useState<{department?:Department;projectId?:string;taskId?:string}|null>(null);
@@ -732,6 +737,7 @@ export default function App() {
                 <button type="button" aria-current={activeMenu==='내 휴가 일정'?'page':undefined} onClick={()=>setActiveMenu('내 휴가 일정')} className={`w-full text-left pl-10 py-2 text-xs rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${activeMenu==='내 휴가 일정'?'bg-blue-700 text-white font-bold':'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>내 휴가 일정</button>
                 </div>
               </div>
+              <button type="button" aria-current={activeMenu==='클레임센터 업무일지'?'page':undefined} onClick={()=>setActiveMenu('클레임센터 업무일지')} className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${activeMenu==='클레임센터 업무일지'?'bg-[#00338d] text-white':'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50'}`}><ClipboardCheck size={16}/><span>클레임센터 업무일지</span></button>
               {/* ✨ 회의록 하단에 업무일지 (개인별 업무일지 & 결재라인) 신규 추가 */}
               <button
                 onClick={() => setActiveMenu('업무일지')}
@@ -1134,6 +1140,7 @@ export default function App() {
 
           {/* CASE 5-2: 업무일지 (팀별 일정표 연계 및 3단 결재라인) */}
           {(activeMenu==='업무일지'||workLogActorId===actorId)&&<div key={actorId} hidden={activeMenu!=='업무일지'}><DailyWorkLogView visible={activeMenu==='업무일지'} /></div>}
+          {(activeMenu==='클레임센터 업무일지'||claimWorklogActorId===actorId)&&<div key={'claim-worklogs-'+actorId} hidden={activeMenu!=='클레임센터 업무일지'}><ProjectWorklogPanel basePath="/api/collaboration/claim-worklogs" actorKey={actorId} techLink={false} onDirtyChange={setClaimWorklogDirty}/></div>}
           {activeMenu==='주간 업무·야근 보고'&&<WeeklyWorkReports initialWeek={weeklyReportWeek} initialReportKind={weeklyReportKind}/>}
           {(activeMenu==='할 일'||activeMenu==='내 휴가 일정')&&<PersonalWorkView leaveMode={activeMenu==='내 휴가 일정'} onWorklog={(date,taskId)=>{usePersonalStore.setState({openDate:date,openTaskId:taskId||null});setActiveMenu('업무일지');}}/>}
 
