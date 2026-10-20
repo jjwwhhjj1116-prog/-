@@ -28,7 +28,7 @@ import {
   AlertCircle,
   ArrowUpRight,
   Sparkles,
-  ClipboardCheck, Menu, X
+  ClipboardCheck, BookOpen, Megaphone, Menu, X
 } from 'lucide-react';
 import ProjectCalendar from './components/ProjectCalendar';
 import ProjectModal from './components/ProjectModal';
@@ -53,6 +53,8 @@ import {useLanguageStore} from './store/useLanguageStore';
 import {ProjectInquiries} from './components/ProjectInquiries';
 import {SupplementScheduleView} from './components/SupplementScheduleView';
 import {VietWorkCalendarDialog} from './components/VietWorkCalendarDialog';
+import {StudioHelpDialog, type HelpMenu, type HelpTab} from './components/StudioHelpDialog';
+import {markHelpSeen, readHelpStatus} from './components/studioHelpState';
 
 // 좌측 카테고리 정의 (최상단에 '프로젝트 접수목록' 추가, 회의록 하위 2단 카테고리 추가)
 export type NavCategory =
@@ -92,9 +94,22 @@ export default function App() {
   const sharedLoaded=studio.hasLoaded&&studio.actorId===actorId;
   const [sessionChecked,setSessionChecked]=useState(false);
   const [localViewActorId,setLocalViewActorId]=useState<string|null>(null);
+  const [helpTab,setHelpTab]=useState<HelpTab|null>(null);
+  const [hasUnseenUpdate,setHasUnseenUpdate]=useState(false);
 
   useEffect(()=>{void restoreStudioSession().finally(()=>setSessionChecked(true));},[]);
   useEffect(()=>{if(sessionChecked&&actorId)return startStudioSync(actorId);},[sessionChecked,actorId]);
+  useEffect(()=>{
+    if(!actorId||!sharedLoaded){setHelpTab(null);setHasUnseenUpdate(false);return;}
+    const status=readHelpStatus(actorId);
+    setHasUnseenUpdate(!status.updateSeen);
+    setHelpTab(!status.guideSeen?'guide':status.updateSeen?null:'updates');
+  },[actorId,sharedLoaded]);
+  const closeHelp=()=>{
+    if(actorId)markHelpSeen(actorId);
+    setHasUnseenUpdate(false);
+    setHelpTab(null);
+  };
   const handleLogout=()=>{setLocalViewActorId(null);logout();};
 
   // 기본 활성 메뉴: 프로젝트 일정표
@@ -407,6 +422,9 @@ export default function App() {
           >
             <Sparkles size={14} /> QC 검토
           </button>
+
+          <button type="button" onClick={()=>setHelpTab('guide')} className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700/60"><BookOpen size={14}/>{lang==='vi'?'Hướng dẫn':'사용 안내'}</button>
+          <button type="button" onClick={()=>setHelpTab('updates')} className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700/60"><Megaphone size={14}/>{lang==='vi'?'Cập nhật':'업데이트'}{hasUnseenUpdate&&<span className="rounded-full bg-orange-600 px-1.5 py-0.5 text-[10px] font-bold text-white">NEW</span>}</button>
 
           <button
             onClick={() => setActiveMenu('설정')}
@@ -1199,6 +1217,7 @@ export default function App() {
       {/* 사내 로그인 모달 */}
       {supplementContext&&<div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/50 p-3"><SupplementScheduleView department={supplementContext.department} initialProjectId={supplementContext.projectId} initialTaskId={supplementContext.taskId} onClose={()=>setSupplementContext(null)}/></div>}
       {workCalendarOpen&&<VietWorkCalendarDialog onClose={()=>setWorkCalendarOpen(false)}/>}
+      {helpTab&&<StudioHelpDialog initialTab={helpTab} language={lang} onClose={closeHelp} onOpenMenu={(menu:HelpMenu)=>{closeHelp();setActiveMenu(menu);setMobileNavOpen(false);}}/>}
       <LoginModal
         isOpen={isLoginModalOpen}
         onClose={() => setIsLoginModalOpen(false)}
