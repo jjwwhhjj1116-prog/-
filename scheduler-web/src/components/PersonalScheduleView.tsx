@@ -514,7 +514,7 @@ export const PersonalScheduleView: React.FC<PersonalScheduleViewProps> = ({ depa
           </div>
 
           {/* 간트 타임라인 스크롤 영역 */}
-          <div className="schedule-calendar-scrollport overflow-auto custom-scrollbar" role="region" aria-label={`${department} 개인 및 팀별 월간 일정표`} tabIndex={0}>
+          <div className="schedule-calendar-scrollport custom-scrollbar" role="region" aria-label={`${department} 개인 및 팀별 월간 일정표`} tabIndex={0}>
             <div
               data-calendar-month={format(monthStart, 'yyyy-MM')}
               style={{ width: '100%', minWidth: `${280 + daysInMonth.length * cellWidth}px` }}

@@ -524,10 +524,10 @@ export default function App() {
       {!sharedReady&&<p role="status" className="border-b border-amber-300 bg-amber-100 px-4 py-2 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">{sharedLoaded?(studio.conflict?'다른 사람이 같은 일정을 변경했습니다. 상단에서 충돌을 해결하세요.':'중앙 서버 연결이 끊겼습니다. 마지막으로 확인한 일정과 이 PC 변경을 표시합니다. 최신 여부를 확인하세요.'):'이 PC 저장본을 보고 있습니다. 중앙 서버 연결 전에는 최신 일정이 아닐 수 있습니다.'}</p>}
 
       {/* 바디 레이아웃 */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-w-0">
         {/* 좌측 사이드바: 최상단에 '프로젝트 접수목록' 배치 */}
         {mobileNavOpen&&<button type="button" aria-label="메뉴 닫기" className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={()=>setMobileNavOpen(false)}/>}
-        <aside id="studio-navigation" aria-label="스튜디오 메뉴" className={`${mobileNavOpen?'flex':'hidden'} md:flex fixed inset-y-0 left-0 z-40 md:static w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex-col p-3 gap-5 select-none shrink-0 overflow-y-auto`}>
+        <aside id="studio-navigation" aria-label="스튜디오 메뉴" className={`${mobileNavOpen?'flex':'hidden'} md:flex fixed inset-y-0 left-0 z-40 md:sticky md:top-0 md:h-screen w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex-col p-3 gap-5 select-none shrink-0 overflow-y-auto`}>
           <button type="button" aria-label="스튜디오 메뉴 닫기" className="md:hidden self-end rounded-lg border border-slate-300 p-2 dark:border-slate-600" onClick={()=>setMobileNavOpen(false)}><X size={20}/></button>
           {/* 1) 일정표 관리 섹션 */}
           <div>
@@ -842,7 +842,7 @@ export default function App() {
         </aside>
 
         {/* 우측 메인 콘텐츠 영역: 선택된 메뉴에 따라 동적 전환 */}
-        <main className="min-w-0 flex-1 overflow-y-auto p-3 md:p-6 space-y-6">
+        <main className="min-w-0 flex-1 p-3 md:p-6 space-y-6">
           {/* CASE 0: 프로젝트 접수목록 (그룹웨어 수주소식 실시간 연동) */}
           {activeMenu === '프로젝트 접수목록' && (
             <IntakeListView

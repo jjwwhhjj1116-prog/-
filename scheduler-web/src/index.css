@@ -132,12 +132,9 @@
     @apply bg-white hover:bg-slate-50 text-slate-700 font-medium px-3 py-1.5 rounded-lg border border-slate-300 transition-all shadow-sm active:scale-95 flex items-center justify-center gap-1.5;
   }
 
-  /* 월말 이후 여백 없이, 긴 목록에서도 가로 스크롤바와 날짜를 함께 유지한다. */
+  /* 날짜의 가로 스크롤만 이 영역에 두고, 긴 프로젝트 목록은 페이지 전체로 세로 스크롤한다. */
   .schedule-calendar-scrollport {
-    max-height: clamp(12rem, 60dvh, 44rem);
-    overflow: auto;
-    overscroll-behavior: contain;
-    scrollbar-gutter: stable;
+    overflow-x: auto;
   }
 
   .schedule-calendar-scrollport:focus-visible {

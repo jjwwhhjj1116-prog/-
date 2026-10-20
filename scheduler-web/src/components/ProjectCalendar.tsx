@@ -474,7 +474,7 @@ export default function ProjectCalendar({
       </div>
 
       {/* 3. 간트 그리드 본체 (수평 스크롤) */}
-      <div className="schedule-calendar-scrollport overflow-auto custom-scrollbar" role="region" aria-label={`${t.titleDate} 프로젝트 캘린더`} tabIndex={0}>
+      <div className="schedule-calendar-scrollport custom-scrollbar" role="region" aria-label={`${t.titleDate} 프로젝트 캘린더`} tabIndex={0}>
         <div data-calendar-month={format(monthStart, 'yyyy-MM')} style={{ width: '100%', minWidth: `${410 + daysInMonth.length * cellWidth}px` }}>
           {/* 3-1. 날짜 헤더 행 */}
           <div className="sticky top-0 z-40 flex border-b border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 select-none">
