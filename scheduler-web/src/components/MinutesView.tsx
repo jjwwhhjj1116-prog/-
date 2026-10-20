@@ -322,9 +322,11 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
   // 회의록 웹 목록 정리 실행기 (로컬스토리지 즉시 동기화 및 포인터 안전 이동)
   const executeDeleteMeeting = async (meetingId: string) => {
     const target=meetings.find(m=>m.id===meetingId);
-    if(!target?.serverRevision){setAiToast('Drive 보관을 완료한 회의록만 목록에서 정리할 수 있습니다.');return;}
-    try{await studioApi(`meetings/${encodeURIComponent(meetingId)}`,'DELETE',{revision:target.serverRevision});await refreshStudioMeetings();}
-    catch(e){setAiToast(e instanceof Error?e.message:'목록 정리 실패');return;}
+    if(!target)return;
+    if(target.serverRevision){
+      try{await studioApi(`meetings/${encodeURIComponent(meetingId)}`,'DELETE',{revision:target.serverRevision});await refreshStudioMeetings();}
+      catch(e){setAiToast(e instanceof Error?e.message:'목록 정리 실패');return;}
+    }
 
     setMeetings((prev) => {
       const updated = prev.filter((m) => m.id !== meetingId);
@@ -342,7 +344,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     }
 
     setDeleteConfirmTarget(null);
-    setAiToast('🗑️ 회의록이 목록에서 안전하게 삭제되었습니다.');
+    setAiToast(target.serverRevision?'🗑️ 회의록이 목록에서 안전하게 삭제되었습니다.':'🗑️ 저장하지 않은 초안을 이 PC에서 지웠습니다.');
     setTimeout(() => setAiToast(null), 3500);
   };
 
@@ -430,18 +432,17 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
 
   const applyGeminiDraft=(draft:MeetingDraft,sourceText:string|undefined,fileName:string|undefined,sourceKind:string)=>{
     formRevision.current++;
-    if(draft.title)setFormTitle(draft.title);
-    if(draft.meetingDate)setFormDate(draft.meetingDate);
-    if(draft.location)setFormLocation(draft.location);
-    if(draft.clientName)setFormClientName(draft.clientName);
-    if(draft.attendeesInternal.length)setFormAttendeesInternal(draft.attendeesInternal.join(', '));
-    if(draft.attendeesExternal.length)setFormAttendeesExternal(draft.attendeesExternal.join(', '));
-    if(draft.notesAndInstructions)setFormNotesAndInstructions(draft.notesAndInstructions);
-    if(draft.summary)setFormSummary(draft.summary);
-    if(draft.decisions.length)setFormDecisions(draft.decisions.join('\n'));
-    if(sourceText)setFormTranscript(sourceText);
-    else if(draft.transcript)setFormTranscript(`[AI ${sourceKind.startsWith('audio/')?'음성':'문서'} 발췌 · 전체 원문 아님]\n${draft.transcript}`);
-    if(fileName)setFormAttachedFile(fileName);
+    setFormTitle(draft.title);
+    setFormDate(draft.meetingDate);
+    setFormLocation(draft.location);
+    setFormClientName(draft.clientName);
+    setFormAttendeesInternal(draft.attendeesInternal.join(', '));
+    setFormAttendeesExternal(draft.attendeesExternal.join(', '));
+    setFormNotesAndInstructions(draft.notesAndInstructions);
+    setFormSummary(draft.summary);
+    setFormDecisions(draft.decisions.join('\n'));
+    setFormTranscript(sourceText|| (draft.transcript?`[AI ${sourceKind.startsWith('audio/')?'음성':'문서'} 발췌 · 전체 원문 아님]\n${draft.transcript}`:''));
+    setFormAttachedFile(fileName||'');
     setAiToast('Gemini 초안을 아래 서식에 채웠습니다. 원본과 날짜·참석자·결정사항을 확인한 뒤 저장해 주세요.');
   };
   const runGeminiDraft=async(source:{text?:string;file?:File},fileName?:string)=>{
@@ -564,6 +565,12 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
     setMeetings((prev) => [newMeeting, ...prev]);
     setCurrentMeetingId(newMeeting.id);
     setActiveSubTab('write');
+    setFormTitle(newMeeting.title);
+    setFormDate(newMeeting.meetingDate);
+    setFormStartTime('');setFormEndTime('');setFormLocation('');
+    setFormClientName(newMeeting.clientName||'');setFormReportingDept(newMeeting.reportingDept||'');
+    setFormReferenceDept('');setFormAttendeesInternal('');setFormAttendeesExternal('');
+    setFormTranscript('');setFormNotesAndInstructions('');setFormSummary('');setFormDecisions('');setFormAttachedFile('');
     setAiToast('📝 새 회의록이 생성되었습니다. 서식을 편집하고 저장하세요.');
     setTimeout(() => setAiToast(null), 3000);
     return newMeeting;
@@ -1276,7 +1283,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                 rows={6}
                 value={formNotesAndInstructions}
                 onChange={(e) => setFormNotesAndInstructions(e.target.value)}
-                placeholder="공식 회의록 본문에 들어갈 내용 및 지시사항을 줄바꿈 단위로 작성하세요. (아래 원문 정리를 실행하면 자동으로도 채워집니다.)"
+                placeholder="공식 회의록 본문에 들어갈 내용 및 지시사항을 줄바꿈 단위로 작성하세요. 첨부 자료에서 만든 Gemini 초안도 여기에 채워집니다."
                 className="w-full text-xs font-mono p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none leading-relaxed"
               />
             </div>
@@ -1518,7 +1525,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                           )}
                           {!formSummary && !formDecisions && (
                             <p className="text-slate-400 italic text-center py-6">
-                              회의내용을 직접 입력하거나 대화록을 붙여넣은 뒤 [✨ 원문 정리]를 누르면 공식 서식 본문이 완성됩니다.
+                              회의 자료를 첨부하면 Gemini 초안이 여기에 채워집니다. 원본과 대조해 수정하세요.
                             </p>
                           )}
                         </div>
@@ -1543,7 +1550,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
                 <span>1. 회의 핵심 요약 (Summary)</span>
               </h4>
               <div className="bg-slate-50 dark:bg-slate-800/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs leading-relaxed whitespace-pre-line">
-                {formSummary || '대화록 원문을 입력하고 [원문 정리]를 누르면 요약이 반영됩니다.'}
+                {formSummary || '회의 자료를 첨부하면 Gemini 요약 초안이 여기에 표시됩니다.'}
               </div>
             </div>
 
@@ -1642,7 +1649,7 @@ export const MinutesView: React.FC<MinutesViewProps> = ({ initialTab = 'write' }
             </div>
 
             <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
-              Drive 보관본은 유지됩니다. 결재 중이거나 보관에 실패한 회의록은 정리할 수 없습니다.
+              {deleteConfirmTarget.serverRevision?'Drive 보관본은 유지됩니다. 결재 중이거나 보관에 실패한 회의록은 정리할 수 없습니다.':'저장하지 않은 초안만 이 PC에서 삭제합니다. 중앙 서버의 회의록에는 영향이 없습니다.'}
             </p>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
