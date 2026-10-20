@@ -21,7 +21,7 @@ export function ProjectWorklogPanel({basePath='/api/project-worklogs',actorKey='
   const key=[actorKey,context?.actor.id,caseId,day,author].join('|');keyRef.current=key;
   const selected=logs.find(log=>log.authorId===author),canEdit=Boolean(context?.actor.canWrite&&author===context.actor.id&&caseId&&!loading&&loadedKey===caseId+'|'+day);
   const dirty=canEdit&&JSON.stringify(form)!==JSON.stringify(original);
-  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;generation.current++;};},[]);
+  useEffect(()=>{const activeGeneration=generation;mounted.current=true;return()=>{mounted.current=false;activeGeneration.current++;};},[]);
   useEffect(()=>{onDirtyChange?.(dirty);const warn=(e:BeforeUnloadEvent)=>{if(dirty){e.preventDefault();e.returnValue='';}};window.addEventListener('beforeunload',warn);return()=>{window.removeEventListener('beforeunload',warn);onDirtyChange?.(false);};},[dirty,onDirtyChange]);
   useEffect(()=>{
     const controller=new AbortController();setContext(null);setCaseId('');setLogs([]);setForm(emptyForm());setOriginal(emptyForm());setLoading(true);setFailure('');
@@ -31,7 +31,7 @@ export function ProjectWorklogPanel({basePath='/api/project-worklogs',actorKey='
       if(initialCase&&!data.projects.some(p=>p.id===initialCase))setFailure('요청한 프로젝트의 배정을 확인할 수 없습니다. 접근 가능한 프로젝트를 선택하세요.');
     }).catch(e=>{if(!controller.signal.aborted)setFailure(message(e));}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
     return()=>controller.abort();
-  },[basePath,actorKey]);
+  },[basePath,actorKey,initialCase]);
   useEffect(()=>{
     const seq=++generation.current,controller=new AbortController();setLoadedKey('');setLogs([]);setForm(emptyForm());setOriginal(emptyForm());setNotice('');
     if(!context||!caseId)return()=>controller.abort();
