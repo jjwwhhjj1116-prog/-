@@ -35,6 +35,7 @@ function screen(department='마감팀',lang='ko',search=''){
   if(name==='./store/useLanguageStore')return{useLanguageStore:()=>({lang,setLang(){}})};
   if(name==='./store/usePersonalStore')return{usePersonalStore:{setState(){}}};
   if(name==='./utils/schedulePermissions')return{canManageSchedule:()=>true};
+  if(name==='./utils/projectCatalog')return{assertNewSchedulesHaveIntake(){}};
   if(name==='xlsx')return{};if(name.startsWith('./services/'))return new Proxy({},{get:()=>()=>{throw Error('Unexpected service request');}});
   if(name.startsWith('./components/')){const basename=name.split('/').pop();return new Proxy({},{get:(_,key)=>key==='default'?basename:String(key)});}
   throw Error('Unexpected App dependency '+name);
@@ -52,6 +53,10 @@ check('질의 메뉴: 협업 자료실 독립 버튼 1개·팀 일정표 하위 
  const s=screen(),buttons=nodes(s.tree).filter(node=>node.type==='button'&&text(node).trim()==='프로젝트 질의사항');assert.equal(buttons.length,1);
  const section=nodes(s.tree).find(node=>node.type==='div'&&node.props.children?.[0]?.props?.children==='협업 및 산출 자료실');assert.ok(section);assert.ok(nodes(section).includes(buttons[0]));
  assert.ok(!nodes(s.tree).some(node=>node.props?.['aria-label']?.match(/^(마감팀|구조팀|토목&조경팀) 프로젝트 질의사항$/)));
+});
+check('일정표의 새 등록은 접수목록으로 이동하고 임의 프로젝트를 생성하지 않음',()=>{
+ const s=screen();s.button('접수목록에서 일정 등록').props.onClick();s.render();
+ assert.equal(s.h.activeMenu,'프로젝트 접수목록');assert.equal(s.state.projects.length,s.records.length);
 });
 check('질의 연결: 실제 ProjectModal callback이 프로젝트·팀·공종 전달',()=>{
  const s=screen();s.openModal('qa-finish-same104','창호');const pane=s.visible()[0].props.children;
