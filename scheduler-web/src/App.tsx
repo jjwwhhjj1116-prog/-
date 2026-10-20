@@ -28,7 +28,7 @@ import {
   AlertCircle,
   ArrowUpRight,
   Sparkles,
-  ClipboardCheck, BookOpen, Megaphone, Menu, X
+  ClipboardCheck, BookOpen, Megaphone, Menu, X, ContactRound
 } from 'lucide-react';
 import ProjectCalendar from './components/ProjectCalendar';
 import ProjectModal from './components/ProjectModal';
@@ -55,6 +55,7 @@ import {SupplementScheduleView} from './components/SupplementScheduleView';
 import {VietWorkCalendarDialog} from './components/VietWorkCalendarDialog';
 import {StudioHelpDialog, type HelpMenu, type HelpTab} from './components/StudioHelpDialog';
 import {markHelpSeen, readHelpStatus} from './components/studioHelpState';
+import {BusinessCardContacts, type ContactMode} from './components/BusinessCardContacts';
 
 // 좌측 카테고리 정의 (최상단에 '프로젝트 접수목록' 추가, 회의록 하위 2단 카테고리 추가)
 export type NavCategory =
@@ -72,6 +73,9 @@ export type NavCategory =
   | '할 일'
   | '내 휴가 일정'
   | '자료실(google드라이브)'
+  | '인맥관리'
+  | '명함 등록'
+  | '명함 DB관리'
   | '연계시스템(검토)'
   | '설정';
 
@@ -128,6 +132,9 @@ export default function App() {
   const openWeeklyReport=(week:string,reportKind?:'WEEKEND_ADDITIONAL')=>{setWeeklyReportWeek(week);setWeeklyReportKind(reportKind);setActiveMenu('주간 업무·야근 보고');};
   const [minutesMenuOpen,setMinutesMenuOpen]=useState(true);
   const [todoMenuOpen,setTodoMenuOpen]=useState(true);
+  const [contactsMenuOpen,setContactsMenuOpen]=useState(true);
+  const contactMode=(menu:NavCategory):ContactMode=>menu==='명함 등록'?'REGISTER':menu==='명함 DB관리'?'DATABASE':'LIST';
+  const openContacts=(mode:ContactMode)=>setActiveMenu(mode==='REGISTER'?'명함 등록':mode==='DATABASE'?'명함 DB관리':'인맥관리');
   useEffect(()=>{
     if(activeMenu==='회의록'||activeMenu==='회의록 작성'||activeMenu==='회의록 목록')setMinutesMenuOpen(true);
     if(activeMenu==='할 일'||activeMenu==='내 휴가 일정')setTodoMenuOpen(true);
@@ -757,6 +764,12 @@ export default function App() {
                   자동생성
                 </span>
               </button>
+              <div className="space-y-1">
+                <button type="button" aria-expanded={contactsMenuOpen} aria-controls="contacts-submenu" onClick={()=>setContactsMenuOpen(open=>!open)} className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50"><span className="flex items-center gap-2.5"><ContactRound size={16}/>인맥관리</span><ChevronRight size={14} className={contactsMenuOpen?'rotate-90':''}/></button>
+                <div id="contacts-submenu" hidden={!contactsMenuOpen} className="pl-6 pr-1 space-y-1">
+                  {(['LIST','REGISTER',...(isAdmin?['DATABASE']:[])] as ContactMode[]).map(mode=><button key={mode} type="button" aria-current={activeMenu===(mode==='LIST'?'인맥관리':mode==='REGISTER'?'명함 등록':'명함 DB관리')?'page':undefined} onClick={()=>openContacts(mode)} className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold ${contactMode(activeMenu)===mode&&['인맥관리','명함 등록','명함 DB관리'].includes(activeMenu)?'bg-blue-700 text-white':'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50'}`}>{mode==='LIST'?'인맥 목록':mode==='REGISTER'?'명함 등록':'명함 DB관리'}</button>)}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1123,6 +1136,7 @@ export default function App() {
 
           {/* CASE 6: 자료실 (Google 드라이브) */}
           {activeMenu === '자료실(google드라이브)' && <DriveView />}
+          {(activeMenu==='인맥관리'||activeMenu==='명함 등록'||activeMenu==='명함 DB관리')&&<BusinessCardContacts mode={contactMode(activeMenu)} onNavigate={openContacts}/>}
 
           {/* CASE 7: 연계시스템 (QC 검토) */}
           {activeMenu === '연계시스템(검토)' && <QCLinkView intakeProjects={studio.intakeProjects} />}

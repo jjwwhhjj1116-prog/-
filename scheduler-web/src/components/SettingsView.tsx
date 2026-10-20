@@ -19,8 +19,9 @@ import {
 } from 'lucide-react';
 import { useAuthStore, isUserAdmin, type ConcostUser } from '../store/useAuthStore';
 import { VIET_ASSIGNMENT_GROUPS } from '../utils/vietPersonnel';
+import { GeminiKeySettings } from './GeminiKeySettings';
 
-type SettingsTab = 'GDRIVE' | 'MEMBERS' | 'MY_PROFILE';
+type SettingsTab = 'GDRIVE' | 'GEMINI' | 'MEMBERS' | 'MY_PROFILE';
 const memberDepartments = ['마감팀', '구조팀', '토목&조경팀', '개발 TF', '기술본부 총괄', '경영지원', '경영진'];
 const vietnamDepartments = [...new Set(VIET_ASSIGNMENT_GROUPS.map(group=>group.department))];
 type EmployeeEdit = Pick<ConcostUser,'id'|'name'|'company'|'department'|'position'|'vietTeamId'>;
@@ -206,7 +207,7 @@ export const SettingsView: React.FC = () => {
         </div>
 
         {/* 탭 네비게이션 버튼 (관리자만 GDRIVE, MEMBERS 노출) */}
-        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+        <div className="flex flex-wrap gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
           {isAdmin && (
             <>
               <button
@@ -233,6 +234,7 @@ export const SettingsView: React.FC = () => {
                 <Users className="w-4 h-4 text-blue-600" />
                 관리자 회원 관리 ({users.length}명)
               </button>
+              <button type="button" onClick={()=>setActiveTab('GEMINI')} className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition ${activeTab==='GEMINI'?'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-xs':'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}><KeyRound className="w-4 h-4 text-blue-600"/>명함 인식 API 키</button>
             </>
           )}
           <button
@@ -251,6 +253,7 @@ export const SettingsView: React.FC = () => {
       </div>
 
       {/* 1. Google Drive 연동 설정 탭 (오직 관리자 계정만 접근 및 표시) */}
+      {isAdmin && activeTab === 'GEMINI' && <GeminiKeySettings />}
       {isAdmin && activeTab === 'GDRIVE' && (
         <div className="space-y-6">
           {driveToast && (

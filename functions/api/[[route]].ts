@@ -2,6 +2,7 @@ import { handleCollaboration, sessionUser, tokenHash } from '../lib/collaboratio
 import { resumableUpload } from '../lib/driveResumable';
 import { archiveMeeting } from '../lib/meetingArchive';
 import { handleTranslation } from '../lib/translation';
+import { businessCardsRoute } from '../lib/businessCards';
 import {intakeProjectStatements} from '../lib/intakeSchedule';
 // Cloudflare Pages Functions: D1 Database & Google Drive Integration REST API Route
 interface Env {
@@ -275,6 +276,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     if(path==='translation')return handleTranslation(request);
     const profile=JSON.parse(actor.profile);
     const administrator=['yjw@con-cost.com','yjpark@con-cost.com'].includes(String(profile.email).toLowerCase());
+    if(path.startsWith('business-cards'))return (await businessCardsRoute(request,env,actor,path,{
+      accessToken:()=>getCompanyAccessToken(env),
+      folder:serverFindOrCreateFolder,
+      upload:serverUploadToDrive,
+    }))!;
     if(path.startsWith('google/oauth/')&&!administrator)return new Response(JSON.stringify({error:'관리자만 회사 Google 연결을 변경할 수 있습니다.'}),{status:403,headers});
     // 0. Google OAuth 서버 엔드포인트
     if (path.startsWith('google/')) {

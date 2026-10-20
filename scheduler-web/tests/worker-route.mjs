@@ -8,6 +8,8 @@ try{
  const {onRequest}=await server.ssrLoadModule('../functions/api/[[route]].ts');
  let response=await onRequest({request:new Request('https://example.invalid/api/drive/files'),env:{DB}});
  assert.equal(response.status,401);
+ response=await onRequest({request:new Request('https://example.invalid/api/business-cards'),env:{DB}});
+ assert.equal(response.status,401);
  const profile={id:'qa',name:'검수',email:'employee@example.invalid'};
  db.prepare('INSERT INTO studio_users VALUES (?,?,?,?,?,?,?,?,?,1)').run('qa','qa',profile.email,'검수','마감팀','선임',JSON.stringify(profile),'salt','hash');
  db.prepare('INSERT INTO studio_sessions VALUES (?,?,?)').run(await tokenHash('qa-cookie'),'qa',Date.now()+60000);
