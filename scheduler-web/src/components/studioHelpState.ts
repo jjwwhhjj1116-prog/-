@@ -3,6 +3,12 @@ type ReleaseNote = { id: string; date: string; ko: string[]; vi: string[] };
 // 새 버전을 배포할 때 실제 변경 사항을 최신 날짜가 먼저 오도록 추가합니다.
 export const releaseNotes: ReleaseNote[] = [
   {
+    id: '2026-10-20-intake-first-schedule-registration',
+    date: '2026-10-20',
+    ko: ['통합 일정표의 등록 버튼을 프로젝트 접수목록으로 연결했습니다. 엑셀로 새 일정을 가져올 때도 접수목록의 프로젝트인지 확인합니다.'],
+    vi: ['Nút đăng ký lịch tổng hợp nay mở danh sách tiếp nhận dự án. Khi nhập lịch mới từ Excel, hệ thống cũng kiểm tra dự án trong danh sách tiếp nhận.'],
+  },
+  {
     id: '2026-10-20-inquiry-intake-team-link',
     date: '2026-10-20',
     ko: ['질의사항에서 선택한 팀의 일정이 아직 없으면 다른 팀 일정 대신 프로젝트 접수 원본에 연결되도록 수정했습니다.'],

@@ -47,6 +47,7 @@ import { PrintScheduleModal } from './components/PrintScheduleModal';
 import { useProjectStore, type Department } from './store/useProjectStore';
 import { useAuthStore, isUserAdmin } from './store/useAuthStore';
 import { canManageSchedule } from './utils/schedulePermissions';
+import {assertNewSchedulesHaveIntake} from './utils/projectCatalog';
 import { exportProjectsToExcel, parseProjectsWorkbook, parseLegacyProjectsWorkbook, type LegacyProjectPreview } from './services/excelService';
 import * as XLSX from 'xlsx';
 import {useLanguageStore} from './store/useLanguageStore';
@@ -89,7 +90,6 @@ export default function App() {
     setFilterDepartment,
     selectedProjectId,
     setSelectedProjectId,
-    addProject,
     importProjects,
   } = useProjectStore();
 
@@ -163,12 +163,9 @@ export default function App() {
   const [workLogActorId,setWorkLogActorId]=useState<string|null>(null);
   useEffect(()=>{if(activeMenu==='업무일지'&&actorId)setWorkLogActorId(actorId);},[activeMenu,actorId]);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [selectedIntegratedProjectCode, setSelectedIntegratedProjectCode] = useState<string | null>(null);
   const [openIntakeCode,setOpenIntakeCode] = useState<string|null>(null);
-  const [newProjectName, setNewProjectName] = useState('');
-  const [newDept, setNewDept] = useState<Department>('마감팀');
 
   // 다국어(한국어 / 베트남어) 및 다크모드 상태
   const {lang,setLang} = useLanguageStore();
@@ -242,29 +239,6 @@ export default function App() {
   const revCount = projects.filter((p) => p.status === '수정').length;
   const scheduledCount = projects.filter((p) => p.status === '착수예정').length;
 
-  const handleCreateQuickProject = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newProjectName.trim()) return;
-
-    addProject({
-      code: `TK-${new Date().getFullYear()}-${String(projects.length + 1).padStart(5, '0')}`,
-      name: newProjectName.trim(),
-      department: newDept,
-      startDate: new Date().toISOString().split('T')[0],
-      endDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
-      pmId: '', // 양한규(마감), 김재헌(구조), 오승균(토목)
-      progress: 0,
-      status: '착수예정',
-      roles: {},
-      subTasks: {},
-    });
-
-    setNewProjectName('');
-    setShowAddModal(false);
-    setToastMessage(`[${newProjectName}] 프로젝트가 생성되었습니다.`);
-    setTimeout(() => setToastMessage(null), 3000);
-  };
-
   // 엑셀 내보내기 핸들러
   const [printDate, setPrintDate] = useState(new Date());
   const handleExportExcel = async (date = new Date()) => {
@@ -290,6 +264,7 @@ export default function App() {
       const imported = parseProjectsWorkbook(workbook);
       if (imported.length > 0) {
         if (!sharedReady) throw new Error('중앙 공유 연결 후 일정을 가져오세요.');
+        assertNewSchedulesHaveIntake(studio.intakeProjects,projects,imported);
         importProjects(imported);
         const current=useProjectStore.getState().projects;
         await waitForSchedulePublished(imported.map(p=>current.find(item=>item.code===p.code&&item.department===p.department)!.id));
@@ -312,6 +287,7 @@ export default function App() {
     try {
       setImportError('');
       if (!sharedReady) throw new Error('중앙 공유 연결 후 일정을 등록하세요.');
+      assertNewSchedulesHaveIntake(studio.intakeProjects,projects,chosen.map(row=>row.project));
       setLegacySaving(true);
       importProjects(chosen.map(row=>row.project),true);
       await waitForSchedulePublished(chosen.map(row=>row.project.id));
@@ -890,10 +866,10 @@ export default function App() {
                     {sharedReady?'중앙 공유 연결 · 상세 전송 상태는 상단 확인':'프로젝트 로컬 저장 · 중앙 공유 미연결'}
                   </span>
                   <button
-                    onClick={() => setShowAddModal(true)}
+                    onClick={() => setActiveMenu('프로젝트 접수목록')}
                     className="btn-stitch-primary text-xs font-bold"
                   >
-                    <Plus size={15} /> 새 프로젝트 등록
+                    <Plus size={15} /> 접수목록에서 일정 등록
                   </button>
                 </div>
               </div>
@@ -1149,60 +1125,6 @@ export default function App() {
           {activeMenu === '설정' && <SettingsView />}
         </main>
       </div>
-
-      {/* 새 프로젝트 등록 모달 */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 backdrop-blur-xs">
-          <div className="relative bg-white dark:bg-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-200 dark:border-slate-700 animate-fadeIn">
-            <button type="button" onClick={()=>setShowAddModal(false)} aria-label="새 프로젝트 등록 닫기" className="absolute top-3 right-3 !m-0 rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-700 dark:hover:text-white"><X size={20}/></button>
-            <h3 className="!mt-0 pr-10 text-lg font-black text-slate-900 dark:text-white">새 물량산출 프로젝트 등록</h3>
-            <form onSubmit={handleCreateQuickProject} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
-                  프로젝트명
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="예: [강남역 역세권 청년주택] 건축 마감 수량산출"
-                  data-no-field-translate
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  className="input-stitch w-full text-xs dark:bg-slate-700 dark:text-white dark:border-slate-600"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
-                  담당 부서
-                </label>
-                <select
-                  value={newDept}
-                  onChange={(e) => setNewDept(e.target.value as Department)}
-                  className="input-stitch w-full text-xs dark:bg-slate-700 dark:text-white dark:border-slate-600"
-                >
-                  <option value="마감팀">마감팀</option>
-                  <option value="구조팀">구조팀</option>
-                  <option value="토목&조경팀">토목&조경팀</option>
-                </select>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="btn-stitch-secondary text-xs"
-                >
-                  취소
-                </button>
-                <button type="submit" className="btn-stitch-primary text-xs font-bold">
-                  등록 완료
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* 세부 공종 및 변경점(REV) 상세 모달 (팀별 일정표 등에서 직접 열었을 때) */}
       {selectedProjectId && (
