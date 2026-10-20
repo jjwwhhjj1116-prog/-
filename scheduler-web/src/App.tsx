@@ -146,8 +146,9 @@ export default function App() {
   const [inquiryContext,setInquiryContext]=useState<Partial<Record<Department,{projectId?:string;projectCode?:string;trade?:string;version:number}>>>({});
   const selectInquiryDepartment=(department:Department,projectCode?:string)=>{
     if(projectCode){
-      const target=projects.find(project=>project.department===department&&project.code===projectCode)||projects.find(project=>project.code===projectCode);
-      setInquiryContext(old=>({...old,[department]:{...old[department],projectId:target?.id||'',projectCode,version:(old[department]?.version||0)+1}}));
+      const target=projects.find(project=>project.department===department&&project.code===projectCode);
+      const intake=studio.intakeProjects.find(item=>item.code===projectCode);
+      setInquiryContext(old=>({...old,[department]:{...old[department],projectId:target?.id||intake?.id||'',projectCode,version:(old[department]?.version||0)+1}}));
     }
     setInquiryDepartment(department);
     setInquiryVisited(old=>old.includes(department)?old:[...old,department]);

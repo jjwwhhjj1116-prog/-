@@ -30,7 +30,7 @@ function screen(department='마감팀',lang='ko'){
   if(name==='lucide-react')return new Proxy({},{get:(_,key)=>String(key)});
   if(name==='./store/useProjectStore')return{useProjectStore:Object.assign(()=>state,{getState:()=>state})};
   if(name==='./store/useAuthStore')return{useAuthStore:()=>({...auth,logout(){auth.currentUser=null;}}),isUserAdmin:user=>user?.role==='ADMIN'};
-  if(name==='./store/useStudioStore')return{useStudioStore:()=>({actorId:auth.currentUser?.id,ready:true,hasLoaded:true,pendingIntake:[],pending:0}),restoreStudioSession:async()=>{},startStudioSync(){},waitForSchedulePublished:async()=>{}};
+  if(name==='./store/useStudioStore')return{useStudioStore:()=>({actorId:auth.currentUser?.id,ready:true,hasLoaded:true,pendingIntake:[],pending:0,intakeProjects:[{id:'intake-same104',code:'QA-SAME'},{id:'intake-other104',code:'QA-OTHER'}]}),restoreStudioSession:async()=>{},startStudioSync(){},waitForSchedulePublished:async()=>{}};
   if(name==='./store/useLanguageStore')return{useLanguageStore:()=>({lang,setLang(){}})};
   if(name==='./store/usePersonalStore')return{usePersonalStore:{setState(){}}};
   if(name==='./utils/schedulePermissions')return{canManageSchedule:()=>true};
@@ -61,9 +61,9 @@ check('질의 팀 전환: 먼저 나온 다른 현장 대신 같은 수주code �
  s.visible()[0].props.children.props.onDepartmentChange('구조팀','QA-SAME');s.render();const current=s.visible()[0].props.children;
  assert.equal(current.props.department,'구조팀');assert.equal(current.props.initialProjectId,'qa-structure-same104');assert.equal(current.props.initialProjectCode,'QA-SAME');assert.equal(s.panels().length,2);assert.ok(s.panels().some(pane=>pane.key===originalKey&&pane.props.hidden));
 });
-check('질의 공통 현장: 해당 팀 일정이 없어도 같은 수주 실프로젝트 연결·다른 현장 선택 금지',()=>{
+check('질의 공통 현장: 해당 팀 일정이 없으면 다른 팀 일정 대신 접수 원본 연결',()=>{
  const s=screen();s.openModal('qa-finish-same104','조적');s.visible()[0].props.children.props.onDepartmentChange('토목&조경팀','QA-SAME');s.render();const pane=s.visible()[0].props.children;
- assert.equal(pane.props.initialProjectId,'qa-finish-same104');assert.equal(pane.props.initialProjectCode,'QA-SAME');assert.notEqual(pane.props.initialProjectId,'qa-civil-other104');
+ assert.equal(pane.props.initialProjectId,'intake-same104');assert.equal(pane.props.initialProjectCode,'QA-SAME');assert.notEqual(pane.props.initialProjectId,'qa-civil-other104');
 });
 check('질의 반복 연결: 같은 팀·수주code 요청도 context version 증가',()=>{
  const s=screen();s.openModal('qa-finish-same104','창호');const first=s.visible()[0].props.children.props;
